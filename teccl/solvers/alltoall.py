@@ -8,6 +8,7 @@ from typing import Dict, List, Tuple
 import gurobipy as gp
 import numpy as np
 from gurobipy import GRB
+from teccl.gurobi_env import get_gurobi_env
 from teccl.input_data import *
 from teccl.solvers.base_formulation import BaseFormulation
 from teccl.topologies.topology import Topology
@@ -294,7 +295,7 @@ class AlltoAllFormulation(BaseFormulation):
 
     def encode_problem(self, use_one_less_epoch=False) -> int:
         setup_start = time.time()
-        self.model = gp.Model('AlltoAll_LP')
+        self.model = gp.Model('AlltoAll_LP', env=get_gurobi_env())
         self.initialize_variables()
         self.destination_constraints()
         self.node_constraints()

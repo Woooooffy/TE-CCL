@@ -9,6 +9,7 @@ import copy
 import gurobipy as gp
 import numpy as np
 from gurobipy import GRB
+from teccl.gurobi_env import get_gurobi_env
 from teccl.input_data import *
 from teccl.solvers.allgather import AllGatherFormulation
 from teccl.topologies.topology import Topology
@@ -16,7 +17,7 @@ from teccl.topologies.topology import Topology
 class AStarFormulation(AllGatherFormulation):
     def __init__(self, user_input: UserInputParams, topology: Topology, num_rounds=0):
         super().__init__(user_input, topology)
-        self.model = gp.Model('AllGather_AStar')
+        self.model = gp.Model('AllGather_AStar', env=get_gurobi_env())
         self.solver_name = "AStarSolver"
         self.buffer_look_ahead_count = 1
         self.all_models = []
@@ -92,7 +93,7 @@ class AStarFormulation(AllGatherFormulation):
 
     def refresh_model(self):
         self.all_models.append(self.model)
-        self.model = gp.Model('AllGather_AStar')
+        self.model = gp.Model('AllGather_AStar', env=get_gurobi_env())
         self.aux_t_ = []
         self.aux_sat_ = []
 

@@ -8,6 +8,7 @@ from typing import Dict, List, Set, Tuple
 import gurobipy as gp
 import numpy as np
 from gurobipy import GRB
+from teccl.gurobi_env import get_gurobi_env
 from teccl.input_data import *
 from teccl.solvers.base_formulation import BaseFormulation
 from teccl.topologies.topology import Topology
@@ -399,7 +400,7 @@ class AllGatherFormulation(BaseFormulation):
 
     def encode_problem(self, use_one_less_epoch: bool = False, previous_buffers: List[List[int]] = []) -> int:
         setup_start = time.time()
-        self.model = gp.Model('AllGather_MILP')
+        self.model = gp.Model('AllGather_MILP', env=get_gurobi_env())
         self.initialize_variables()
         self.destination_constraints()
         self.node_constraints(previous_buffers)

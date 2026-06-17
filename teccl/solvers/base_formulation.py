@@ -7,6 +7,7 @@ from typing import List
 
 import gurobipy as gp
 import numpy as np
+from teccl.gurobi_env import get_gurobi_env
 from teccl.input_data import *
 from teccl.topologies.topology import Topology
 
@@ -21,7 +22,7 @@ class BaseFormulation(ABC):
         self.user_input = user_input
         self.solver_name = ""
         self.topology = topology
-        self.model = gp.Model('Base')
+        self.model = gp.Model('Base', env=get_gurobi_env())
 
         if user_input.instance.collective == Collective.ALLGATHER:
             self.all_gather_demand_generator()
