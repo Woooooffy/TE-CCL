@@ -17,6 +17,7 @@ from teccl.topologies.dgx2 import DGX2
 from teccl.topologies.ndv2 import NDv2
 from teccl.topologies.amd import AMD
 from teccl.topologies.mesh import Mesh
+from teccl.topologies.fat_tree_pod import FatTreePod
 from teccl.topologies.topology import Topology
 
 
@@ -38,6 +39,8 @@ class TECCLSolver(object):
             return AMD(topology_params)
         elif topology_params.name == "Mesh":
             return Mesh(topology_params)
+        elif topology_params.name == "FatTreePod":
+            return FatTreePod(topology_params)
         else:
             raise NotImplementedError(
                 f"Input topology {topology_params.name} not implemented")
