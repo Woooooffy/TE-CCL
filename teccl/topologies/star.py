@@ -19,7 +19,7 @@ class Star(Topology):
 
     def construct_topology(self, topo_input: TopologyParams):
         num_nodes = 4
-        switch_link_capacity = 50 / self.chunk_size
+        switch_link_capacity = 125 / self.chunk_size
         switch_link_alpha = 0.7 * pow(10, -6)
 
         edges = {

@@ -16,7 +16,7 @@
         "mip_focus": 1,
         "crossover": -1,
         "method": -1,
-        "heuristics": 0.3
+        "heuristics": 0.05
     },
     "InstanceParams": {
         "collective": 1,
