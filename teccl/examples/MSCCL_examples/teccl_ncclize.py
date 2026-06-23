@@ -24,14 +24,23 @@ FLOW_RE = re.compile(
 
 
 def parse_flows(schedule):
-    """Group TE-CCL's '7-Flows' entries by epoch, converting to 0-indexed ranks.
+    """Group TE-CCL's '7-Flows' entries by epoch, remapping GPU ids to a dense
+    0-indexed range.
+
+    TE-CCL's node ids are raw 0-indexed topology indices that may include
+    switch nodes at arbitrary positions (e.g. index 0 for NDv2, the last index
+    for Star). Switch hops never appear as the 'A->B' endpoints in 7-Flows --
+    TE-CCL's own flow-merging collapses them into a trailing "via switches"
+    annotation (ignored here) -- so the set of ids that *do* appear as an
+    origin/src/dst is exactly the set of real GPUs, and we remap that set to
+    0..N-1 instead of assuming any fixed offset.
 
     Returns (num_nodes, num_subchunks, steps_in_order) where steps_in_order is a
     list of lists of (global_chunk_id, src, dst) 0-indexed tuples, one list per
     non-empty epoch, in increasing epoch order.
     """
-    by_epoch = defaultdict(list)
-    max_node = 0
+    parsed = []
+    raw_ids = set()
     max_subchunk = 0
 
     for line in schedule['7-Flows']:
@@ -39,22 +48,20 @@ def parse_flows(schedule):
         if not m:
             raise ValueError(f'Could not parse flow line: {line!r}')
         subchunk, origin, src, dst, epoch = (int(x) for x in m.groups())
-        max_node = max(max_node, origin, src, dst)
+        raw_ids.update((origin, src, dst))
         max_subchunk = max(max_subchunk, subchunk)
-        # 0-index everything; "via switches" routing is metadata only and is
-        # dropped here -- it doesn't change which GPU-to-GPU sends happen.
-        by_epoch[epoch].append((subchunk, origin - 1, src - 1, dst - 1))
+        parsed.append((epoch, subchunk, origin, src, dst))
 
-    num_nodes = max_node  # GPUs are 1..N, so N == max_node
+    rank_map = {raw: idx for idx, raw in enumerate(sorted(raw_ids))}
+    num_nodes = len(rank_map)
     num_subchunks = max_subchunk + 1
 
-    steps_in_order = []
-    for epoch in sorted(by_epoch):
-        sends = []
-        for subchunk, origin, src, dst in by_epoch[epoch]:
-            chunk_id = origin * num_subchunks + subchunk
-            sends.append((chunk_id, src, dst))
-        steps_in_order.append(sends)
+    by_epoch = defaultdict(list)
+    for epoch, subchunk, origin, src, dst in parsed:
+        chunk_id = rank_map[origin] * num_subchunks + subchunk
+        by_epoch[epoch].append((chunk_id, rank_map[src], rank_map[dst]))
+
+    steps_in_order = [by_epoch[epoch] for epoch in sorted(by_epoch)]
 
     return num_nodes, num_subchunks, steps_in_order
 
