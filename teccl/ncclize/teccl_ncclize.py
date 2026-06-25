@@ -104,9 +104,9 @@ class TeCCLTopology:
 
 
 def build_algorithm(schedule, name='teccl'):
-    from taccl.algorithm import Algorithm, Step
-    from taccl.collectives import allgather
-    from taccl.instance import Instance
+    from taccl_algorithm import Algorithm, Step
+    from taccl_collectives import allgather
+    from taccl_instance import Instance
 
     num_nodes, num_subchunks, steps_in_order = parse_flows(schedule)
 
@@ -137,7 +137,7 @@ def main():
     if args.taccl_path:
         sys.path.insert(0, args.taccl_path)
 
-    from taccl.ncclize import ncclize, ChannelPolicy
+    from taccl_ncclize import ncclize, ChannelPolicy
 
     with open(args.schedule) as f:
         schedule = json.load(f)
