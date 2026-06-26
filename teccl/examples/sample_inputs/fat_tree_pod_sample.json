@@ -2,7 +2,7 @@
     "TopologyParams": {
         "name": "FatTreePod",
         "chassis": 1,
-        "chunk_size": 0.25
+        "chunk_size": 0.5
     },
     "GurobiParams": {
         "time_limit": 0.1667,
@@ -20,7 +20,7 @@
     },
     "InstanceParams": {
         "collective": 1,
-        "num_chunks": 4,
+        "num_chunks": 1,
         "epoch_type": 1,
         "epoch_duration": -1,
         "num_epochs": -1,
@@ -28,11 +28,9 @@
         "switch_copy": false,
         "debug": false,
         "debug_output_file": "",
-        "objective_type": 3,
+        "objective_type": 2,
         "solution_method": 1,
         "switch_to_gpu_link_on": true,
-        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_schedule_4chunks.json",
-        "lower": true,
-        "lower_xml": "fat_tree_pod_4chunks.xml"
+        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_schedule_2.json"
     }
 }
