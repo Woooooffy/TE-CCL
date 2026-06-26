@@ -140,7 +140,7 @@ def build_switch_routes(flow_manifest, switch_rank_map):
     return {
         'switches': {
             str(switch): {str(flow_id): entry for flow_id, entry in flows.items()}
-            for switch, flows in routes.items()
+            for switch, flows in sorted(routes.items())
         }
     }
 
