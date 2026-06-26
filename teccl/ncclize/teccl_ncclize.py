@@ -6,10 +6,9 @@ by injecting it into TACCL's Algorithm representation and running TACCL's
 own ncclize().
 
 Usage:
-    python teccl_ncclize.py SCHEDULE.json -o OUTPUT.xml --taccl-path /path/to/taccl
+    python teccl_ncclize.py SCHEDULE.json -o OUTPUT.xml
 
-Requires the taccl package (https://github.com/microsoft/taccl) to be importable
-(pass --taccl-path, or have it on PYTHONPATH), plus its ncclize dependencies
+Requires taccl package (https://github.com/microsoft/taccl)'s ncclize dependencies
 (lxml, z3-solver).
 """
 import argparse
@@ -131,9 +130,6 @@ def main():
     p.add_argument('--instances', type=int, default=1)
     p.add_argument('--scale-remote', type=int, default=1)
     args = p.parse_args()
-
-    if args.taccl_path:
-        sys.path.insert(0, args.taccl_path)
 
     from taccl_ncclize import ncclize, ChannelPolicy
 
