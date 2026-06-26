@@ -126,10 +126,8 @@ def build_algorithm(schedule, name='teccl'):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('schedule', help='TE-CCL schedule JSON file')
+    p.add_argument('--schedule', help='TE-CCL schedule JSON file')
     p.add_argument('-o', '--output', required=True, help='output XML file')
-    p.add_argument('--taccl-path', default=None,
-                    help='path to a cloned taccl repo, if not already importable')
     p.add_argument('--instances', type=int, default=1)
     p.add_argument('--scale-remote', type=int, default=1)
     args = p.parse_args()
