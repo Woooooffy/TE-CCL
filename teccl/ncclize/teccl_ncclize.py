@@ -48,18 +48,23 @@ def parse_flows(schedule):
     exactly the set of real GPUs, and we remap that set to 0..N-1 instead of
     assuming any fixed offset.
 
-    Returns (num_nodes, num_subchunks, steps_in_order, flow_path_keys):
+    Returns (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
+    switch_rank_map):
     - steps_in_order is a list of lists of (global_chunk_id, src, dst)
       0-indexed tuples, one list per non-empty epoch, in increasing epoch
       order.
     - flow_path_keys maps (step_idx, global_chunk_id, src, dst) -> path key,
       where step_idx is the index into steps_in_order (not the raw epoch
       number) and the path key is whatever _parse_switch_path() returned for
-      that flow. Used downstream to avoid merging chunks that took different
-      switch paths into a single send op.
+      that flow (a tuple of raw switch ids, or None for a direct hop). Used
+      downstream to avoid merging chunks that took different switch paths
+      into a single send op.
+    - switch_rank_map maps each raw switch id appearing in any path key to a
+      dense 0-indexed id, the same way rank_map does for GPU ids.
     """
     parsed = []
     raw_ids = set()
+    switch_raw_ids = set()
     max_subchunk = 0
 
     for line in schedule['7-Flows']:
@@ -70,10 +75,13 @@ def parse_flows(schedule):
             int(x) for x in m.group(1, 2, 3, 4, 5))
         path_key = _parse_switch_path(m.group('switches'))
         raw_ids.update((origin, src, dst))
+        if path_key:
+            switch_raw_ids.update(path_key)
         max_subchunk = max(max_subchunk, subchunk)
         parsed.append((epoch, subchunk, origin, src, dst, path_key))
 
     rank_map = {raw: idx for idx, raw in enumerate(sorted(raw_ids))}
+    switch_rank_map = {raw: idx for idx, raw in enumerate(sorted(switch_raw_ids))}
     num_nodes = len(rank_map)
     num_subchunks = max_subchunk + 1
 
@@ -92,7 +100,49 @@ def parse_flows(schedule):
         step_idx = epoch_to_step_idx[epoch]
         flow_path_keys[(step_idx, chunk_id, rank_map[src], rank_map[dst])] = path_key
 
-    return num_nodes, num_subchunks, steps_in_order, flow_path_keys
+    return num_nodes, num_subchunks, steps_in_order, flow_path_keys, switch_rank_map
+
+
+def build_switch_routes(flow_manifest, switch_rank_map):
+    """Build a per-switch flow_id -> next-hop forwarding table.
+
+    flow_manifest is the list of {'flow_id', 'step', 'src', 'dst', 'path_key'}
+    records recorded by ncclize() (one per emitted send op). Since ncclize()
+    only merges chunks sharing the same path_key into one op (see
+    flow_path_keys), each flow_id here has exactly one, unambiguous path.
+
+    Returns {'switches': {switch_id_str: {flow_id_str: {...}}}}, with switch
+    and GPU ids both in the same dense 0-indexed numbering used elsewhere
+    (GPU ids matching the main XML's, switch ids via switch_rank_map) and an
+    explicit next_hop_type ('switch' or 'gpu') disambiguating the two, since
+    they are independently 0-indexed and can otherwise collide numerically.
+    """
+    routes = defaultdict(dict)
+    for record in flow_manifest:
+        path_key = record['path_key']
+        if not path_key:
+            continue  # direct GPU-GPU link, no switch hop involved
+        switch_path = tuple(switch_rank_map[s] for s in path_key)
+        flow_id, src, dst, step = (
+            record['flow_id'], record['src'], record['dst'], record['step'])
+        for i, switch in enumerate(switch_path):
+            is_last = i == len(switch_path) - 1
+            next_hop_type = 'gpu' if is_last else 'switch'
+            next_hop = dst if is_last else switch_path[i + 1]
+            routes[switch][flow_id] = {
+                'next_hop_type': next_hop_type,
+                'next_hop': next_hop,
+                'src_gpu': src,
+                'dst_gpu': dst,
+                'step': step,
+            }
+
+    return {
+        'switches': {
+            str(switch): {str(flow_id): entry for flow_id, entry in flows.items()}
+            for switch, flows in routes.items()
+        }
+    }
 
 
 class TeCCLTopology:
@@ -137,7 +187,7 @@ def build_algorithm(schedule, name='teccl'):
     from taccl_collectives import allgather
     from taccl_instance import Instance
 
-    num_nodes, num_subchunks, steps_in_order, flow_path_keys = parse_flows(schedule)
+    num_nodes, num_subchunks, steps_in_order, flow_path_keys, switch_rank_map = parse_flows(schedule)
 
     collective = allgather(num_nodes)
     if num_subchunks > 1:
@@ -151,7 +201,7 @@ def build_algorithm(schedule, name='teccl'):
 
     algo = Algorithm.make_implementation(
         collective, topology, instance, steps, cont=False, suffix='-teccl')
-    return algo, flow_path_keys
+    return algo, flow_path_keys, switch_rank_map
 
 
 def main():
@@ -160,6 +210,8 @@ def main():
     p.add_argument('-o', '--output', required=True, help='output XML file')
     p.add_argument('--instances', type=int, default=1)
     p.add_argument('--scale-remote', type=int, default=1)
+    p.add_argument('--switch-routing-output', default=None,
+                    help='optional path to write per-switch flow_id -> next-hop routing table as JSON')
     args = p.parse_args()
 
     from taccl_ncclize import ncclize, ChannelPolicy
@@ -167,7 +219,9 @@ def main():
     with open(args.schedule) as f:
         schedule = json.load(f)
 
-    algo, flow_path_keys = build_algorithm(schedule)
+    algo, flow_path_keys, switch_rank_map = build_algorithm(schedule)
+
+    flow_manifest = [] if args.switch_routing_output else None
 
     xml = ncclize(
         algo,
@@ -177,12 +231,19 @@ def main():
         instances=args.instances,
         scale_remote=args.scale_remote,
         flow_path_keys=flow_path_keys,
+        flow_manifest=flow_manifest,
         logging=True,
     )
 
     with open(args.output, 'w') as f:
         f.write(xml)
     print(f'Wrote {args.output}')
+
+    if args.switch_routing_output:
+        routes = build_switch_routes(flow_manifest, switch_rank_map)
+        with open(args.switch_routing_output, 'w') as f:
+            json.dump(routes, f, indent=2)
+        print(f'Wrote {args.switch_routing_output}')
 
 
 if __name__ == '__main__':

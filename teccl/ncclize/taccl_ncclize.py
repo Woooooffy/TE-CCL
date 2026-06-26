@@ -328,7 +328,7 @@ class ChannelPolicy(Enum):
     def __str__(self):
         return self.value
 
-def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None):
+def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None):
     '''
     Generate the XML format used by the NCCL SCCL backend.
 
@@ -504,11 +504,12 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         if combine_contig or len(step.sends[0])<5:
             for key, addrs in grouped_sends.items():
                 src, dst = key[0], key[1]
+                path_key = key[2] if len(key) > 2 else None
                 for src_buf, src_off, dst_buf, dst_off, cnt in make_intervals(src, dst, addrs):
                     for i in range(instances):
                         new_src_off = src_off * instances + i * cnt
                         new_dst_off = dst_off * instances + i * cnt
-                        send = (src, dst, src_buf, new_src_off, dst_buf, new_dst_off, cnt)
+                        send = (src, dst, src_buf, new_src_off, dst_buf, new_dst_off, cnt, path_key)
                         sends.append(send)
         elif len(step.sends[0])==6:
             for (src,dst,t,l,redop) in sorted(grouped_sends, key=lambda x: x[2]):
@@ -517,7 +518,7 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                     for i in range(instances):
                         new_src_off = src_off * instances + i * cnt
                         new_dst_off = dst_off * instances + i * cnt
-                        send = (src, dst, src_buf, new_src_off, dst_buf, new_dst_off, cnt, redop)
+                        send = (src, dst, src_buf, new_src_off, dst_buf, new_dst_off, cnt, redop, None)
                         sends.append(send)
         else:
             for (src, dst,t,l) in sorted(grouped_sends, key=lambda x: x[2]):
@@ -526,16 +527,16 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                     for i in range(instances):
                         new_src_off = src_off * instances + i * cnt
                         new_dst_off = dst_off * instances + i * cnt
-                        send = (src, dst, src_buf, new_src_off, dst_buf, new_dst_off, cnt)
+                        send = (src, dst, src_buf, new_src_off, dst_buf, new_dst_off, cnt, None)
                         sends.append(send)
         # Perform dependency tracking and create _Op instances
         global is_reduce
         for send in sends:
             redop = None
-            if len(send) == 7:
-                src, dst, src_buf, src_off, dst_buf, dst_off, cnt = send
+            if len(send) == 8:
+                src, dst, src_buf, src_off, dst_buf, dst_off, cnt, path_key = send
             else:
-                src, dst, src_buf, src_off, dst_buf, dst_off, cnt, redop = send
+                src, dst, src_buf, src_off, dst_buf, dst_off, cnt, redop, path_key = send
             read_keys = [(src,src_buf,src_off+i) for i in range(cnt)]
             # A send must wait for the previous recv (if any) to finish
             send_depends = list(set(d for k in read_keys for d in writers[k]))
@@ -556,6 +557,15 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             flow_id = len(op_sets)
             send_op.mscclflowid = flow_id
             recv_op.mscclflowid = flow_id
+
+            if flow_manifest is not None:
+                flow_manifest.append({
+                    'flow_id': flow_id,
+                    'step': step_idx,
+                    'src': src,
+                    'dst': dst,
+                    'path_key': path_key,
+                })
 
             # Record the send and receive as a set of operations that must happen on the same channel
             # if src_off == 0 or src_off == 1:
