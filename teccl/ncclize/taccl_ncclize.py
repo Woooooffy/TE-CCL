@@ -328,7 +328,7 @@ class ChannelPolicy(Enum):
     def __str__(self):
         return self.value
 
-def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False):
+def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None):
     '''
     Generate the XML format used by the NCCL SCCL backend.
 
@@ -341,6 +341,11 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     named buffers, "input", "output" and "scratch", based on whether the address appears in a particular rank's
     precondition, postcondition or neither. For addresses that would be in both the input and output buffers <copy/>
     tags are created to mark an initial transfer to the output buffer and only the output buffer mapping is kept.
+
+    flow_path_keys, if given, maps (step_idx, addr, src, dst) -> a hashable path key. Addresses sharing an edge within
+    a step are only merged into one send op if they share the same path key, so e.g. chunks that traveled via
+    different switch paths are kept as separate ops (and thus get distinct mscclflowids). None preserves prior
+    behavior (no disambiguation).
     '''
 
     if algorithm.is_pipelined():
@@ -491,12 +496,14 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                     grouped_sends[(src,dst,t,l,redop)].add(addr)
         else:
             for addr, src, dst in step.sends:
-                grouped_sends[(src,dst)].add(addr)
+                path_key = flow_path_keys.get((step_idx, addr, src, dst)) if flow_path_keys else None
+                grouped_sends[(src, dst, path_key)].add(addr)
 
         # Combine sends into intervals and create multiple instances if necessary
         sends = []
         if combine_contig or len(step.sends[0])<5:
-            for (src, dst), addrs in grouped_sends.items():
+            for key, addrs in grouped_sends.items():
+                src, dst = key[0], key[1]
                 for src_buf, src_off, dst_buf, dst_off, cnt in make_intervals(src, dst, addrs):
                     for i in range(instances):
                         new_src_off = src_off * instances + i * cnt
@@ -617,6 +624,28 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         ops_by_channel = _allocate_channels_match_topology(op_sets, algorithm.topology, instances, scale_remote, logging)
     else:
         assert False, 'Unhandled channel policy'
+
+    if flow_path_keys:
+        # Sanity check: ops that were kept separate because they carry distinct
+        # mscclflowids (e.g. different switch paths) are only guaranteed to land
+        # in separate threadblocks if they also land on distinct channels here --
+        # threadblocks are grouped by (gpu, is_send, peer, channel) below, so two
+        # same-step ops sharing a channel get merged into one threadblock
+        # regardless of having different flow ids. This can happen if channel_policy
+        # doesn't separate same-step/same-edge ops (e.g. ChannelPolicy.One).
+        flow_chans = defaultdict(set)
+        for chan, chan_ops in ops_by_channel.items():
+            for op in chan_ops:
+                if op.mscclflowid is not None:
+                    flow_chans[(op.gpu, op.is_send, op.peer, op.step)].add((op.mscclflowid, chan))
+        for (gpu, is_send, peer, step), flowid_chan_pairs in flow_chans.items():
+            flow_ids = {f for f, _ in flowid_chan_pairs}
+            chans = {c for _, c in flowid_chan_pairs}
+            if len(chans) < len(flow_ids):
+                print(f'Warning: mscclflowids {sorted(flow_ids)} on gpu={gpu} is_send={is_send} '
+                      f'peer={peer} step={step} only got {len(chans)} distinct channel(s) under '
+                      f'channel_policy={channel_policy} -- they will be forced into the same '
+                      f'threadblock, losing the intended parallelism between switch paths.')
 
     # Group by which operations need to be in the same threadblock
     tb_groups = defaultdict(list)

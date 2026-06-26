@@ -19,7 +19,21 @@ from collections import defaultdict
 
 FLOW_RE = re.compile(
     r'Chunk (\d+) from (\d+) traveled over (\d+)->(\d+) in epoch (\d+)'
+    r'(?:\s+via switches\s+(?P<switches>[\d\s\->]+))?$'
 )
+
+
+def _parse_switch_path(switches):
+    """Turn a FLOW_RE 'switches' group into a hashable path key.
+
+    None (no 'via switches' suffix, i.e. a direct hop) and a populated tuple
+    are intentionally distinct keys, so two chunks on the same (src, dst)
+    edge that took different switch paths -- or one direct and one relayed --
+    are never treated as interchangeable.
+    """
+    if switches is None:
+        return None
+    return tuple(int(s.strip()) for s in switches.split('->'))
 
 
 def parse_flows(schedule):
@@ -30,13 +44,19 @@ def parse_flows(schedule):
     switch nodes at arbitrary positions (e.g. index 0 for NDv2, the last index
     for Star). Switch hops never appear as the 'A->B' endpoints in 7-Flows --
     TE-CCL's own flow-merging collapses them into a trailing "via switches"
-    annotation (ignored here) -- so the set of ids that *do* appear as an
-    origin/src/dst is exactly the set of real GPUs, and we remap that set to
-    0..N-1 instead of assuming any fixed offset.
+    annotation -- so the set of ids that *do* appear as an origin/src/dst is
+    exactly the set of real GPUs, and we remap that set to 0..N-1 instead of
+    assuming any fixed offset.
 
-    Returns (num_nodes, num_subchunks, steps_in_order) where steps_in_order is a
-    list of lists of (global_chunk_id, src, dst) 0-indexed tuples, one list per
-    non-empty epoch, in increasing epoch order.
+    Returns (num_nodes, num_subchunks, steps_in_order, flow_path_keys):
+    - steps_in_order is a list of lists of (global_chunk_id, src, dst)
+      0-indexed tuples, one list per non-empty epoch, in increasing epoch
+      order.
+    - flow_path_keys maps (step_idx, global_chunk_id, src, dst) -> path key,
+      where step_idx is the index into steps_in_order (not the raw epoch
+      number) and the path key is whatever _parse_switch_path() returned for
+      that flow. Used downstream to avoid merging chunks that took different
+      switch paths into a single send op.
     """
     parsed = []
     raw_ids = set()
@@ -46,23 +66,33 @@ def parse_flows(schedule):
         m = FLOW_RE.match(line)
         if not m:
             raise ValueError(f'Could not parse flow line: {line!r}')
-        subchunk, origin, src, dst, epoch = (int(x) for x in m.groups())
+        subchunk, origin, src, dst, epoch = (
+            int(x) for x in m.group(1, 2, 3, 4, 5))
+        path_key = _parse_switch_path(m.group('switches'))
         raw_ids.update((origin, src, dst))
         max_subchunk = max(max_subchunk, subchunk)
-        parsed.append((epoch, subchunk, origin, src, dst))
+        parsed.append((epoch, subchunk, origin, src, dst, path_key))
 
     rank_map = {raw: idx for idx, raw in enumerate(sorted(raw_ids))}
     num_nodes = len(rank_map)
     num_subchunks = max_subchunk + 1
 
     by_epoch = defaultdict(list)
-    for epoch, subchunk, origin, src, dst in parsed:
+    for epoch, subchunk, origin, src, dst, _ in parsed:
         chunk_id = rank_map[origin] * num_subchunks + subchunk
         by_epoch[epoch].append((chunk_id, rank_map[src], rank_map[dst]))
 
-    steps_in_order = [by_epoch[epoch] for epoch in sorted(by_epoch)]
+    sorted_epochs = sorted(by_epoch)
+    steps_in_order = [by_epoch[epoch] for epoch in sorted_epochs]
 
-    return num_nodes, num_subchunks, steps_in_order
+    epoch_to_step_idx = {epoch: idx for idx, epoch in enumerate(sorted_epochs)}
+    flow_path_keys = {}
+    for epoch, subchunk, origin, src, dst, path_key in parsed:
+        chunk_id = rank_map[origin] * num_subchunks + subchunk
+        step_idx = epoch_to_step_idx[epoch]
+        flow_path_keys[(step_idx, chunk_id, rank_map[src], rank_map[dst])] = path_key
+
+    return num_nodes, num_subchunks, steps_in_order, flow_path_keys
 
 
 class TeCCLTopology:
@@ -107,7 +137,7 @@ def build_algorithm(schedule, name='teccl'):
     from taccl_collectives import allgather
     from taccl_instance import Instance
 
-    num_nodes, num_subchunks, steps_in_order = parse_flows(schedule)
+    num_nodes, num_subchunks, steps_in_order, flow_path_keys = parse_flows(schedule)
 
     collective = allgather(num_nodes)
     if num_subchunks > 1:
@@ -119,8 +149,9 @@ def build_algorithm(schedule, name='teccl'):
 
     instance = Instance(steps=len(steps), extra_rounds=0, chunks=num_subchunks)
 
-    return Algorithm.make_implementation(
+    algo = Algorithm.make_implementation(
         collective, topology, instance, steps, cont=False, suffix='-teccl')
+    return algo, flow_path_keys
 
 
 def main():
@@ -136,7 +167,7 @@ def main():
     with open(args.schedule) as f:
         schedule = json.load(f)
 
-    algo = build_algorithm(schedule)
+    algo, flow_path_keys = build_algorithm(schedule)
 
     xml = ncclize(
         algo,
@@ -145,6 +176,7 @@ def main():
         use_scratch=True,
         instances=args.instances,
         scale_remote=args.scale_remote,
+        flow_path_keys=flow_path_keys,
         logging=True,
     )
 
