@@ -42,5 +42,9 @@ class FatTreePod(Topology):
             self.alpha[i][j] = alpha
             self.alpha[j][i] = alpha
 
+        # GPU_A0 (0) / GPU_A1 (1), GPU_B0 (2) / GPU_B1 (3), and Spine1 (6) / Spine2 (7)
+        # are pairwise topological twins (identical neighbor sets and link weights).
+        self.equivalent_node_indices = [[0, 1], [2, 3], [6, 7]]
+
     def set_switch_indicies(self) -> None:
         self.switch_indices = [4, 5, 6, 7]
