@@ -204,6 +204,79 @@ def build_algorithm(schedule, name='teccl'):
     return algo, flow_path_keys, switch_rank_map
 
 
+def enforce_send_epoch_ordering(xml_str, flow_manifest):
+    """Post-process MSCCL XML to serialize same-GPU sends by epoch.
+
+    TACCL's ncclize() only generates depid/deps links for data-flow reasons:
+    a send depends on the recv that previously wrote the chunk into the GPU's
+    buffer. Sends of a GPU's *own* chunk (initialised by <copy>, never tracked
+    in the writers table) therefore get depid='-1', so all such sends to
+    different peers start simultaneously regardless of epoch.
+
+    In TE-CCL's fat-tree model every GPU shares a single uplink to its leaf
+    switch across all epochs. Sending in multiple epochs simultaneously
+    overloads that uplink. This function adds the missing deps so that an
+    epoch-N send waits for the epoch-(N-1) send on the same GPU to complete.
+
+    Only sends with depid=='-1' are modified. Relay sends already carry a
+    data-flow dep from ncclize (on the recv that wrote the chunk being
+    forwarded) and are implicitly epoch-ordered through that chain.
+
+    depid/deps semantics (msccl_interpreter.h / taccl_ncclize.py):
+      depid  = block_rbid of the dependency op (TB id on the *same* GPU)
+      deps   = op.idx of the dependency op (= 's' attribute in the XML)
+    hasdep=1 on the target op enables the flag write in the MSCCL runtime.
+    """
+    import xml.etree.ElementTree as ET
+
+    # flow_id -> epoch index (= index into steps_in_order)
+    flow_epoch = {r['flow_id']: r['step'] for r in flow_manifest}
+
+    root = ET.fromstring(xml_str)
+
+    for gpu_elem in root.findall('gpu'):
+        # Collect every send op: (epoch, tb_rbid, s_idx, step_elem)
+        sends = []
+        for tb_elem in gpu_elem.findall('tb'):
+            tb_rbid = int(tb_elem.get('id'))
+            for step_elem in tb_elem.findall('step'):
+                if step_elem.get('type') != 's':
+                    continue
+                fid_str = step_elem.get('mscclflowid')
+                if fid_str is None:
+                    continue
+                epoch = flow_epoch.get(int(fid_str))
+                if epoch is None:
+                    continue
+                sends.append((epoch, tb_rbid, int(step_elem.get('s')), step_elem))
+
+        if len(sends) <= 1:
+            continue
+
+        # Stable sort by (epoch, s_idx) gives a consistent serialisation order.
+        sends.sort(key=lambda x: (x[0], x[2]))
+
+        for i in range(1, len(sends)):
+            curr_epoch, curr_tb, _, curr_elem = sends[i]
+            prev_epoch, prev_tb, prev_s, prev_elem = sends[i - 1]
+
+            if curr_epoch <= prev_epoch:
+                continue  # same epoch: concurrent sends on different links are fine
+            if curr_tb == prev_tb:
+                continue  # same TB: sequential step ordering already handles this
+            if curr_elem.get('depid') != '-1':
+                continue  # ncclize already added a data-flow dep (relay send)
+
+            curr_elem.set('depid', str(prev_tb))
+            curr_elem.set('deps', str(prev_s))
+            # Mark the dep target so the runtime writes its completion flag.
+            if prev_elem.get('hasdep') == '0':
+                prev_elem.set('hasdep', '1')
+
+    ET.indent(root, space='  ')
+    return ET.tostring(root, encoding='unicode')
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--schedule', help='TE-CCL schedule JSON file')
@@ -221,7 +294,8 @@ def main():
 
     algo, flow_path_keys, switch_rank_map = build_algorithm(schedule)
 
-    flow_manifest = [] if args.switch_routing_output else None
+    # Always collect flow_manifest: needed for epoch ordering and optional routing.
+    flow_manifest = []
 
     xml = ncclize(
         algo,
@@ -234,6 +308,8 @@ def main():
         flow_manifest=flow_manifest,
         logging=True,
     )
+
+    xml = enforce_send_epoch_ordering(xml, flow_manifest)
 
     with open(args.output, 'w') as f:
         f.write(xml)
