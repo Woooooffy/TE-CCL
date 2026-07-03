@@ -12,6 +12,7 @@ Requires taccl package (https://github.com/microsoft/taccl)'s ncclize dependenci
 (lxml, z3-solver).
 """
 import argparse
+import bisect
 import json
 import re
 import sys
@@ -19,6 +20,20 @@ from collections import defaultdict
 
 FLOW_RE = re.compile(
     r'Chunk (\d+) from (\d+) traveled over (\d+)->(\d+) in epoch (\d+)'
+    r'(?:\s+via switches\s+(?P<switches>[\d\s\->]+))?$'
+)
+
+# Matches an "8-Chunk paths" demand key, e.g.
+# "Demand at 3 for chunk 0 from 0 met by epoch 3".
+DEMAND_RE = re.compile(
+    r'Demand at (\d+) for chunk (\d+) from (\d+) met by epoch (\d+)$'
+)
+
+# Matches one entry of an "8-Chunk paths" demand's path list, e.g.
+# "0->3 in epoch 0 via switches 4 -> 7 -> 5". Same grammar as FLOW_RE's
+# suffix, minus the "Chunk C from O traveled over " prefix.
+PATH_SEGMENT_RE = re.compile(
+    r'(\d+)->(\d+) in epoch (\d+)'
     r'(?:\s+via switches\s+(?P<switches>[\d\s\->]+))?$'
 )
 
@@ -49,7 +64,7 @@ def parse_flows(schedule):
     assuming any fixed offset.
 
     Returns (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
-    switch_rank_map):
+    switch_rank_map, flow_completion_steps):
     - steps_in_order is a list of lists of (global_chunk_id, src, dst)
       0-indexed tuples, one list per non-empty epoch, in increasing epoch
       order.
@@ -61,6 +76,19 @@ def parse_flows(schedule):
       into a single send op.
     - switch_rank_map maps each raw switch id appearing in any path key to a
       dense 0-indexed id, the same way rank_map does for GPU ids.
+    - flow_completion_steps maps (step_idx, global_chunk_id, src, dst) -> a
+      dense step-domain value (comparable to step_idx) representing the true
+      epoch by which dst actually has the data, as opposed to step_idx which
+      only reflects the epoch the transfer started. For a flow relayed
+      through switches, "in epoch N" in a 7-Flows line is only the *start*
+      epoch (see chunk_flow_path_to_string() in teccl/solvers/allgather.py);
+      each switch hop costs at least one additional epoch of store-and-
+      forward latency, so a relayed flow's true completion can be several
+      epochs later than step_idx implies. That true completion is recorded
+      separately, per (destination, chunk, origin) demand, in the schedule's
+      "8-Chunk paths" section as "met by epoch E". This is derived from that
+      section rather than assumed to be "1 epoch per hop", since that only
+      holds when the topology's link-latency parameters are zero.
     """
     parsed = []
     raw_ids = set()
@@ -100,7 +128,51 @@ def parse_flows(schedule):
         step_idx = epoch_to_step_idx[epoch]
         flow_path_keys[(step_idx, chunk_id, rank_map[src], rank_map[dst])] = path_key
 
-    return num_nodes, num_subchunks, steps_in_order, flow_path_keys, switch_rank_map
+    # Derive each flow's true completion epoch from "8-Chunk paths", keyed
+    # the same way as flow_path_keys so both can be looked up together
+    # downstream. Every demand's path list's *last* segment is the hop that
+    # actually lands the chunk at the demand's destination -- and, since
+    # this is an allgather, every relay GPU also has its own separate
+    # demand entry for the same chunk (it needs the chunk for itself too),
+    # so "last segment of every demand" covers every hop appearing in
+    # 7-Flows, regardless of relay-chain length.
+    flow_completion_steps = {}
+    for demand_key, path_segments in schedule['8-Chunk paths'].items():
+        dm = DEMAND_RE.match(demand_key)
+        if not dm:
+            raise ValueError(f'Could not parse demand key: {demand_key!r}')
+        dst_raw, subchunk, origin_raw, completion_epoch = (
+            int(x) for x in dm.group(1, 2, 3, 4))
+
+        last_segment = path_segments[-1]
+        sm = PATH_SEGMENT_RE.match(last_segment)
+        if not sm:
+            raise ValueError(f'Could not parse path segment: {last_segment!r}')
+        hop_src_raw, hop_dst_raw, hop_epoch = (
+            int(x) for x in sm.group(1, 2, 3))
+
+        if hop_dst_raw != dst_raw:
+            raise ValueError(
+                f'"8-Chunk paths" entry {demand_key!r} has a last path segment '
+                f'{last_segment!r} landing at {hop_dst_raw}, expected {dst_raw}')
+        for raw_id in (origin_raw, hop_src_raw, hop_dst_raw):
+            if raw_id not in rank_map:
+                raise ValueError(
+                    f'Unknown GPU id {raw_id} in "8-Chunk paths" entry {demand_key!r}')
+        if hop_epoch not in epoch_to_step_idx:
+            raise ValueError(
+                f'Epoch {hop_epoch} in "8-Chunk paths" entry {demand_key!r} '
+                f'does not appear in "7-Flows"')
+
+        chunk_id = rank_map[origin_raw] * num_subchunks + subchunk
+        step_idx = epoch_to_step_idx[hop_epoch]
+        completion_step = bisect.bisect_left(sorted_epochs, completion_epoch)
+        flow_completion_steps[
+            (step_idx, chunk_id, rank_map[hop_src_raw], rank_map[hop_dst_raw])
+        ] = completion_step
+
+    return (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
+            switch_rank_map, flow_completion_steps)
 
 
 def build_switch_routes(flow_manifest, switch_rank_map):
@@ -187,7 +259,8 @@ def build_algorithm(schedule, name='teccl'):
     from taccl_collectives import allgather
     from taccl_instance import Instance
 
-    num_nodes, num_subchunks, steps_in_order, flow_path_keys, switch_rank_map = parse_flows(schedule)
+    (num_nodes, num_subchunks, steps_in_order, flow_path_keys, switch_rank_map,
+     flow_completion_steps) = parse_flows(schedule)
 
     collective = allgather(num_nodes)
     if num_subchunks > 1:
@@ -201,7 +274,7 @@ def build_algorithm(schedule, name='teccl'):
 
     algo = Algorithm.make_implementation(
         collective, topology, instance, steps, cont=False, suffix='-teccl')
-    return algo, flow_path_keys, switch_rank_map
+    return algo, flow_path_keys, switch_rank_map, flow_completion_steps
 
 
 def enforce_send_epoch_ordering(xml_str, flow_manifest):
@@ -292,7 +365,7 @@ def main():
     with open(args.schedule) as f:
         schedule = json.load(f)
 
-    algo, flow_path_keys, switch_rank_map = build_algorithm(schedule)
+    algo, flow_path_keys, switch_rank_map, flow_completion_steps = build_algorithm(schedule)
 
     # Always collect flow_manifest: needed for epoch ordering and optional routing.
     flow_manifest = []
@@ -306,6 +379,7 @@ def main():
         scale_remote=args.scale_remote,
         flow_path_keys=flow_path_keys,
         flow_manifest=flow_manifest,
+        flow_completion_steps=flow_completion_steps,
         logging=True,
     )
 

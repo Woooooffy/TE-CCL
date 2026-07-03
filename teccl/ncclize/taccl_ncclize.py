@@ -328,7 +328,7 @@ class ChannelPolicy(Enum):
     def __str__(self):
         return self.value
 
-def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None):
+def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, flow_completion_steps=None):
     '''
     Generate the XML format used by the NCCL SCCL backend.
 
@@ -346,6 +346,13 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     a step are only merged into one send op if they share the same path key, so e.g. chunks that traveled via
     different switch paths are kept as separate ops (and thus get distinct mscclflowids). None preserves prior
     behavior (no disambiguation).
+
+    flow_completion_steps, if given, maps (step_idx, addr, src, dst) -> a dense step-domain value, comparable to
+    step_idx, representing the epoch by which dst truly has the data (as opposed to step_idx, which is only the
+    epoch the transfer started). Used to correct the .step of the corresponding recv op in place, so that
+    threadblock-internal step ordering and threadblock-reuse eligibility reflect true data availability rather than
+    merely transfer start time -- relevant when a transfer is relayed (e.g. through switches) and so completes
+    later than it started. None preserves prior behavior (recv ops keep their send-side step_idx).
     '''
 
     if algorithm.is_pipelined():
@@ -482,6 +489,10 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
 
         # Group sent addresses by edge
         grouped_sends = defaultdict(set)
+        # Maps (src, dst, path_key) -> corrected recv .step (see flow_completion_steps
+        # docstring above); only populated in the 3-tuple step.sends branch below, since
+        # that's the only shape teccl_ncclize.py ever produces.
+        group_completion_step = {}
         if len(step.sends[0]) == 5:
             for addr, src, dst, t, l in step.sends:
                 if combine_contig:
@@ -498,6 +509,14 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for addr, src, dst in step.sends:
                 path_key = flow_path_keys.get((step_idx, addr, src, dst)) if flow_path_keys else None
                 grouped_sends[(src, dst, path_key)].add(addr)
+            if flow_completion_steps:
+                for (src, dst, path_key), addrs in grouped_sends.items():
+                    vals = [flow_completion_steps.get((step_idx, addr, src, dst)) for addr in addrs]
+                    vals = [v for v in vals if v is not None]
+                    # max(): if merge_contiguous combined several chunk-ids into one op,
+                    # the op isn't truly ready until the last of its constituents arrives.
+                    if vals:
+                        group_completion_step[(src, dst, path_key)] = max(vals)
 
         # Combine sends into intervals and create multiple instances if necessary
         sends = []
@@ -552,6 +571,12 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                 assert redop == 'rrc'
                 is_reduce = True
                 recv_op = _Op(dst, src, step_idx, False, redop, src_buf, src_off, dst_buf, dst_off, cnt, recv_depends)
+
+            # Correct the recv op's .step to when dst truly has the data, rather than
+            # when the transfer started, for relayed transfers (see flow_completion_steps
+            # docstring above). send_op.step is left as the true start epoch, which is
+            # already correct for a send.
+            recv_op.step = group_completion_step.get((src, dst, path_key), recv_op.step)
 
             # Assign a unique flow id shared by this send and its matching recv
             flow_id = len(op_sets)
