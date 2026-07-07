@@ -55,6 +55,13 @@ class _Op:
     idx: int = None
     has_dependence: bool = False
     mscclflowid: int = None
+    # Hashable key identifying which physical path (e.g. switch route) this op's
+    # transfer takes; None means "no path information" (every caller except
+    # teccl_ncclize.py's flow_path_keys, and any direct/non-switch hop there).
+    # Carried through to channel assignment so that _allocate_channels_match_topology
+    # can keep different physical paths on the same (src,dst) edge off of the same
+    # channel -- see that function's docstring for why this matters.
+    path_key: object = None
 
     def __eq__(self, other):
         return self is other
@@ -63,7 +70,7 @@ class _Op:
         return id(self)
 
 # Poor hack
-is_reduce = False 
+is_reduce = False
 
 def _analyze_liveness(gpus, algorithm):
     # Initialize liveness intervals for buffers on each GPU
@@ -90,7 +97,7 @@ def _analyze_liveness(gpus, algorithm):
             liveness = scratch_livenesses[rank]
         else:
             raise RuntimeError(f'Address {addr} not found in any buffer of rank {rank}.')
-        
+
         # Expand the interval to include the step
         idx = buffer[addr]
         start, end = liveness[idx][0]
@@ -110,7 +117,7 @@ def _analyze_liveness(gpus, algorithm):
             for addr, src, dst in step.sends:
                 update_liveness(src, addr, step_idx)
                 update_liveness(dst, addr, step_idx)
-    
+
     return (input_livenesses, output_livenesses, scratch_livenesses)
 
 def _remap_scratch_into_input_output(liveness, gpus, logging):
@@ -185,7 +192,7 @@ def _remap_scratch_into_input_output(liveness, gpus, logging):
         new_idxs = None
         while not q.empty():
             new_idxs = q.get()
-        
+
         if new_idxs != None:
             print('.', end='', flush=True)
             # Apply the model to remap the scratch indices
@@ -250,7 +257,7 @@ def _allocate_channels_max_concurrency(op_sets, logging):
     opt = Optimize(ctx=ctx)
     opt.add(constraints)
     opt.minimize(max_channels)
-    
+
     t = threading.Thread(target=opt.check)
     t.start()
     t.join(1)
@@ -265,7 +272,7 @@ def _allocate_channels_max_concurrency(op_sets, logging):
         s.add(constraints)
         s.check()
         model = s.model()
-            
+
     if logging:
         print(f'Using up to {model[max_channels].as_long()} channels')
 
@@ -288,19 +295,72 @@ def _is_relay_link(topology, src, dst):
         return True
     return False
 
-def _allocate_channels_match_topology(op_sets, topology, instances, scale_remote, logging):
+def _allocate_channels_match_topology(op_sets, topology, instances, scale_remote, logging, max_channels=32):
+    '''
+    Assign each op_set (a [send_op, recv_op] pair) a channel, round-robining within each
+    (src, dst) edge's replica count (topology.link(src,dst), scaled by instances/scale_remote)
+    exactly as before -- *except* now partitioned first by op.path_key, so that two flows
+    sharing an edge but taking different physical paths (e.g. different switch routes in a
+    fat tree, distinguished via mscclflowid upstream) can never land on the same channel.
+
+    Why this matters (see ncclize_switch_path_ordering_gap project memory and
+    msccl_step_ordering_correctness sibling-project memory, both dated 2026-07-06): an
+    MSCCL connection is scoped exactly to (channelId, peer) -- each channel+peer pair is
+    its own independent step-counter/FIFO (mscclSetupConnections in msccl_setup.cc), so
+    different channels between the same GPU pair have *zero* ordering dependency on each
+    other. Multipath schedules can have a later-issued chunk physically arrive before an
+    earlier one (different switch paths, different congestion/hop-count), and this
+    topology/ncclize layer has no reliable way to know the true relative completion order
+    of two flows sharing one channel (TeCCLTopology never models switches at all -- see
+    its own docstring -- and even where true completion times are available via
+    flow_completion_steps, they're only precise up to the send-epoch dense scale, a
+    deliberate, separately-documented tradeoff). Rather than reorder ops on a shared
+    channel using that imprecise data, this function avoids the problem structurally: two
+    flows that took different paths are *never* placed on the same channel, so there is no
+    intra-channel relative order to get right in the first place. This is sufficient (not
+    just a heuristic) because flows sharing one path_key inherently can't be reordered
+    relative to each other -- same physical route means departure order == completion
+    order -- so keeping same-path flows on shared channels (round-robinned across replicas
+    exactly as before) remains correct.
+
+    Note this only fixes *intra-channel* wire order (which recv/send ends up in which
+    array slot within one threadblock's own (gpu,peer,chan) group). It does NOT replace
+    flow_completion_steps, which fixes a different hazard: TACCL's threadblock-packing
+    reuses one TB across *different* peers when their .step values don't collide (see the
+    eligibility check in ncclize(), a few hundred lines below), and once two peers'
+    ops share a TB, ALL of that TB's ops -- regardless of peer -- get serialized together
+    by .step. If a switch-relayed recv's .step were left at its (too-early) send-start
+    epoch instead of its corrected true-completion epoch, an unrelated send to a
+    completely different peer could get sorted after it and stall behind a relay it has no
+    real data dependency on. That cross-peer TB-packing hazard is orthogonal to path
+    diversity on a single edge (it's about threadblock-count minimization across peers,
+    not about multipath at all), so flow_completion_steps's correction stays necessary
+    here regardless of the path-aware channel assignment below.
+
+    max_channels caps the channel ids used per edge (num_distinct_path_keys * link); this
+    is a real hardware/runtime limit (MAXCHANNELS in NCCL/MSCCL, 32 as of the vendored
+    msccl-executor-nccl fork) on how many channels a single GPU's threadblocks may
+    reference in total, so it's enforced here rather than left to fail confusingly
+    downstream.
+    '''
     if len(topology.switches) > 0 and logging:
         print('Warning: Switches in the topology are ignored for the channel policy MatchTopology.')
     # print(topology)
     ops_by_channel = defaultdict(list)
+    # (src, dst) -> {path_key: first-seen index}; index 0 is always assigned to whichever
+    # path_key is seen first for that edge, so an edge with only path_key=None (every
+    # non-teccl caller, and any teccl edge with no switch-path diversity) always gets
+    # index 0 for it -- channel = 0 * link + rr == rr, identical to pre-existing behavior.
+    path_index_by_edge = defaultdict(dict)
     next_channel = defaultdict(lambda: 0)
     for op_set in op_sets:
         send = op_set[0]
         assert send.op_type == 's'
         src = send.gpu
         dst = send.peer
-        ops_by_channel[next_channel[(src,dst)]].extend(op_set)
-        link = topology.link(src,dst) * instances    
+        path_key = send.path_key
+
+        link = topology.link(src,dst) * instances
         global is_reduce
         if is_reduce: # and ("DGX1" in topology.name or "DGX2RFix" in topology.name):
             if link == 0:
@@ -316,7 +376,24 @@ def _allocate_channels_match_topology(op_sets, topology, instances, scale_remote
             assert link > 0, 'Encountered send on non-existent link'
         if _is_relay_link(topology, src, dst):
             link = link * scale_remote
-        next_channel[(src,dst)] = (next_channel[(src,dst)] + 1) % link
+
+        path_indices = path_index_by_edge[(src, dst)]
+        if path_key not in path_indices:
+            path_indices[path_key] = len(path_indices)
+        path_idx = path_indices[path_key]
+
+        edge_channels_needed = len(path_indices) * link
+        if edge_channels_needed > max_channels:
+            raise ValueError(
+                f'Edge {src}->{dst} needs {len(path_indices)} distinct path(s) x {link} '
+                f'replica(s) = {edge_channels_needed} channels, exceeding max_channels='
+                f'{max_channels}. Reduce the number of distinct switch paths routed over '
+                f'this edge, or raise max_channels if the target NCCL/MSCCL build supports '
+                f'more channels.')
+
+        chan = path_idx * link + next_channel[(src, dst, path_key)]
+        ops_by_channel[chan].extend(op_set)
+        next_channel[(src, dst, path_key)] = (next_channel[(src, dst, path_key)] + 1) % link
 
     return ops_by_channel
 
@@ -328,7 +405,7 @@ class ChannelPolicy(Enum):
     def __str__(self):
         return self.value
 
-def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, flow_completion_steps=None):
+def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, flow_completion_steps=None, max_channels=32):
     '''
     Generate the XML format used by the NCCL SCCL backend.
 
@@ -344,15 +421,24 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
 
     flow_path_keys, if given, maps (step_idx, addr, src, dst) -> a hashable path key. Addresses sharing an edge within
     a step are only merged into one send op if they share the same path key, so e.g. chunks that traveled via
-    different switch paths are kept as separate ops (and thus get distinct mscclflowids). None preserves prior
-    behavior (no disambiguation).
+    different switch paths are kept as separate ops (and thus get distinct mscclflowids). Under channel_policy=
+    MatchTopology, these path keys also keep same-edge, different-path flows off of the same channel entirely --
+    see _allocate_channels_match_topology()'s docstring for why that's the correct fix for multipath ordering
+    (as opposed to reordering ops on a shared channel). None preserves prior behavior (no disambiguation).
 
     flow_completion_steps, if given, maps (step_idx, addr, src, dst) -> a dense step-domain value, comparable to
     step_idx, representing the epoch by which dst truly has the data (as opposed to step_idx, which is only the
     epoch the transfer started). Used to correct the .step of the corresponding recv op in place, so that
     threadblock-internal step ordering and threadblock-reuse eligibility reflect true data availability rather than
     merely transfer start time -- relevant when a transfer is relayed (e.g. through switches) and so completes
-    later than it started. None preserves prior behavior (recv ops keep their send-side step_idx).
+    later than it started. None preserves prior behavior (recv ops keep their send-side step_idx). This remains
+    necessary alongside flow_path_keys/path-aware channels above -- it fixes a different hazard (an unrelated op
+    sharing a threadblock, across peers, with a switch-relayed recv), not the intra-channel multipath ordering
+    that path-aware channel assignment fixes structurally.
+
+    max_channels caps how many channel ids a single edge's path_key partitioning may use under channel_policy=
+    MatchTopology (default 32, matching NCCL/MSCCL's MAXCHANNELS hardware limit); see
+    _allocate_channels_match_topology().
     '''
 
     if algorithm.is_pipelined():
@@ -450,7 +536,7 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             srcbuff, srcoff = get_buffer_and_offset(gpus[src], addr)
             dstbuff, dstoff = get_buffer_and_offset(gpus[dst], addr)
             buffs_and_offs.append((srcbuff, srcoff, dstbuff, dstoff))
-        
+
         if merge_contiguous:
             # Sort sends by both buffers and offsets and merge sends into larger intervals when both the source and
             # destination are contiguous.
@@ -461,7 +547,7 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                 cnt = b[1] - a[1] + 1
                 assert cnt == b[3] - a[3] + 1, 'Source and destination count mismatch'
                 return (a[0], a[1], a[2], a[3], cnt)
-        
+
             for x in buffs_and_offs[1:]:
                 if x[0] == prev[0] and x[1] == prev[1] + 1 and x[2] == prev[2] and x[3] == prev[3] + 1:
                     # Merge into previous interval if buffers match and the new offsets are at the end of the interval
@@ -475,7 +561,7 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         else:
             # Just yield size 1 intervals if merging is disabled
             for srcbuff, srcoff, dstbuff, dstoff in buffs_and_offs:
-                yield (srcbuff, srcoff, dstbuff, dstoff, 1)    
+                yield (srcbuff, srcoff, dstbuff, dstoff, 1)
 
     # Turn all steps of the algorithm into operations
     op_sets = []
@@ -572,6 +658,12 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                 is_reduce = True
                 recv_op = _Op(dst, src, step_idx, False, redop, src_buf, src_off, dst_buf, dst_off, cnt, recv_depends)
 
+            # Carry the path key through to channel assignment (see
+            # _allocate_channels_match_topology()'s docstring): None for every caller
+            # except teccl_ncclize.py's flow_path_keys on a switch-relayed hop.
+            send_op.path_key = path_key
+            recv_op.path_key = path_key
+
             # Correct the recv op's .step to when dst truly has the data, rather than
             # when the transfer started, for relayed transfers (see flow_completion_steps
             # docstring above). send_op.step is left as the true start epoch, which is
@@ -656,7 +748,7 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     elif channel_policy == ChannelPolicy.MaxConcurrency:
         ops_by_channel = _allocate_channels_max_concurrency(op_sets, logging)
     elif channel_policy == ChannelPolicy.MatchTopology:
-        ops_by_channel = _allocate_channels_match_topology(op_sets, algorithm.topology, instances, scale_remote, logging)
+        ops_by_channel = _allocate_channels_match_topology(op_sets, algorithm.topology, instances, scale_remote, logging, max_channels)
     else:
         assert False, 'Unhandled channel policy'
 
@@ -668,6 +760,14 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         # same-step ops sharing a channel get merged into one threadblock
         # regardless of having different flow ids. This can happen if channel_policy
         # doesn't separate same-step/same-edge ops (e.g. ChannelPolicy.One).
+        #
+        # Under channel_policy=MatchTopology this should now be structurally
+        # unreachable: _allocate_channels_match_topology() partitions every edge by
+        # op.path_key first, so ops with different path_keys always land in disjoint
+        # channel sub-ranges. If this warning ever fires under MatchTopology, that's a
+        # bug in that partitioning (e.g. a path_key not making it onto the op), not an
+        # inherent limitation -- kept here as a cheap regression guard, and because
+        # it's still a real limitation for other channel policies (e.g. One).
         flow_chans = defaultdict(set)
         for chan, chan_ops in ops_by_channel.items():
             for op in chan_ops:

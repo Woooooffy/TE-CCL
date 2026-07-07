@@ -89,6 +89,20 @@ def parse_flows(schedule):
       "8-Chunk paths" section as "met by epoch E". This is derived from that
       section rather than assumed to be "1 epoch per hop", since that only
       holds when the topology's link-latency parameters are zero.
+
+      Known limitation: this value only corrects ordering *across* threadblock
+      groups (e.g. an unrelated send no longer waits behind a switch-relayed
+      recv it shares a threadblock with). It does not, and cannot, reorder
+      multiple recvs that already share one (gpu, peer, channel) -- switches
+      and per-flow paths are invisible to TeCCLTopology (see its docstring),
+      so two flows collapsed onto the same virtual src-dst edge keep whatever
+      relative order their raw start epochs gave them, regardless of whether
+      one of them actually completes later than the other because it took a
+      longer/more congested switch path. That's a pre-existing gap in this
+      topology abstraction, not something introduced or fixable by this
+      value -- properly addressing it would require ncclize to reason about
+      per-flow path/congestion information when deciding intra-channel order,
+      which it does not do today.
     """
     parsed = []
     raw_ids = set()
