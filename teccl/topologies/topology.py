@@ -26,6 +26,9 @@ class Topology(ABC):
         self.get_epoch_duration_fast_link()
         self.get_epoch_duration_slow_link()
         self.set_switch_indicies()
+        self.passive_indices: List[int] = list(topo_input.passive_node_indices)
+        assert not set(self.passive_indices) & set(self.switch_indices), \
+            "A node cannot be both a switch and a passive forwarding node"
 
     @abstractmethod
     def construct_topology(self, topo_input: TopologyParams) -> None:

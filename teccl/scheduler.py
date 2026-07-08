@@ -59,7 +59,7 @@ class TECCLSolver(object):
             return AllGatherFormulation(user_input, topology)
         elif user_input.instance.collective == Collective.ALLTOALL:
             user_input.instance.num_chunks = user_input.instance.num_chunks * \
-                (len(topology.capacity) - len(topology.switch_indices))
+                (len(topology.capacity) - len(topology.switch_indices) - len(topology.passive_indices))
             return AlltoAllFormulation(user_input, topology)
         else:
             raise NotImplementedError(

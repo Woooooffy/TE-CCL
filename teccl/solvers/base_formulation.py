@@ -173,6 +173,8 @@ class BaseFormulation(ABC):
                         continue
                     if s in self.topology.switch_indices or t in self.topology.switch_indices:
                         continue
+                    if s in self.topology.passive_indices or t in self.topology.passive_indices:
+                        continue
                     self.demand[s][t][c] = 1
 
     def all_to_all_demand_generator(self) -> None:
@@ -184,6 +186,8 @@ class BaseFormulation(ABC):
         for d in range(devices):
             if d in self.topology.switch_indices:
                 continue
+            if d in self.topology.passive_indices:
+                continue
             device_chunk_map[d] = i
             i += 1
         for s in range(devices):
@@ -193,7 +197,9 @@ class BaseFormulation(ABC):
                 # the switch should not be sending/recieving chunks.
                 if s in self.topology.switch_indices or t in self.topology.switch_indices:
                     continue
-                gpus = devices - len(self.topology.switch_indices)
+                if s in self.topology.passive_indices or t in self.topology.passive_indices:
+                    continue
+                gpus = devices - len(self.topology.switch_indices) - len(self.topology.passive_indices)
                 for c in range(chunks_per_gpu // gpus):
                     if s != t:
                         self.demand[s][t][device_chunk_map[t] + c * gpus] = 1
