@@ -1,0 +1,171 @@
+{
+  "1-Epoch_Duration": 0.005,
+  "2-Expected_Epoch_Duration": 0.005,
+  "3-Epochs_Required": 13,
+  "4-Collective_Finish_Time": 0.065,
+  "5-Algo_Bandwidth": 38.46153846153846,
+  "6-Demand_Met": {
+    "GPU 0": {
+      "GPU 1": {
+        "Chunk 0": 0.065
+      },
+      "GPU 2": {
+        "Chunk 0": 0.06
+      },
+      "GPU 3": {
+        "Chunk 0": 0.035
+      },
+      "GPU 5": {
+        "Chunk 0": 0.04
+      }
+    },
+    "GPU 1": {
+      "GPU 0": {
+        "Chunk 0": 0.05
+      },
+      "GPU 2": {
+        "Chunk 0": 0.065
+      },
+      "GPU 3": {
+        "Chunk 0": 0.055
+      },
+      "GPU 5": {
+        "Chunk 0": 0.03
+      }
+    },
+    "GPU 2": {
+      "GPU 0": {
+        "Chunk 0": 0.06
+      },
+      "GPU 1": {
+        "Chunk 0": 0.055
+      },
+      "GPU 3": {
+        "Chunk 0": 0.05
+      },
+      "GPU 5": {
+        "Chunk 0": 0.02
+      }
+    },
+    "GPU 3": {
+      "GPU 0": {
+        "Chunk 0": 0.065
+      },
+      "GPU 1": {
+        "Chunk 0": 0.05
+      },
+      "GPU 2": {
+        "Chunk 0": 0.055
+      },
+      "GPU 5": {
+        "Chunk 0": 0.025
+      }
+    },
+    "GPU 5": {
+      "GPU 0": {
+        "Chunk 0": 0.065
+      },
+      "GPU 1": {
+        "Chunk 0": 0.025
+      },
+      "GPU 2": {
+        "Chunk 0": 0.005
+      },
+      "GPU 3": {
+        "Chunk 0": 0.045
+      }
+    }
+  },
+  "7-Flows": [
+    "Chunk 0 from 5 traveled over 5->2 in epoch 0 via switches 4",
+    "Chunk 0 from 2 traveled over 2->5 in epoch 0 via switches 4",
+    "Chunk 0 from 5 traveled over 2->3 in epoch 4 via switches 4",
+    "Chunk 0 from 1 traveled over 1->5 in epoch 4 via switches 4",
+    "Chunk 0 from 5 traveled over 3->1 in epoch 5 via switches 4",
+    "Chunk 0 from 3 traveled over 3->0 in epoch 6 via switches 4",
+    "Chunk 0 from 5 traveled over 2->0 in epoch 7 via switches 4",
+    "Chunk 0 from 3 traveled over 3->5 in epoch 8 via switches 4",
+    "Chunk 0 from 0 traveled over 0->1 in epoch 9 via switches 4",
+    "Chunk 0 from 3 traveled over 3->2 in epoch 9 via switches 4",
+    "Chunk 0 from 1 traveled over 1->3 in epoch 9 via switches 4",
+    "Chunk 0 from 1 traveled over 1->2 in epoch 10 via switches 4",
+    "Chunk 0 from 2 traveled over 2->3 in epoch 10 via switches 4",
+    "Chunk 0 from 3 traveled over 0->1 in epoch 10 via switches 4",
+    "Chunk 0 from 2 traveled over 2->0 in epoch 11 via switches 4",
+    "Chunk 0 from 0 traveled over 0->2 in epoch 11 via switches 4",
+    "Chunk 0 from 2 traveled over 3->1 in epoch 12 via switches 4",
+    "Chunk 0 from 0 traveled over 0->5 in epoch 12 via switches 4",
+    "Chunk 0 from 1 traveled over 2->0 in epoch 12 via switches 4",
+    "Chunk 0 from 0 traveled over 0->3 in epoch 12 via switches 4"
+  ],
+  "8-Chunk paths": {
+    "Demand at 0 for chunk 0 from 1 met by epoch 12": [
+      "1->2 in epoch 10 via switches 4",
+      "2->0 in epoch 12 via switches 4"
+    ],
+    "Demand at 0 for chunk 0 from 2 met by epoch 11": [
+      "2->0 in epoch 11 via switches 4"
+    ],
+    "Demand at 0 for chunk 0 from 3 met by epoch 6": [
+      "3->0 in epoch 6 via switches 4"
+    ],
+    "Demand at 0 for chunk 0 from 5 met by epoch 7": [
+      "5->2 in epoch 0 via switches 4",
+      "2->0 in epoch 7 via switches 4"
+    ],
+    "Demand at 1 for chunk 0 from 0 met by epoch 9": [
+      "0->1 in epoch 9 via switches 4"
+    ],
+    "Demand at 1 for chunk 0 from 2 met by epoch 12": [
+      "2->3 in epoch 10 via switches 4",
+      "3->1 in epoch 12 via switches 4"
+    ],
+    "Demand at 1 for chunk 0 from 3 met by epoch 10": [
+      "3->0 in epoch 6 via switches 4",
+      "0->1 in epoch 10 via switches 4"
+    ],
+    "Demand at 1 for chunk 0 from 5 met by epoch 5": [
+      "5->2 in epoch 0 via switches 4",
+      "2->3 in epoch 4 via switches 4",
+      "3->1 in epoch 5 via switches 4"
+    ],
+    "Demand at 2 for chunk 0 from 0 met by epoch 11": [
+      "0->2 in epoch 11 via switches 4"
+    ],
+    "Demand at 2 for chunk 0 from 1 met by epoch 10": [
+      "1->2 in epoch 10 via switches 4"
+    ],
+    "Demand at 2 for chunk 0 from 3 met by epoch 9": [
+      "3->2 in epoch 9 via switches 4"
+    ],
+    "Demand at 2 for chunk 0 from 5 met by epoch 3": [
+      "5->2 in epoch 0 via switches 4"
+    ],
+    "Demand at 3 for chunk 0 from 0 met by epoch 12": [
+      "0->3 in epoch 12 via switches 4"
+    ],
+    "Demand at 3 for chunk 0 from 1 met by epoch 9": [
+      "1->3 in epoch 9 via switches 4"
+    ],
+    "Demand at 3 for chunk 0 from 2 met by epoch 10": [
+      "2->3 in epoch 10 via switches 4"
+    ],
+    "Demand at 3 for chunk 0 from 5 met by epoch 4": [
+      "5->2 in epoch 0 via switches 4",
+      "2->3 in epoch 4 via switches 4"
+    ],
+    "Demand at 5 for chunk 0 from 0 met by epoch 12": [
+      "0->5 in epoch 12 via switches 4"
+    ],
+    "Demand at 5 for chunk 0 from 1 met by epoch 4": [
+      "1->5 in epoch 4 via switches 4"
+    ],
+    "Demand at 5 for chunk 0 from 2 met by epoch 0": [
+      "2->5 in epoch 0 via switches 4"
+    ],
+    "Demand at 5 for chunk 0 from 3 met by epoch 8": [
+      "3->5 in epoch 8 via switches 4"
+    ]
+  },
+  "Solver_Time": 0.7772731781005859
+}

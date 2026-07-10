@@ -9,6 +9,7 @@ class TopologyParams:
     chunk_size: float = 1 # in GB
     alpha: tuple = (0 ,0) # (link alpha, switch alpha)
     side_length: int = 4 # Only for Mesh and Torus topology
+    passive_node_indices: tuple = ()  # GPU indices present (can forward) but excluded from this collective's demand
 
 @dataclass
 class GurobiParams:
@@ -75,7 +76,8 @@ class InstanceParams:
     alpha_threshold: float = 0.1 # Link alpha to epoch duration ratio threshold below which alpha is taken as 0
     alpha_epoch_duration_ratio_max: int = 200 # Maximum ratio of alpha to epoch duration (if exceeded, epoch duration is increased)
     switch_copy: bool = True # If True, switch can copy the chunks
-    switch_to_gpu_link_on: bool = False # If False, the link from switch to node is taken as instantaneous 
+    switch_to_gpu_link_on: bool = False # If False, the link from switch to node is taken as instantaneous
+    switch_to_switch_link_on: bool = False # If False, switch-to-switch links are taken as instantaneous (cut-through fabric): the full store-and-forward cost is only charged once, at the first GPU->switch hop.
     debug: bool = False # If True, prints debug information
     debug_output_file: str = "" # If debug is True, prints debug information to this file
     objective_type: ObjectiveType = ObjectiveType.PAPER # The objective function to be used (3 - The objective function used in the paper)

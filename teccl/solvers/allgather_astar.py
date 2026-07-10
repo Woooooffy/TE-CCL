@@ -107,11 +107,27 @@ class AStarFormulation(AllGatherFormulation):
                                   s][i][c][future_epoch - 1])
         for j in range(self.num_nodes):
             if self.topology.capacity[j][i] > 0:
+                link_type = self.get_link_type(j, i)
+                cutthrough = (link_type == self.LinkType.SWITCH_SWITCH
+                              and not self.user_input.instance.switch_to_switch_link_on)
                 link_alpha = self.topology.alpha[j][i]
                 epoch_capacity = self.topology.capacity[j][i] * self.epoch_duration
+                # NOTE: this int() truncation (vs. base_formulation.py's canonical
+                # get_beta_num_back, which uses math.ceil(...) - 1) is a pre-existing
+                # inconsistency, not introduced/fixed by this change.
                 beta_num_back = max(0, int(1 / epoch_capacity) - 1)
-                if (link_alpha / self.epoch_duration) > self.user_input.instance.alpha_threshold:
-                    num_back = math.ceil(link_alpha / self.epoch_duration)
+                above_threshold = (link_alpha / self.epoch_duration) > self.user_input.instance.alpha_threshold
+                num_back = math.ceil(link_alpha / self.epoch_duration) if above_threshold else 0
+                if cutthrough:
+                    # Chained switches act as a single cut-through fabric: only propagation
+                    # delay (num_back), no base serialization epoch or beta_num_back.
+                    flow_index = self.num_epochs - num_back + future_epoch
+                    if 0 <= flow_index < self.num_epochs:
+                        buffer_constr.add(self.flow[s][j][i][c][flow_index])
+                    # if num_back==0 and future_epoch==0, flow_index == self.num_epochs (out of
+                    # this round's array) -- correct: with negligible alpha and true cut-through,
+                    # such a chunk never needs to "spill" into a look-ahead epoch; not a bug.
+                elif above_threshold:
                     if (self.num_epochs - 1 + future_epoch - num_back - beta_num_back) >= 0 and (self.num_epochs - num_back - 1 - beta_num_back + future_epoch) < self.num_epochs:
                         buffer_constr.add(
                             self.flow[s][j][i][c][self.num_epochs - num_back - beta_num_back - 1 + future_epoch])

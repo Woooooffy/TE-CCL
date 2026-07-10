@@ -190,10 +190,19 @@ class AllGatherFormulation(BaseFormulation):
                 for j in range(self.num_nodes):
                     if self.topology.capacity[j][i] > 0:
                         alpha_num_back = self.get_alpha_num_back(j, i)
-                        beta_num_back = self.get_beta_num_back(j, i)
-                        if k - alpha_num_back - 1 - beta_num_back >= 0:
-                            switch_node_constr.add(
-                                self.flow[s][j][i][c][k - alpha_num_back - 1 - beta_num_back])
+                        link_type = self.get_link_type(j, i)
+                        if link_type == self.LinkType.SWITCH_SWITCH and not self.user_input.instance.switch_to_switch_link_on:
+                            # Chained switches act as a single cut-through fabric: the full
+                            # store-and-forward cost was already paid once at the first
+                            # GPU->switch hop, so a switch-to-switch hop only adds propagation delay.
+                            if k - alpha_num_back >= 0:
+                                switch_node_constr.add(
+                                    self.flow[s][j][i][c][k - alpha_num_back])
+                        else:
+                            beta_num_back = self.get_beta_num_back(j, i)
+                            if k - alpha_num_back - 1 - beta_num_back >= 0:
+                                switch_node_constr.add(
+                                    self.flow[s][j][i][c][k - alpha_num_back - 1 - beta_num_back])
 
             if previous_round_buffers and k < len(previous_round_buffers[s][i][c]):
                 switch_node_constr.add(previous_round_buffers[s][i][c][k])
@@ -519,7 +528,11 @@ class AllGatherFormulation(BaseFormulation):
             alpha_num_back = self.get_alpha_num_back(n, d)
             beta_num_back = -1
             link_type = self.get_link_type(n, d)
-            if link_type != self.LinkType.SWITCH_GPU or self.user_input.instance.switch_to_gpu_link_on:
+            cutthrough = (
+                (link_type == self.LinkType.SWITCH_GPU and not self.user_input.instance.switch_to_gpu_link_on) or
+                (link_type == self.LinkType.SWITCH_SWITCH and not self.user_input.instance.switch_to_switch_link_on)
+            )
+            if not cutthrough:
                 beta_num_back = self.get_beta_num_back(n, d)
             expected_flow = (s, n, d, c, k - alpha_num_back - beta_num_back)
             if expected_flow in flows:
@@ -624,7 +637,9 @@ class AllGatherFormulation(BaseFormulation):
                         break
                     k = buffers[(s, sending_node, c)] - 1
                 else:
-                    # If the sending node is a switch, then it should have received the chunk in the previous epoch.
+                    # If the sending node is a switch, k is the epoch index find_flow expects (one less
+                    # than the switch's own outgoing send epoch); find_flow resolves the actual upstream
+                    # arrival epoch per incoming link's type (store-and-forward vs. cut-through).
                     k = closest_flow[4] - 1
                 closest_flow = self.find_flow(
                     flows, s, sending_node, c, k, flow_memoization)

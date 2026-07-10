@@ -30,6 +30,7 @@
         "debug_output_file": "",
         "objective_type": 2,
         "solution_method": 1,
-        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_schedule_2.json"
+        "symmetry": true,
+        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_schedule_symmetric.json"
     }
 }

@@ -18,6 +18,9 @@ from teccl.topologies.ndv2 import NDv2
 from teccl.topologies.amd import AMD
 from teccl.topologies.mesh import Mesh
 from teccl.topologies.fat_tree_pod import FatTreePod
+from teccl.topologies.odd_pod import OddPod
+from teccl.topologies.star import Star
+from teccl.topologies.incast_switch import IncastSwitch
 from teccl.topologies.topology import Topology
 
 
@@ -41,6 +44,12 @@ class TECCLSolver(object):
             return Mesh(topology_params)
         elif topology_params.name == "FatTreePod":
             return FatTreePod(topology_params)
+        elif topology_params.name == "OddPod":
+            return OddPod(topology_params)
+        elif topology_params.name == "Star":
+            return Star(topology_params)
+        elif topology_params.name == "IncastSwitch":
+            return IncastSwitch(topology_params)
         else:
             raise NotImplementedError(
                 f"Input topology {topology_params.name} not implemented")
@@ -53,7 +62,7 @@ class TECCLSolver(object):
             return AllGatherFormulation(user_input, topology)
         elif user_input.instance.collective == Collective.ALLTOALL:
             user_input.instance.num_chunks = user_input.instance.num_chunks * \
-                (len(topology.capacity) - len(topology.switch_indices))
+                (len(topology.capacity) - len(topology.switch_indices) - len(topology.passive_indices))
             return AlltoAllFormulation(user_input, topology)
         else:
             raise NotImplementedError(
