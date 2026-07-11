@@ -1,0 +1,55 @@
+[
+  {
+    "num_chunks": 1,
+    "chunk_size": 0.5,
+    "oversubscription": 4.05,
+    "epochs_required": 16,
+    "collective_finish_time": 0.08,
+    "algo_bandwidth": 31.25,
+    "solver_time_s": 0.6600961685180664,
+    "wall_time_s": 0.6916003227233887
+  },
+  {
+    "num_chunks": 2,
+    "chunk_size": 0.25,
+    "oversubscription": 4.05,
+    "epochs_required": 22,
+    "collective_finish_time": 0.11,
+    "algo_bandwidth": 22.727272727272727,
+    "solver_time_s": 1.1532039642333984,
+    "wall_time_s": 1.1624689102172852
+  },
+  {
+    "num_chunks": 4,
+    "chunk_size": 0.125,
+    "oversubscription": 4.05,
+    "epochs_required": null,
+    "collective_finish_time": null,
+    "algo_bandwidth": null,
+    "solver_time_s": null,
+    "wall_time_s": 2.0530664920806885,
+    "status": "no_schedule_found"
+  },
+  {
+    "num_chunks": 8,
+    "chunk_size": 0.0625,
+    "oversubscription": 4.05,
+    "epochs_required": null,
+    "collective_finish_time": null,
+    "algo_bandwidth": null,
+    "solver_time_s": null,
+    "wall_time_s": 4.895307302474976,
+    "status": "no_schedule_found"
+  },
+  {
+    "num_chunks": 16,
+    "chunk_size": 0.03125,
+    "oversubscription": 4.05,
+    "epochs_required": null,
+    "collective_finish_time": null,
+    "algo_bandwidth": null,
+    "solver_time_s": null,
+    "wall_time_s": 10.050338506698608,
+    "status": "no_schedule_found"
+  }
+]
