@@ -58,7 +58,8 @@ def load_base_user_input(sample_path: pathlib.Path) -> UserInputParams:
     return user_input
 
 
-def run_sweep(num_chunks_values, oversubscription: float = 4):
+def run_sweep(num_chunks_values, oversubscription: float = 4,
+              time_limit_hours: float = None, mip_gap: float = None):
     # IncastSwitch.OVERSUBSCRIPTION is a plain class attribute read fresh
     # at construction time, so overriding it here before building any
     # topology instances is enough to change the ratio for this sweep.
@@ -66,6 +67,15 @@ def run_sweep(num_chunks_values, oversubscription: float = 4):
 
     base = load_base_user_input(SAMPLE_INPUT)
     total_data = base.instance.num_chunks * base.topology.chunk_size
+
+    # Applied uniformly to every n in this sweep, not just the ones that
+    # are slow to solve -- so points stay comparable (mixing tight-gap and
+    # loose-gap results across n would bias the finish_time trend we're
+    # trying to read off this sweep).
+    if time_limit_hours is not None:
+        base.gurobi.time_limit = time_limit_hours
+    if mip_gap is not None:
+        base.gurobi.mip_gap = mip_gap
 
     # epoch_type=FASTEST_LINK defines epoch_duration = chunk_size / fast_rate,
     # so it moves in lockstep with chunk_size as num_chunks grows -- that
@@ -94,7 +104,32 @@ def run_sweep(num_chunks_values, oversubscription: float = 4):
         TECCLSolver(user_input).solve()
         wall = time.time() - start
 
-        with open(user_input.instance.schedule_output_file) as f:
+        output_path = pathlib.Path(user_input.instance.schedule_output_file)
+        if not output_path.exists():
+            # scheduler.py's solve() only writes a file when at least one
+            # epoch-count probe in the iterative binary search reaches
+            # GRB.OPTIMAL; a probe that only hits GRB.TIME_LIMIT is
+            # discarded even if Gurobi already had a feasible incumbent
+            # (see encode_problem()'s `if status != GRB.OPTIMAL: return`).
+            # Record the miss and keep going rather than crash the sweep.
+            print(f"num_chunks={n:>4}  NO SCHEDULE FOUND in {wall:.1f}s wall time "
+                  f"(likely hit GurobiParams.time_limit={user_input.gurobi.time_limit}h "
+                  f"before reaching GRB.OPTIMAL at mip_gap={user_input.gurobi.mip_gap} -- "
+                  f"try --time-limit-hours / --mip-gap, or drop this n)")
+            results.append({
+                "num_chunks": n,
+                "chunk_size": user_input.topology.chunk_size,
+                "oversubscription": oversubscription,
+                "epochs_required": None,
+                "collective_finish_time": None,
+                "algo_bandwidth": None,
+                "solver_time_s": None,
+                "wall_time_s": wall,
+                "status": "no_schedule_found",
+            })
+            continue
+
+        with open(output_path) as f:
             out = json.load(f)
         row = {
             "num_chunks": n,
@@ -122,5 +157,14 @@ if __name__ == "__main__":
     parser.add_argument("--num-chunks", type=int, nargs="+",
                          default=[1, 2, 4, 8, 16, 32])
     parser.add_argument("--oversubscription", type=float, default=4)
+    parser.add_argument("--time-limit-hours", type=float, default=None,
+                         help="Overrides GurobiParams.time_limit for every n in this sweep "
+                              "(sample default: 0.5). Raise this if larger num_chunks values "
+                              "hit the limit without reaching GRB.OPTIMAL.")
+    parser.add_argument("--mip-gap", type=float, default=None,
+                         help="Overrides GurobiParams.mip_gap for every n in this sweep "
+                              "(sample default: 1e-4). Loosen this (e.g. 1e-2) to let Gurobi "
+                              "accept a near-optimal incumbent sooner on harder n.")
     args = parser.parse_args()
-    run_sweep(args.num_chunks, args.oversubscription)
+    run_sweep(args.num_chunks, args.oversubscription,
+              args.time_limit_hours, args.mip_gap)
