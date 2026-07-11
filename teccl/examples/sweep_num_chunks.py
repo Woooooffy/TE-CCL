@@ -59,7 +59,8 @@ def load_base_user_input(sample_path: pathlib.Path) -> UserInputParams:
 
 
 def run_sweep(num_chunks_values, oversubscription: float = 4,
-              time_limit_hours: float = None, mip_gap: float = None):
+              time_limit_hours: float = None, mip_gap: float = None,
+              max_epochs: int = 200):
     # IncastSwitch.OVERSUBSCRIPTION is a plain class attribute read fresh
     # at construction time, so overriding it here before building any
     # topology instances is enough to change the ratio for this sweep.
@@ -96,7 +97,16 @@ def run_sweep(num_chunks_values, oversubscription: float = 4,
         user_input.topology.chunk_size = total_data / n
         user_input.instance.epoch_type = EpochType.USER_INPUT
         user_input.instance.epoch_duration = fixed_epoch_duration
-        user_input.instance.num_epochs = -1
+        # Explicit, not -1: solve()'s auto-estimator (feasible_solution_search)
+        # derives its own epoch_duration candidates from a small, fixed,
+        # hop-distance-based num_epochs, decoupled from the epoch_duration
+        # fixed above -- once the two diverge enough (larger n, non-integer
+        # oversubscription), its feasible_time estimate undershoots badly and
+        # get_schedules()'s binary search never reaches the true answer,
+        # converging to "no schedule" in a handful of fast, cheap solves
+        # (see 2026-07-11 finding). Bypassing it with an explicit, generous
+        # upper bound sidesteps this entirely.
+        user_input.instance.num_epochs = max_epochs
         user_input.instance.schedule_output_file = str(
             OUTPUT_DIR / f"n{n}_osub{str(oversubscription).replace('.', '_')}.json")
 
@@ -107,15 +117,16 @@ def run_sweep(num_chunks_values, oversubscription: float = 4,
         output_path = pathlib.Path(user_input.instance.schedule_output_file)
         if not output_path.exists():
             # scheduler.py's solve() only writes a file when at least one
-            # epoch-count probe in the iterative binary search reaches
-            # GRB.OPTIMAL; a probe that only hits GRB.TIME_LIMIT is
-            # discarded even if Gurobi already had a feasible incumbent
-            # (see encode_problem()'s `if status != GRB.OPTIMAL: return`).
-            # Record the miss and keep going rather than crash the sweep.
+            # epoch-count probe in get_schedules()'s binary search reaches
+            # GRB.OPTIMAL. With num_epochs set explicitly (above), the
+            # search range is [0, max_epochs] -- a fast "no schedule found"
+            # here means the true required epoch count exceeds max_epochs,
+            # not (as originally suspected) a GurobiParams.time_limit
+            # timeout. Record the miss and keep going rather than crash.
             print(f"num_chunks={n:>4}  NO SCHEDULE FOUND in {wall:.1f}s wall time "
-                  f"(likely hit GurobiParams.time_limit={user_input.gurobi.time_limit}h "
-                  f"before reaching GRB.OPTIMAL at mip_gap={user_input.gurobi.mip_gap} -- "
-                  f"try --time-limit-hours / --mip-gap, or drop this n)")
+                  f"within max_epochs={max_epochs} -- raise --max-epochs "
+                  f"(a genuinely slow/hard n would instead show a long wall "
+                  f"time close to --time-limit-hours, which this wasn't)")
             results.append({
                 "num_chunks": n,
                 "chunk_size": user_input.topology.chunk_size,
@@ -165,6 +176,12 @@ if __name__ == "__main__":
                          help="Overrides GurobiParams.mip_gap for every n in this sweep "
                               "(sample default: 1e-4). Loosen this (e.g. 1e-2) to let Gurobi "
                               "accept a near-optimal incumbent sooner on harder n.")
+    parser.add_argument("--max-epochs", type=int, default=200,
+                         help="Explicit num_epochs upper bound passed to every solve in this "
+                              "sweep, bypassing solve()'s auto-estimator (feasible_solution_search) "
+                              "which becomes unreliable once epoch_duration is decoupled from "
+                              "chunk_size -- see 2026-07-11 finding. Raise this if a run reports "
+                              "'NO SCHEDULE FOUND' quickly (within a few seconds).")
     args = parser.parse_args()
     run_sweep(args.num_chunks, args.oversubscription,
-              args.time_limit_hours, args.mip_gap)
+              args.time_limit_hours, args.mip_gap, args.max_epochs)
