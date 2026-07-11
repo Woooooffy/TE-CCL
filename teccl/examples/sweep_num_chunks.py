@@ -88,7 +88,7 @@ def run_sweep(num_chunks_values, oversubscription: float = 4):
         user_input.instance.epoch_duration = fixed_epoch_duration
         user_input.instance.num_epochs = -1
         user_input.instance.schedule_output_file = str(
-            OUTPUT_DIR / f"n{n}_osub{oversubscription}.json")
+            OUTPUT_DIR / f"n{n}_osub{str(oversubscription).replace('.', '_')}.json")
 
         start = time.time()
         TECCLSolver(user_input).solve()
@@ -110,7 +110,7 @@ def run_sweep(num_chunks_values, oversubscription: float = 4):
         print(f"num_chunks={n:>4}  finish_time={row['collective_finish_time']:.6f}  "
               f"algo_bw={row['algo_bandwidth']:.3f}  solver_time={row['solver_time_s']:.2f}s")
 
-    summary_path = OUTPUT_DIR / f"summary_osub{oversubscription}.json"
+    summary_path = OUTPUT_DIR / f"summary_osub{str(oversubscription).replace('.', '_')}.json"
     with open(summary_path, 'w') as f:
         json.dump(results, f, indent=2)
     print(f"\nSummary written to {summary_path}")
