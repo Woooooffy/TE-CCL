@@ -224,7 +224,7 @@ class AStarFormulation(AllGatherFormulation):
         flows_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
         flows_str_info["3-Epochs_Required"] = self.total_epochs
         flows_str_info["4-Collective_Finish_Time"] = flows_str_info["1-Epoch_Duration"] * flows_str_info["3-Epochs_Required"]
-        flows_str_info["5-Algo_Bandwidth"] = self.topology.node_per_chassis * self.topology.chunk_size * self.topology.chassis / flows_str_info["4-Collective_Finish_Time"]
+        flows_str_info["5-Algo_Bandwidth"] = self.topology.node_per_chassis * self.topology.chunk_size * self.num_chunks * self.topology.chassis / flows_str_info["4-Collective_Finish_Time"]
         flows_str_info['7-Flows'] = [
             f"Chunk {c} from {s} traveled over {i}->{j} in epoch {k}" for s, i, j, c, k in flows]
         return flows, flows_str_info

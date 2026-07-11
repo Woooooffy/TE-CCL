@@ -67,12 +67,25 @@ def run_sweep(num_chunks_values, oversubscription: float = 4):
     base = load_base_user_input(SAMPLE_INPUT)
     total_data = base.instance.num_chunks * base.topology.chunk_size
 
+    # epoch_type=FASTEST_LINK defines epoch_duration = chunk_size / fast_rate,
+    # so it moves in lockstep with chunk_size as num_chunks grows -- that
+    # keeps every capacity ratio (and beta_num_back) invariant to n, which
+    # defeats the point of this sweep (see 2026-07-11 finding: it measures
+    # atomic per-chunk reservation overhead, not discretization fidelity).
+    # Fix epoch_duration once, from the n=1 baseline, and hold it fixed
+    # across the whole sweep so smaller chunks actually pack more tightly
+    # into a fixed real-time epoch.
+    baseline_topology = incast_switch.IncastSwitch(base.topology)
+    fixed_epoch_duration = baseline_topology.epoch_duration_fast_link
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     results = []
     for n in num_chunks_values:
         user_input = copy.deepcopy(base)
         user_input.instance.num_chunks = n
         user_input.topology.chunk_size = total_data / n
+        user_input.instance.epoch_type = EpochType.USER_INPUT
+        user_input.instance.epoch_duration = fixed_epoch_duration
         user_input.instance.num_epochs = -1
         user_input.instance.schedule_output_file = str(
             OUTPUT_DIR / f"n{n}_osub{oversubscription}.json")

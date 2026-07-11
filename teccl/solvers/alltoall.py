@@ -611,7 +611,7 @@ class AlltoAllFormulation(BaseFormulation):
         flow_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
         flow_str_info["3-Epochs_Required"] = self.find_demand_satisfied_k() + 1
         flow_str_info["4-Collective_Finish_Time"] = flow_str_info["1-Epoch_Duration"] * flow_str_info["3-Epochs_Required"]
-        flow_str_info["5-Algo_Bandwidth"] = self.topology.node_per_chassis * self.topology.chunk_size * self.topology.chassis / flow_str_info["4-Collective_Finish_Time"]
+        flow_str_info["5-Algo_Bandwidth"] = self.topology.node_per_chassis * self.topology.chunk_size * self.num_chunks * self.topology.chassis / flow_str_info["4-Collective_Finish_Time"]
         flows_str = sorted(list(flows_str), key=lambda x: x[0])
         flow_str_info['7-Flows'] = [x[1] for x in flows_str]
         flow_str_info['8-Chunk paths'] = chunk_paths
