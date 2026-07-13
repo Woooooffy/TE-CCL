@@ -21,6 +21,7 @@ from teccl.topologies.fat_tree_pod import FatTreePod
 from teccl.topologies.odd_pod import OddPod
 from teccl.topologies.star import Star
 from teccl.topologies.incast_switch import IncastSwitch
+from teccl.topologies.rail_optimized_spine_leaf import RailOptimizedSpineLeaf
 from teccl.topologies.topology import Topology
 
 
@@ -50,6 +51,8 @@ class TECCLSolver(object):
             return Star(topology_params)
         elif topology_params.name == "IncastSwitch":
             return IncastSwitch(topology_params)
+        elif topology_params.name == "RailOptimizedSpineLeaf":
+            return RailOptimizedSpineLeaf(topology_params)
         else:
             raise NotImplementedError(
                 f"Input topology {topology_params.name} not implemented")
