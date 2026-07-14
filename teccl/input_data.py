@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -88,7 +88,13 @@ class InstanceParams:
     warmstart: str = "" # If not empty, the warmstart file is used to warmstart the optimization.
     symmetry: bool = False # If true, nodes that are given as symmetric are constrainted to have same number of total flows. 
     
+@dataclass
 class UserInputParams:
-    topology: TopologyParams = TopologyParams()
-    gurobi: GurobiParams = GurobiParams()
-    instance: InstanceParams = InstanceParams()
+    # Use default_factory so each UserInputParams gets its own params objects.
+    # Bare mutable defaults would be shared across all instances (and not copied
+    # by copy.deepcopy, since they'd live on the class), which silently couples
+    # unrelated solves and compounds in-place mutations like the alltoall
+    # num_chunks scaling in the scheduler.
+    topology: TopologyParams = field(default_factory=TopologyParams)
+    gurobi: GurobiParams = field(default_factory=GurobiParams)
+    instance: InstanceParams = field(default_factory=InstanceParams)

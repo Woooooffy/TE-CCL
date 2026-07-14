@@ -67,9 +67,16 @@ class TECCLSolver(object):
                 return AStarFormulation(user_input, topology)
             return AllGatherFormulation(user_input, topology)
         elif user_input.instance.collective == Collective.ALLTOALL:
-            user_input.instance.num_chunks = user_input.instance.num_chunks * \
+            # Scale the per-GPU chunk count up to the total number of alltoall
+            # chunks (one group of chunks per active GPU). Do this on a copy so
+            # we never mutate the caller's instance in place: get_solver is
+            # called repeatedly (feasible search / iterative binary search) and
+            # an in-place scaling would compound (num_chunks *= num_gpus every
+            # call), inflating every subsequent solve.
+            alltoall_input = copy.deepcopy(user_input)
+            alltoall_input.instance.num_chunks = user_input.instance.num_chunks * \
                 (len(topology.capacity) - len(topology.switch_indices) - len(topology.passive_indices))
-            return AlltoAllFormulation(user_input, topology)
+            return AlltoAllFormulation(alltoall_input, topology)
         else:
             raise NotImplementedError(
                 f"Input collective {user_input.instance.collective} not implemented")
