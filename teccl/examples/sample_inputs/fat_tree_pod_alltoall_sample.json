@@ -1,0 +1,35 @@
+{
+    "TopologyParams": {
+        "name": "FatTreePod",
+        "chassis": 1,
+        "chunk_size": 0.5
+    },
+    "GurobiParams": {
+        "time_limit": 0.1667,
+        "feasibility_tol": 1e-4,
+        "intfeas_tol": 1e-4,
+        "optimality_tol": 1e-4,
+        "output_flag": 1,
+        "log_file": "",
+        "log_to_console": 1,
+        "mip_gap": 1e-6,
+        "mip_focus": 1,
+        "crossover": -1,
+        "method": -1,
+        "heuristics": 0.05
+    },
+    "InstanceParams": {
+        "collective": 2,
+        "num_chunks": 1,
+        "epoch_type": 1,
+        "epoch_duration": -1,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_copy": false,
+        "debug": false,
+        "debug_output_file": "",
+        "objective_type": 3,
+        "solution_method": 1,
+        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_alltoall_schedule.json"
+    }
+}
