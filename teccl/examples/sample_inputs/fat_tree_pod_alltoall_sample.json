@@ -20,7 +20,7 @@
     },
     "InstanceParams": {
         "collective": 2,
-        "num_chunks": 2,
+        "num_chunks": 1,
         "epoch_type": 1,
         "epoch_duration": -1,
         "num_epochs": -1,
@@ -30,6 +30,6 @@
         "debug_output_file": "",
         "objective_type": 3,
         "solution_method": 1,
-        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_alltoall_schedule_2chunks.json"
+        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_alltoall_schedule.json"
     }
 }
