@@ -273,8 +273,8 @@
         "debug": false,
         "debug_output_file": "",
         "objective_type": 2,
-        "solution_method": 2,
+        "solution_method": 1,
         "symmetry": true,
-        "schedule_output_file": "teccl/examples/schedules/moe_node_dense_multipath_schedule.json"
+        "schedule_output_file": "teccl/examples/schedules/moe_node_dense_multipath_schedule_1.json"
     }
 }
