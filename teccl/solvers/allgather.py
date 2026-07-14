@@ -540,11 +540,6 @@ class AllGatherFormulation(BaseFormulation):
         if d not in self.topology.switch_indices:
             assert len(
                 viable_flows) == 1, f"There should only be one viable flow for demand {s} {d} {c} but have {len(viable_flows)}"
-        # TEMP DIAGNOSTIC - remove after investigating cut-through reconstruction ties.
-        if len(viable_flows) > 1:
-            print(f"[find_flow TIE] query=(s={s}, d={d}, c={c}, k={k}) "
-                  f"candidates={sorted(viable_flows, key=lambda x: x[4])} "
-                  f"chosen={min(viable_flows, key=lambda x: x[4])}")
         # If d is a switch, then solver can pick a solution where the switch receives the same chunk by same epoch from multiple nodes.
         #  We only need one such flow if switch is copying the chunk.
         closest_flow = min(viable_flows, key=lambda x: x[4])
@@ -589,12 +584,6 @@ class AllGatherFormulation(BaseFormulation):
         """
         flows, demand_met_epoch, buffers, _ = self.get_flows_buffer_demand()
         logging.debug(f'Number of flows before pruning: {len(flows)}')
-        # TEMP DIAGNOSTIC - remove after investigating cut-through reconstruction ties.
-        print(f"[raw flows, s=i=j=any] all {len(flows)} solved flow tuples (s,i,j,c,k):")
-        for f in sorted(flows, key=lambda x: (x[0], x[4], x[1])):
-            print(f"  {f}")
-        print(f"[demand_met_epoch] {sorted(demand_met_epoch.items())}")
-        print(f"[buffers] {sorted(buffers.items())}")
         if astar:
             # In an A* round, we can't say whether a flow is required or not until the end of all the rounds as
             #  the node receiving the chunk may be an intermediate node in the path to the destination in the later rounds.
