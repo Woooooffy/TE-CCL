@@ -181,9 +181,20 @@ class AlltoAllFormulation(BaseFormulation):
             for j in self.nodes:
                 if self.topology.capacity[j][n] > 0:
                     alpha_num_back = self.get_alpha_num_back(j, n)
-                    if k - alpha_num_back >= 0:
-                        flow_conservation.add(
-                            self.flow[s][j][n][k - alpha_num_back])
+                    link_type = self.get_link_type(j, n)
+                    if link_type == self.LinkType.SWITCH_SWITCH and not self.user_input.instance.switch_to_switch_link_on:
+                        # Chained switches act as a single cut-through fabric: the full
+                        # store-and-forward epoch was already paid at the first GPU->switch
+                        # hop (the "+1" gap between receiving at epoch k and forwarding at
+                        # k+1). A switch-to-switch hop therefore only adds propagation delay,
+                        # so this switch can relay in the same epoch the chunk arrives.
+                        if k + 1 - alpha_num_back >= 0:
+                            flow_conservation.add(
+                                self.flow[s][j][n][k + 1 - alpha_num_back])
+                    else:
+                        if k - alpha_num_back >= 0:
+                            flow_conservation.add(
+                                self.flow[s][j][n][k - alpha_num_back])
                 if self.topology.capacity[n][j] > 0:
                     flow_conservation.add(self.flow[s][n][j][k + 1], -1)
             # TODO: once again flow drop can happen here.
@@ -420,6 +431,11 @@ class AlltoAllFormulation(BaseFormulation):
         if hop == dest: # or instance[1] in self.topology.switch_indicies:
             return (instance[-1] <= step - self.get_alpha_num_back(instance[1], hop))
         elif hop in self.topology.switch_indices:
+            # Mirror the solver's switch flow-conservation: a switch-to-switch hop is
+            # cut-through (no store-and-forward "+1" epoch) when switch_to_switch_link_on
+            # is off, so the sending switch relayed in the same epoch it received.
+            if instance[1] in self.topology.switch_indices and not self.user_input.instance.switch_to_switch_link_on:
+                return (instance[-1] == step - self.get_alpha_num_back(instance[1], hop))
             return (instance[-1] == step - 1 - self.get_alpha_num_back(instance[1], hop))
         else:
             return (instance[-1] <= step - 1 - self.get_alpha_num_back(instance[1], hop))
