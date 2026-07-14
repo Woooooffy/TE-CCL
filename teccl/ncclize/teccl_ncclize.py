@@ -64,10 +64,20 @@ def parse_flows(schedule):
     assuming any fixed offset.
 
     Returns (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
-    switch_rank_map, flow_completion_steps):
+    switch_rank_map, flow_completion_steps, sorted_epochs,
+    flow_completion_epochs):
     - steps_in_order is a list of lists of (global_chunk_id, src, dst)
       0-indexed tuples, one list per non-empty epoch, in increasing epoch
       order.
+    - sorted_epochs is the parallel list of raw epoch numbers (steps_in_order[i]
+      is raw epoch sorted_epochs[i]). Exposed so downstream code can recover the
+      true epoch axis -- including gaps where a whole epoch is globally empty
+      and thus dropped from steps_in_order.
+    - flow_completion_epochs maps (step_idx, global_chunk_id, src, dst) -> the
+      raw epoch by which dst actually holds the chunk, the raw-epoch counterpart
+      of flow_completion_steps. Used to place a recv at its arrival epoch in the
+      per-GPU debug view (a relayed recv can land later than, and even after the
+      last, flow-start epoch).
     - flow_path_keys maps (step_idx, global_chunk_id, src, dst) -> path key,
       where step_idx is the index into steps_in_order (not the raw epoch
       number) and the path key is whatever _parse_switch_path() returned for
@@ -150,7 +160,14 @@ def parse_flows(schedule):
     # demand entry for the same chunk (it needs the chunk for itself too),
     # so "last segment of every demand" covers every hop appearing in
     # 7-Flows, regardless of relay-chain length.
+    # flow_completion_epochs mirrors flow_completion_steps but keeps the *raw*
+    # completion epoch (not the dense step-domain value). It lets the per-GPU
+    # debug view place each recv at the epoch the chunk actually *arrives*,
+    # rather than the epoch its flow started -- a switch-relayed recv can land
+    # several epochs after it was sent, and raw completion epochs (unlike the
+    # bisected dense value) can even exceed the last flow-start epoch.
     flow_completion_steps = {}
+    flow_completion_epochs = {}
     for demand_key, path_segments in schedule['8-Chunk paths'].items():
         dm = DEMAND_RE.match(demand_key)
         if not dm:
@@ -184,9 +201,13 @@ def parse_flows(schedule):
         flow_completion_steps[
             (step_idx, chunk_id, rank_map[hop_src_raw], rank_map[hop_dst_raw])
         ] = completion_step
+        flow_completion_epochs[
+            (step_idx, chunk_id, rank_map[hop_src_raw], rank_map[hop_dst_raw])
+        ] = completion_epoch
 
     return (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
-            switch_rank_map, flow_completion_steps)
+            switch_rank_map, flow_completion_steps, sorted_epochs,
+            flow_completion_epochs)
 
 
 def build_switch_routes(flow_manifest, switch_rank_map):
@@ -272,9 +293,13 @@ def build_algorithm(schedule, name='teccl'):
     from taccl_algorithm import Algorithm, Step
     from taccl_collectives import allgather
     from taccl_instance import Instance
+    from helpers import build_gpu_epoch_view
 
     (num_nodes, num_subchunks, steps_in_order, flow_path_keys, switch_rank_map,
-     flow_completion_steps) = parse_flows(schedule)
+     flow_completion_steps, sorted_epochs, flow_completion_epochs) = parse_flows(schedule)
+
+    gpu_epoch_view = build_gpu_epoch_view(
+        steps_in_order, sorted_epochs, num_nodes, flow_completion_epochs)
 
     collective = allgather(num_nodes)
     if num_subchunks > 1:
@@ -288,7 +313,8 @@ def build_algorithm(schedule, name='teccl'):
 
     algo = Algorithm.make_implementation(
         collective, topology, instance, steps, cont=False, suffix='-teccl')
-    return algo, flow_path_keys, switch_rank_map, flow_completion_steps
+    return (algo, flow_path_keys, switch_rank_map, flow_completion_steps,
+            gpu_epoch_view)
 
 
 def enforce_send_epoch_ordering(xml_str, flow_manifest):
@@ -372,14 +398,26 @@ def main():
     p.add_argument('--scale-remote', type=int, default=1)
     p.add_argument('--switch-routing-output', default=None,
                     help='optional path to write per-switch flow_id -> next-hop routing table as JSON')
+    p.add_argument('--epoch-debug-output', default=None,
+                    help='optional path to write a human-readable per-GPU, '
+                         'per-epoch schedule dump. The realizability feasibility '
+                         'check (and its warnings) runs regardless of this flag.')
     args = p.parse_args()
 
     from taccl_ncclize import ncclize, ChannelPolicy
+    from helpers import (check_epoch_ordering_feasibility,
+                         warn_epoch_ordering_violations, write_gpu_epoch_debug)
 
     with open(args.schedule) as f:
         schedule = json.load(f)
 
-    algo, flow_path_keys, switch_rank_map, flow_completion_steps = build_algorithm(schedule)
+    (algo, flow_path_keys, switch_rank_map, flow_completion_steps,
+     gpu_epoch_view) = build_algorithm(schedule)
+
+    # Always run the feasibility check and surface any realizability warnings;
+    # writing the human-readable dump is independent and opt-in.
+    violations = check_epoch_ordering_feasibility(gpu_epoch_view)
+    warn_epoch_ordering_violations(violations)
 
     # Always collect flow_manifest: needed for epoch ordering and optional routing.
     flow_manifest = []
@@ -402,6 +440,11 @@ def main():
     with open(args.output, 'w') as f:
         f.write(xml)
     print(f'Wrote {args.output}')
+
+    if args.epoch_debug_output:
+        write_gpu_epoch_debug(args.epoch_debug_output, gpu_epoch_view,
+                              violations, source=args.schedule)
+        print(f'Wrote {args.epoch_debug_output}')
 
     if args.switch_routing_output:
         routes = build_switch_routes(flow_manifest, switch_rank_map)

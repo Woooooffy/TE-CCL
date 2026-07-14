@@ -31,8 +31,12 @@ def generate_xml(schedule_path):
         schedule = json.load(f)
 
     from taccl_ncclize import ncclize, ChannelPolicy
+    from helpers import (check_epoch_ordering_feasibility,
+                         warn_epoch_ordering_violations)
 
-    algo, flow_path_keys, switch_rank_map, flow_completion_steps = build_algorithm(schedule)
+    (algo, flow_path_keys, switch_rank_map, flow_completion_steps,
+     gpu_epoch_view) = build_algorithm(schedule)
+    warn_epoch_ordering_violations(check_epoch_ordering_feasibility(gpu_epoch_view))
     flow_manifest = []
     xml = ncclize(
         algo,
