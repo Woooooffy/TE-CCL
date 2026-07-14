@@ -564,6 +564,34 @@ class AlltoAllFormulation(BaseFormulation):
 
     def get_flow_schedule(self) -> Tuple[List, Dict]:
         full_flow_list, consumed = self.get_flows_and_consumes()
+
+        # ===== TEMP DEBUG: raw continuous solver output (pre per-chunk decomposition) =====
+        # full_flow_list entries: (source_s, sender_i, receiver_j, volume, epoch_k)
+        #   == the solved value of variable f_s_i_j_k = flow[s][i][j][k].
+        #   Volume is CONTINUOUS and AGGREGATED over all chunks that share source s;
+        #   there is no chunk index here yet. dig_to_source() below splits it per chunk.
+        print("\n" + "=" * 78)
+        print("RAW ALLTOALL FLOW VARS  f_s_i_j_k = flow[source s][link i->j][epoch k]")
+        print("(continuous volume, summed over all of source s's chunks; not yet per-chunk)")
+        print("=" * 78)
+        for s in sorted({x[0] for x in full_flow_list}):
+            rows = sorted([x for x in full_flow_list if x[0] == s],
+                          key=lambda x: (x[4], x[1], x[2]))  # by epoch, then link
+            print(f"\n-- source {s} --")
+            for (_s, i, j, vol, k) in rows:
+                itag = "SW" if i in self.topology.switch_indices else "gpu"
+                jtag = "SW" if j in self.topology.switch_indices else "gpu"
+                print(f"   epoch {k}:  {i:>2}({itag}) -> {j:>2}({jtag})   volume = {vol}")
+        print("\n" + "-" * 78)
+        print("RAW CONSUMED VARS  T_s_d_k = consumed_at_k[source s][dest d][epoch k]")
+        print("(volume of source s's demand absorbed AT destination d during epoch k)")
+        print("-" * 78)
+        for d in sorted(consumed.keys()):
+            for (s, k, vol) in sorted(consumed[d], key=lambda x: (x[0], x[1])):
+                print(f"   dest {d:>2}:  from source {s:>2}  epoch {k}  consumed = {vol}")
+        print("=" * 78 + "\n")
+        # ===== END TEMP DEBUG =====
+
         self.per_chunk_flows = np.zeros(
             (self.num_nodes, self.num_nodes, self.num_nodes, self.num_chunks, self.num_epochs))
         self.per_chunk_flow_paths = {}
