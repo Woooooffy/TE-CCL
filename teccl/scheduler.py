@@ -19,6 +19,7 @@ from teccl.topologies.amd import AMD
 from teccl.topologies.mesh import Mesh
 from teccl.topologies.fat_tree_pod import FatTreePod
 from teccl.topologies.fat_tree_pod_single_spine import FatTreePodSingleSpine
+from teccl.topologies.fat_tree_pod_single_spine_fat_uplink import FatTreePodSingleSpineFatUplink
 from teccl.topologies.odd_pod import OddPod
 from teccl.topologies.star import Star
 from teccl.topologies.incast_switch import IncastSwitch
@@ -48,6 +49,8 @@ class TECCLSolver(object):
             return FatTreePod(topology_params)
         elif topology_params.name == "FatTreePodSingleSpine":
             return FatTreePodSingleSpine(topology_params)
+        elif topology_params.name == "FatTreePodSingleSpineFatUplink":
+            return FatTreePodSingleSpineFatUplink(topology_params)
         elif topology_params.name == "OddPod":
             return OddPod(topology_params)
         elif topology_params.name == "Star":
