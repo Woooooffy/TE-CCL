@@ -31,6 +31,6 @@
     "debug_output_file": "",
     "objective_type": 3,
     "solution_method": 2,
-    "schedule_output_file": "teccl/examples/schedules/dgx1_schedule_allgather.json"
+    "schedule_output_file": "teccl/examples/schedules/dgx1_schedule_alltoall.json"
   }
 }

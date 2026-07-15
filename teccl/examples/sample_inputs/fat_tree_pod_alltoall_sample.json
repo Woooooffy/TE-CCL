@@ -2,7 +2,7 @@
     "TopologyParams": {
         "name": "FatTreePod",
         "chassis": 1,
-        "chunk_size": 0.5
+        "chunk_size": 1
     },
     "GurobiParams": {
         "time_limit": 0.1667,
