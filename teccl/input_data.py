@@ -76,8 +76,7 @@ class InstanceParams:
     alpha_threshold: float = 0.1 # Link alpha to epoch duration ratio threshold below which alpha is taken as 0
     alpha_epoch_duration_ratio_max: int = 200 # Maximum ratio of alpha to epoch duration (if exceeded, epoch duration is increased)
     switch_copy: bool = True # If True, switch can copy the chunks
-    switch_to_gpu_link_on: bool = False # If False, the link from switch to node is taken as instantaneous
-    switch_to_switch_link_on: bool = False # If False, switch-to-switch links are taken as instantaneous (cut-through fabric): the full store-and-forward cost is only charged once, at the first GPU->switch hop.
+    switch_pipeline: bool = True # If True, switches are a cut-through (pipelined) fabric: a chunk relayed through switches only pays propagation delay per hop, not a full store-and-forward serialization epoch. If False, every switch hop is store-and-forward. Which hops are made cut-through depends on the formulation: allgather pipelines the switch->switch and switch->gpu (egress) hops; alltoall pipelines the gpu->switch (ingress) and switch->switch hops. (The complementary leg is already handled by each formulation's structure: the first gpu->switch hop for allgather, the final switch->gpu hop for alltoall.)
     debug: bool = False # If True, prints debug information
     debug_output_file: str = "" # If debug is True, prints debug information to this file
     objective_type: ObjectiveType = ObjectiveType.PAPER # The objective function to be used (3 - The objective function used in the paper)

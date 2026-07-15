@@ -107,6 +107,16 @@ class AlltoAllFormulation(BaseFormulation):
                 self.model.addConstr(consume_constr == self.demand_at_i[(
                     s, d)], name='full_demand_satisfiablility_%d_%d_%d' % (s, d, k))
 
+    def switch_ingress_cut_through(self) -> bool:
+        """
+        Whether a switch's ingress hops are modeled as cut-through, i.e. the switch relays
+        without paying the store-and-forward "+1" epoch. In alltoall a pipelined switch
+        fabric makes both ingress hop types cut-through: switch->switch and gpu->switch
+        (the final switch->gpu egress leg is already propagation-only by construction).
+        Gated by the single switch_pipeline flag.
+        """
+        return self.user_input.instance.switch_pipeline
+
     def node_constraint_helper(self, s: int, n: int, k: int) -> None:
         """
             Adds constraints on the buffers and adds flow conservation constraints.
@@ -181,13 +191,12 @@ class AlltoAllFormulation(BaseFormulation):
             for j in self.nodes:
                 if self.topology.capacity[j][n] > 0:
                     alpha_num_back = self.get_alpha_num_back(j, n)
-                    link_type = self.get_link_type(j, n)
-                    if link_type == self.LinkType.SWITCH_SWITCH and not self.user_input.instance.switch_to_switch_link_on:
-                        # Chained switches act as a single cut-through fabric: the full
-                        # store-and-forward epoch was already paid at the first GPU->switch
-                        # hop (the "+1" gap between receiving at epoch k and forwarding at
-                        # k+1). A switch-to-switch hop therefore only adds propagation delay,
-                        # so this switch can relay in the same epoch the chunk arrives.
+                    if self.switch_ingress_cut_through():
+                        # Cut-through switch: the switch relays a chunk in the same epoch it
+                        # arrives, without the store-and-forward "+1" gap between receiving
+                        # (available at epoch k) and forwarding (egress at k+1). It only pays
+                        # propagation delay; serialization is charged solely by the per-epoch
+                        # capacity limit. Crediting ingress at k+1 (not k) removes the "+1".
                         if k + 1 - alpha_num_back >= 0:
                             flow_conservation.add(
                                 self.flow[s][j][n][k + 1 - alpha_num_back])
@@ -431,10 +440,11 @@ class AlltoAllFormulation(BaseFormulation):
         if hop == dest: # or instance[1] in self.topology.switch_indicies:
             return (instance[-1] <= step - self.get_alpha_num_back(instance[1], hop))
         elif hop in self.topology.switch_indices:
-            # Mirror the solver's switch flow-conservation: a switch-to-switch hop is
-            # cut-through (no store-and-forward "+1" epoch) when switch_to_switch_link_on
-            # is off, so the sending switch relayed in the same epoch it received.
-            if instance[1] in self.topology.switch_indices and not self.user_input.instance.switch_to_switch_link_on:
+            # Mirror the solver's switch flow-conservation: a cut-through ingress hop has
+            # no store-and-forward "+1" epoch, so the switch relayed in the same epoch it
+            # received (only propagation). Applies to switch->switch and GPU->switch ingress
+            # per their respective flags (see switch_ingress_cut_through).
+            if self.switch_ingress_cut_through():
                 return (instance[-1] == step - self.get_alpha_num_back(instance[1], hop))
             return (instance[-1] == step - 1 - self.get_alpha_num_back(instance[1], hop))
         else:

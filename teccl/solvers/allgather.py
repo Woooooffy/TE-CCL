@@ -39,7 +39,7 @@ class AllGatherFormulation(BaseFormulation):
             link_type = self.get_link_type(i, j)
             beta_num_back = self.get_beta_num_back(i, j)
             extra_epochs = alpha_num_back + beta_num_back
-            if link_type == self.LinkType.GPU_SWITCH and not self.user_input.instance.switch_to_gpu_link_on:
+            if link_type == self.LinkType.GPU_SWITCH and self.user_input.instance.switch_pipeline:
                 # For GPU-Switch link, we don't need to send the chunk in the one more extra epoch too as the switch to GPU link is instantaneous and we need another epoch to account for this case.
                 extra_epochs += 1
             not_necessary_k = [self.num_epochs -
@@ -101,7 +101,7 @@ class AllGatherFormulation(BaseFormulation):
                     if self.topology.capacity[i][d] > 0:
                         alpha_num_back = self.get_alpha_num_back(i, d)
                         link_type = self.get_link_type(i, d)
-                        if link_type != self.LinkType.SWITCH_GPU or self.user_input.instance.switch_to_gpu_link_on:
+                        if link_type != self.LinkType.SWITCH_GPU or not self.user_input.instance.switch_pipeline:
                             beta_num_back = self.get_beta_num_back(i, d)
                             if k - alpha_num_back - beta_num_back >= 0:
                                 dem_sat_constr.add(
@@ -146,7 +146,7 @@ class AllGatherFormulation(BaseFormulation):
                     alpha_num_back = self.get_alpha_num_back(j, i)
                     beta_num_back = self.get_beta_num_back(j, i)
                     link_type = self.get_link_type(j, i)
-                    if link_type != self.LinkType.SWITCH_GPU or self.user_input.instance.switch_to_gpu_link_on:
+                    if link_type != self.LinkType.SWITCH_GPU or not self.user_input.instance.switch_pipeline:
                         if k - alpha_num_back - 1 - beta_num_back >= 0:
                             # -1 is required as Buffer[i] stands for buffer at the "beginning" of epoch i
                             buffer_constr.add(
@@ -191,7 +191,7 @@ class AllGatherFormulation(BaseFormulation):
                     if self.topology.capacity[j][i] > 0:
                         alpha_num_back = self.get_alpha_num_back(j, i)
                         link_type = self.get_link_type(j, i)
-                        if link_type == self.LinkType.SWITCH_SWITCH and not self.user_input.instance.switch_to_switch_link_on:
+                        if link_type == self.LinkType.SWITCH_SWITCH and self.user_input.instance.switch_pipeline:
                             # Chained switches act as a single cut-through fabric: the full
                             # store-and-forward cost was already paid once at the first
                             # GPU->switch hop, so a switch-to-switch hop only adds propagation delay.
@@ -273,7 +273,7 @@ class AllGatherFormulation(BaseFormulation):
            For the iterative search, the solver needs extra epochs to find the solution at K-1, but it can
            also find the solution at K epochs as we stop the search when the solution count is 1.
         """
-        if self.user_input.instance.switch_to_gpu_link_on:
+        if not self.user_input.instance.switch_pipeline:
             return
         logging.debug(
             f'Adding demand sat for switch to gpu link constraints to limit max epochs to 1 less than input')
@@ -529,8 +529,8 @@ class AllGatherFormulation(BaseFormulation):
             beta_num_back = -1
             link_type = self.get_link_type(n, d)
             cutthrough = (
-                (link_type == self.LinkType.SWITCH_GPU and not self.user_input.instance.switch_to_gpu_link_on) or
-                (link_type == self.LinkType.SWITCH_SWITCH and not self.user_input.instance.switch_to_switch_link_on)
+                self.user_input.instance.switch_pipeline and
+                link_type in (self.LinkType.SWITCH_GPU, self.LinkType.SWITCH_SWITCH)
             )
             if not cutthrough:
                 beta_num_back = self.get_beta_num_back(n, d)

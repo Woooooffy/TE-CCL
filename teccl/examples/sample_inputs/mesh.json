@@ -21,7 +21,7 @@
         "num_epochs": 50,
         "alpha_threshold": 0.1,
         "switch_copy": false,
-        "switch_to_gpu_link_on" : true,
+        "switch_pipeline" : false,
         "debug": true,
         "debug_output_file": "",
         "objective_type": 3,

@@ -109,7 +109,7 @@ class AStarFormulation(AllGatherFormulation):
             if self.topology.capacity[j][i] > 0:
                 link_type = self.get_link_type(j, i)
                 cutthrough = (link_type == self.LinkType.SWITCH_SWITCH
-                              and not self.user_input.instance.switch_to_switch_link_on)
+                              and self.user_input.instance.switch_pipeline)
                 link_alpha = self.topology.alpha[j][i]
                 epoch_capacity = self.topology.capacity[j][i] * self.epoch_duration
                 # NOTE: this int() truncation (vs. base_formulation.py's canonical

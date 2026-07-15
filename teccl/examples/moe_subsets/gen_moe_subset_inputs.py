@@ -106,8 +106,7 @@ def build_input(name: str, active):
             "num_epochs": -1,
             "alpha_threshold": 0.1,
             "switch_copy": True,
-            "switch_to_gpu_link_on": False,
-            "switch_to_switch_link_on": False,
+            "switch_pipeline": True,
             "debug": False,
             "debug_output_file": "",
             "objective_type": 2,        # TOTAL_DEMAND

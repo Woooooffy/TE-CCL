@@ -30,7 +30,7 @@
         "debug_output_file": "",
         "objective_type": 3,
         "solution_method": 2,
-        "switch_to_gpu_link_on": true,
+        "switch_pipeline": false,
         "schedule_output_file": "teccl/examples/schedules/odd_pod_schedule.json"
     }
 }
