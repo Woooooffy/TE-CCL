@@ -19,7 +19,7 @@
         "heuristics": 0.3
     },
     "InstanceParams": {
-        "collective": 1,
+        "collective": 2,
         "num_chunks": 1,
         "epoch_type": 1,
         "epoch_duration": -1,
@@ -30,6 +30,6 @@
         "debug_output_file": "",
         "objective_type": 2,
         "solution_method": 2,
-        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_single_spine_fat_uplink_schedule.json"
+        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_single_spine_fat_uplink_alltoall_schedule.json"
     }
 }
