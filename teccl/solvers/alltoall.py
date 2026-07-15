@@ -125,6 +125,30 @@ class AlltoAllFormulation(BaseFormulation):
             k : epoch for which we are adding the constraints
         """
 
+        if n in self.topology.switch_indices and self.switch_ingress_cut_through():
+            # Cut-through switch: it relays a chunk in the SAME epoch the chunk becomes
+            # available (sent to it at k - alpha), with no store-and-forward "+1" gap.
+            # Crucially this egress is allowed in epoch 0 as well, so a source GPU feeding
+            # the fabric at epoch 0 is relayed through the switch(es) within epoch 0 -- the
+            # store-and-forward path below would instead force switch egress in epoch 0 to
+            # zero, wasting the first epoch for every fabric path. Serialization is charged
+            # only by the per-epoch capacity limit, never as a per-hop latency. This fully
+            # handles the switch (it stores nothing and never consumes), so we return.
+            self.model.addConstr(
+                self.buffer[s][n][k] == 0, name=f'switch_constraint-source_{s}-node_{n}-epoch_{k}')
+            switch_fc = gp.LinExpr(0.0)
+            for j in self.nodes:
+                if self.topology.capacity[j][n] > 0:
+                    alpha_num_back = self.get_alpha_num_back(j, n)
+                    if k - alpha_num_back >= 0:
+                        switch_fc.add(self.flow[s][j][n][k - alpha_num_back])
+                if self.topology.capacity[n][j] > 0:
+                    switch_fc.add(self.flow[s][n][j][k], -1)
+            # egress in epoch k <= ingress that becomes available in epoch k.
+            self.model.addConstr(
+                switch_fc >= 0, name=f"cutthrough-switch-epoch_{k}-node_{n}-source_{s}")
+            return
+
         # we need to account for the case where the number of epochs is 1 separately.
         if self.num_epochs > 1:
             if k == 0 and n != s:
@@ -187,23 +211,16 @@ class AlltoAllFormulation(BaseFormulation):
                                  name=f"midFC-epoch_{k}-node_{n}-source_{s}")
 
         elif k + 1 < self.num_epochs and n in self.topology.switch_indices:
+            # Store-and-forward switch (cut-through switches are handled/returned above):
+            # the switch must fully receive (ingress available by epoch k) before it can
+            # forward (egress at k+1) -- the "+1" store-and-forward epoch.
             flow_conservation = gp.LinExpr(0.0)
             for j in self.nodes:
                 if self.topology.capacity[j][n] > 0:
                     alpha_num_back = self.get_alpha_num_back(j, n)
-                    if self.switch_ingress_cut_through():
-                        # Cut-through switch: the switch relays a chunk in the same epoch it
-                        # arrives, without the store-and-forward "+1" gap between receiving
-                        # (available at epoch k) and forwarding (egress at k+1). It only pays
-                        # propagation delay; serialization is charged solely by the per-epoch
-                        # capacity limit. Crediting ingress at k+1 (not k) removes the "+1".
-                        if k + 1 - alpha_num_back >= 0:
-                            flow_conservation.add(
-                                self.flow[s][j][n][k + 1 - alpha_num_back])
-                    else:
-                        if k - alpha_num_back >= 0:
-                            flow_conservation.add(
-                                self.flow[s][j][n][k - alpha_num_back])
+                    if k - alpha_num_back >= 0:
+                        flow_conservation.add(
+                            self.flow[s][j][n][k - alpha_num_back])
                 if self.topology.capacity[n][j] > 0:
                     flow_conservation.add(self.flow[s][n][j][k + 1], -1)
             # TODO: once again flow drop can happen here.
