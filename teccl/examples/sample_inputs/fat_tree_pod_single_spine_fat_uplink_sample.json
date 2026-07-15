@@ -2,7 +2,7 @@
     "TopologyParams": {
         "name": "FatTreePodSingleSpineFatUplink",
         "chassis": 1,
-        "chunk_size": 0.5
+        "chunk_size": 1
     },
     "GurobiParams": {
         "time_limit": 0.5,
@@ -29,7 +29,7 @@
         "debug": false,
         "debug_output_file": "",
         "objective_type": 2,
-        "solution_method": 2,
+        "solution_method": 1,
         "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_single_spine_fat_uplink_alltoall_schedule.json"
     }
 }

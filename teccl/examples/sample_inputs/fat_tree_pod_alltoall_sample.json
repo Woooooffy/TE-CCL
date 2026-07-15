@@ -2,7 +2,7 @@
     "TopologyParams": {
         "name": "FatTreePod",
         "chassis": 1,
-        "chunk_size": 0.5
+        "chunk_size": 1
     },
     "GurobiParams": {
         "time_limit": 0.1667,
@@ -28,8 +28,8 @@
         "switch_copy": false,
         "debug": false,
         "debug_output_file": "",
-        "objective_type": 3,
+        "objective_type": 2,
         "solution_method": 1,
-        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_alltoall_schedule_2chunks.json"
+        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_alltoall_schedule.json"
     }
 }
