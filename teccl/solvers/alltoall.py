@@ -468,6 +468,79 @@ class AlltoAllFormulation(BaseFormulation):
             return (instance[-1] <= step - 1 - self.get_alpha_num_back(instance[1], hop))
         
 
+    @staticmethod
+    def _find_cycle(adj: Dict[int, List[int]]) -> List[int]:
+        """
+        Return a directed cycle in `adj` as a node list [n0, ..., n0], or None if the
+        graph is acyclic. Iterative-free recursive DFS is fine: each (source, epoch)
+        subgraph has at most num_nodes vertices.
+        """
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = defaultdict(int)  # defaults to WHITE
+        stack: List[int] = []
+
+        def visit(u: int):
+            color[u] = GRAY
+            stack.append(u)
+            for v in adj.get(u, []):
+                if color[v] == GRAY:
+                    # found a back edge: the cycle is the tail of the stack from v.
+                    return stack[stack.index(v):] + [v]
+                if color[v] == WHITE:
+                    found = visit(v)
+                    if found is not None:
+                        return found
+            stack.pop()
+            color[u] = BLACK
+            return None
+
+        for node in list(adj.keys()):
+            if color[node] == WHITE:
+                found = visit(node)
+                if found is not None:
+                    return found
+        return None
+
+    def cancel_flow_cycles(self, full_flow_list: List[Tuple[int, int, int, float, int]]
+                           ) -> List[Tuple[int, int, int, float, int]]:
+        """
+        Cancel pure circulations from the solved flow list. The time-expanded flow graph
+        is a DAG across epochs (GPU forwarding strictly advances the epoch), so every
+        directed cycle is confined to a single (source, epoch) -- these arise from
+        cut-through switches relaying within one epoch and from LP degeneracy. A cycle
+        adds zero to every node's net divergence, so cancelling it preserves all buffers,
+        consumes and deliveries; it only removes loops that dig_to_source() would otherwise
+        follow forever. Each entry is (source, sender, receiver, volume, epoch).
+        """
+        EPS = 1e-9
+        groups: Dict[Tuple[int, int], Dict[Tuple[int, int], float]] = defaultdict(dict)
+        for (s, i, j, vol, k) in full_flow_list:
+            edges = groups[(s, k)]
+            edges[(i, j)] = edges.get((i, j), 0.0) + vol
+
+        for edges in groups.values():
+            while True:
+                adj: Dict[int, List[int]] = defaultdict(list)
+                for (i, j), vol in edges.items():
+                    if vol > EPS:
+                        adj[i].append(j)
+                cycle = self._find_cycle(adj)
+                if cycle is None:
+                    break
+                cyc_edges = list(zip(cycle[:-1], cycle[1:]))
+                bottleneck = min(edges[e] for e in cyc_edges)
+                for e in cyc_edges:
+                    edges[e] -= bottleneck
+                    if edges[e] <= EPS:
+                        edges[e] = 0.0
+
+        new_list = []
+        for (s, k), edges in groups.items():
+            for (i, j), vol in edges.items():
+                if vol > EPS:
+                    new_list.append((s, i, j, vol, k))
+        return new_list
+
     def dig_to_source(self, hop: int, traffic: List[Tuple[int, int, int, int, float, int]],
                       consumed: Dict[int, Tuple[int, int, float]], source: int, step: int, dest: int,
                       volume: float, path: List[Tuple[int, int, int, float, int]], paths: Dict[int, List[Tuple[int, int, int, int, float, int]]] = {}) -> List[Tuple[int, int, int, int, float, int]]:
@@ -618,6 +691,13 @@ class AlltoAllFormulation(BaseFormulation):
                 print(f"   dest {d:>2}:  from source {s:>2}  epoch {k}  consumed = {vol}")
         print("=" * 78 + "\n")
         # ===== END TEMP DEBUG =====
+
+        # Remove pure circulations from the solved flow before decomposing it into paths.
+        # The LP can add a same-epoch loop (e.g. a GPU sending a chunk into a cut-through
+        # switch and receiving it right back in the same epoch) that satisfies flow
+        # conservation but delivers nothing. Such a cycle would make dig_to_source() walk
+        # it forever (RecursionError). Cancelling it changes no buffer/consume/delivery.
+        full_flow_list = self.cancel_flow_cycles(full_flow_list)
 
         self.per_chunk_flows = np.zeros(
             (self.num_nodes, self.num_nodes, self.num_nodes, self.num_chunks, self.num_epochs))
