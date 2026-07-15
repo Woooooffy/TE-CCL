@@ -19,7 +19,7 @@
         "heuristics": 0.3
     },
     "InstanceParams": {
-        "collective": 1,
+        "collective": 2,
         "num_chunks": 1,
         "epoch_type": 1,
         "epoch_duration": -1,
@@ -31,6 +31,6 @@
         "objective_type": 2,
         "solution_method": 2,
 				"symmetry": true,
-        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_single_spine_symmetric_schedule.json"
+        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_single_spine_alltoall_schedule.json"
     }
 }
