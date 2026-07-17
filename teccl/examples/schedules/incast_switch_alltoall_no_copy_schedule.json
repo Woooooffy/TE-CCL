@@ -5,115 +5,116 @@
   "4-Collective_Finish_Time": 0.08,
   "5-Algo_Bandwidth": 156.25,
   "7-Flows": [
-    "Chunk 3 from 0 traveled over 0->3 with volume 0.75 in epoch 0 via switches 4",
-    "Chunk 1 from 2 traveled over 2->1 with volume 0.75 in epoch 0 via switches 4",
-    "Chunk 3 from 1 traveled over 1->3 with volume 0.25 in epoch 0 via switches 4",
+    "Chunk 1 from 5 traveled over 5->1 with volume 0.25 in epoch 0 via switches 4",
     "Chunk 4 from 2 traveled over 2->5 with volume 0.25 in epoch 0 via switches 4",
-    "Chunk 0 from 3 traveled over 3->0 with volume 0.75 in epoch 0 via switches 4",
-    "Chunk 1 from 3 traveled over 3->1 with volume 0.25 in epoch 0 via switches 4",
-    "Chunk 2 from 0 traveled over 0->2 with volume 0.25 in epoch 0 via switches 4",
-    "Chunk 0 from 5 traveled over 5->0 with volume 0.25 in epoch 0 via switches 4",
-    "Chunk 2 from 1 traveled over 1->2 with volume 0.75 in epoch 0 via switches 4",
-    "Chunk 2 from 3 traveled over 3->2 with volume 0.75 in epoch 1 via switches 4",
+    "Chunk 3 from 2 traveled over 2->3 with volume 0.75 in epoch 0 via switches 4",
+    "Chunk 3 from 0 traveled over 0->3 with volume 0.25 in epoch 0 via switches 4",
+    "Chunk 2 from 3 traveled over 3->2 with volume 1.0 in epoch 0 via switches 4",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 0 via switches 4",
+    "Chunk 1 from 0 traveled over 0->1 with volume 0.75 in epoch 0 via switches 4",
+    "Chunk 4 from 0 traveled over 0->5 with volume 0.25 in epoch 1 via switches 4",
+    "Chunk 2 from 0 traveled over 0->2 with volume 0.25 in epoch 1 via switches 4",
+    "Chunk 1 from 2 traveled over 2->1 with volume 0.75 in epoch 1 via switches 4",
+    "Chunk 3 from 1 traveled over 1->3 with volume 0.25 in epoch 1 via switches 4",
+    "Chunk 2 from 1 traveled over 1->2 with volume 0.75 in epoch 1 via switches 4",
     "Chunk 3 from 5 traveled over 5->3 with volume 0.25 in epoch 1 via switches 4",
-    "Chunk 2 from 1 traveled over 1->2 with volume 0.25 in epoch 1 via switches 4",
-    "Chunk 0 from 3 traveled over 3->0 with volume 0.25 in epoch 1 via switches 4",
-    "Chunk 4 from 2 traveled over 2->5 with volume 0.25 in epoch 1 via switches 4",
-    "Chunk 3 from 1 traveled over 1->3 with volume 0.75 in epoch 1 via switches 4",
-    "Chunk 1 from 0 traveled over 0->1 with volume 1.0 in epoch 1 via switches 4",
-    "Chunk 0 from 2 traveled over 2->0 with volume 0.75 in epoch 1 via switches 4",
-    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 2 via switches 4",
-    "Chunk 4 from 3 traveled over 3->5 with volume 0.25 in epoch 2 via switches 4",
-    "Chunk 3 from 2 traveled over 2->3 with volume 0.75 in epoch 2 via switches 4",
-    "Chunk 1 from 3 traveled over 3->1 with volume 0.75 in epoch 2 via switches 4",
-    "Chunk 1 from 2 traveled over 2->1 with volume 0.25 in epoch 2 via switches 4",
+    "Chunk 0 from 2 traveled over 2->0 with volume 0.25 in epoch 1 via switches 4",
+    "Chunk 0 from 3 traveled over 3->0 with volume 0.75 in epoch 1 via switches 4",
+    "Chunk 1 from 3 traveled over 3->1 with volume 0.25 in epoch 1 via switches 4",
+    "Chunk 3 from 0 traveled over 0->3 with volume 0.5 in epoch 1 via switches 4",
+    "Chunk 1 from 0 traveled over 0->1 with volume 0.25 in epoch 2 via switches 4",
+    "Chunk 0 from 3 traveled over 3->0 with volume 0.25 in epoch 2 via switches 4",
+    "Chunk 3 from 1 traveled over 1->3 with volume 0.75 in epoch 2 via switches 4",
     "Chunk 2 from 0 traveled over 0->2 with volume 0.75 in epoch 2 via switches 4",
-    "Chunk 2 from 5 traveled over 5->2 with volume 0.25 in epoch 2 via switches 4",
-    "Chunk 3 from 0 traveled over 0->3 with volume 0.25 in epoch 2 via switches 4",
-    "Chunk 0 from 2 traveled over 2->0 with volume 0.25 in epoch 3 via switches 4",
+    "Chunk 3 from 5 traveled over 5->3 with volume 0.25 in epoch 2 via switches 4",
+    "Chunk 4 from 2 traveled over 2->5 with volume 0.25 in epoch 2 via switches 4",
+    "Chunk 2 from 1 traveled over 1->2 with volume 0.25 in epoch 2 via switches 4",
+    "Chunk 0 from 2 traveled over 2->0 with volume 0.75 in epoch 2 via switches 4",
+    "Chunk 1 from 3 traveled over 3->1 with volume 0.75 in epoch 2 via switches 4",
+    "Chunk 4 from 3 traveled over 3->5 with volume 0.25 in epoch 3 via switches 4",
     "Chunk 3 from 2 traveled over 2->3 with volume 0.25 in epoch 3 via switches 4",
-    "Chunk 2 from 3 traveled over 3->2 with volume 0.25 in epoch 3 via switches 4",
-    "Chunk 4 from 2 traveled over 2->5 with volume 0.25 in epoch 3 via switches 4",
     "Chunk 2 from 5 traveled over 5->2 with volume 0.25 in epoch 3 via switches 4",
-    "Chunk 0 from 5 traveled over 5->0 with volume 0.25 in epoch 4 via switches 4",
-    "Chunk 4 from 3 traveled over 3->5 with volume 0.25 in epoch 4 via switches 4",
-    "Chunk 4 from 3 traveled over 3->5 with volume 0.25 in epoch 5 via switches 4",
-    "Chunk 3 from 5 traveled over 5->3 with volume 0.25 in epoch 5 via switches 4",
-    "Chunk 4 from 0 traveled over 0->5 with volume 0.25 in epoch 6 via switches 4",
-    "Chunk 2 from 5 traveled over 5->2 with volume 0.25 in epoch 6 via switches 4",
+    "Chunk 3 from 0 traveled over 0->3 with volume 0.25 in epoch 3 via switches 4",
+    "Chunk 1 from 2 traveled over 2->1 with volume 0.25 in epoch 3 via switches 4",
+    "Chunk 2 from 5 traveled over 5->2 with volume 0.25 in epoch 4 via switches 4",
+    "Chunk 4 from 1 traveled over 1->5 with volume 0.25 in epoch 4 via switches 4",
+    "Chunk 2 from 5 traveled over 5->2 with volume 0.25 in epoch 5 via switches 4",
+    "Chunk 4 from 0 traveled over 0->5 with volume 0.25 in epoch 5 via switches 4",
+    "Chunk 4 from 1 traveled over 1->5 with volume 0.25 in epoch 6 via switches 4",
+    "Chunk 3 from 5 traveled over 5->3 with volume 0.25 in epoch 6 via switches 4",
     "Chunk 3 from 5 traveled over 5->3 with volume 0.25 in epoch 7 via switches 4",
-    "Chunk 4 from 1 traveled over 1->5 with volume 0.25 in epoch 7 via switches 4",
-    "Chunk 1 from 5 traveled over 5->1 with volume 0.25 in epoch 8 via switches 4",
-    "Chunk 4 from 0 traveled over 0->5 with volume 0.25 in epoch 8 via switches 4",
-    "Chunk 4 from 1 traveled over 1->5 with volume 0.25 in epoch 9 via switches 4",
+    "Chunk 4 from 3 traveled over 3->5 with volume 0.25 in epoch 7 via switches 4",
+    "Chunk 2 from 5 traveled over 5->2 with volume 0.25 in epoch 8 via switches 4",
+    "Chunk 4 from 3 traveled over 3->5 with volume 0.25 in epoch 8 via switches 4",
     "Chunk 0 from 5 traveled over 5->0 with volume 0.25 in epoch 9 via switches 4",
-    "Chunk 2 from 5 traveled over 5->2 with volume 0.25 in epoch 10 via switches 4",
-    "Chunk 4 from 2 traveled over 2->5 with volume 0.25 in epoch 10 via switches 4",
-    "Chunk 4 from 0 traveled over 0->5 with volume 0.25 in epoch 11 via switches 4",
-    "Chunk 1 from 5 traveled over 5->1 with volume 0.25 in epoch 11 via switches 4",
+    "Chunk 4 from 1 traveled over 1->5 with volume 0.25 in epoch 9 via switches 4",
+    "Chunk 4 from 0 traveled over 0->5 with volume 0.25 in epoch 10 via switches 4",
+    "Chunk 1 from 5 traveled over 5->1 with volume 0.25 in epoch 10 via switches 4",
+    "Chunk 4 from 3 traveled over 3->5 with volume 0.25 in epoch 11 via switches 4",
+    "Chunk 0 from 5 traveled over 5->0 with volume 0.25 in epoch 11 via switches 4",
     "Chunk 1 from 5 traveled over 5->1 with volume 0.25 in epoch 12 via switches 4",
-    "Chunk 4 from 0 traveled over 0->5 with volume 0.25 in epoch 12 via switches 4",
-    "Chunk 4 from 3 traveled over 3->5 with volume 0.25 in epoch 13 via switches 4",
-    "Chunk 3 from 5 traveled over 5->3 with volume 0.25 in epoch 13 via switches 4",
-    "Chunk 4 from 1 traveled over 1->5 with volume 0.25 in epoch 14 via switches 4",
+    "Chunk 4 from 1 traveled over 1->5 with volume 0.25 in epoch 12 via switches 4",
+    "Chunk 0 from 5 traveled over 5->0 with volume 0.25 in epoch 13 via switches 4",
+    "Chunk 4 from 2 traveled over 2->5 with volume 0.25 in epoch 13 via switches 4",
+    "Chunk 4 from 2 traveled over 2->5 with volume 0.25 in epoch 14 via switches 4",
     "Chunk 0 from 5 traveled over 5->0 with volume 0.25 in epoch 14 via switches 4",
     "Chunk 1 from 5 traveled over 5->1 with volume 0.25 in epoch 15 via switches 4",
-    "Chunk 4 from 1 traveled over 1->5 with volume 0.25 in epoch 15 via switches 4"
+    "Chunk 4 from 0 traveled over 0->5 with volume 0.25 in epoch 15 via switches 4"
   ],
   "8-Chunk paths": {
-    "Demand at 0 for chunk 0 from 1 met by epoch 2": [
-      [
-        [
-          2,
-          "1->0 with volume 1.0 in epoch 2 via switches 4"
-        ]
-      ]
-    ],
-    "Demand at 0 for chunk 0 from 2 met by epoch 3": [
-      [
-        [
-          1,
-          "2->0 with volume 0.75 in epoch 1 via switches 4"
-        ]
-      ],
-      [
-        [
-          3,
-          "2->0 with volume 0.25 in epoch 3 via switches 4"
-        ]
-      ]
-    ],
-    "Demand at 0 for chunk 0 from 3 met by epoch 1": [
+    "Demand at 0 for chunk 0 from 1 met by epoch 0": [
       [
         [
           0,
-          "3->0 with volume 0.75 in epoch 0 via switches 4"
+          "1->0 with volume 1.0 in epoch 0 via switches 4"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 2 met by epoch 2": [
+      [
+        [
+          1,
+          "2->0 with volume 0.25 in epoch 1 via switches 4"
         ]
       ],
       [
         [
+          2,
+          "2->0 with volume 0.75 in epoch 2 via switches 4"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 3 met by epoch 2": [
+      [
+        [
           1,
-          "3->0 with volume 0.25 in epoch 1 via switches 4"
+          "3->0 with volume 0.75 in epoch 1 via switches 4"
+        ]
+      ],
+      [
+        [
+          2,
+          "3->0 with volume 0.25 in epoch 2 via switches 4"
         ]
       ]
     ],
     "Demand at 0 for chunk 0 from 5 met by epoch 14": [
       [
         [
-          0,
-          "5->0 with volume 0.25 in epoch 0 via switches 4"
-        ]
-      ],
-      [
-        [
-          4,
-          "5->0 with volume 0.25 in epoch 4 via switches 4"
-        ]
-      ],
-      [
-        [
           9,
           "5->0 with volume 0.25 in epoch 9 via switches 4"
+        ]
+      ],
+      [
+        [
+          11,
+          "5->0 with volume 0.25 in epoch 11 via switches 4"
+        ]
+      ],
+      [
+        [
+          13,
+          "5->0 with volume 0.25 in epoch 13 via switches 4"
         ]
       ],
       [
@@ -123,33 +124,39 @@
         ]
       ]
     ],
-    "Demand at 1 for chunk 1 from 0 met by epoch 1": [
-      [
-        [
-          1,
-          "0->1 with volume 1.0 in epoch 1 via switches 4"
-        ]
-      ]
-    ],
-    "Demand at 1 for chunk 1 from 2 met by epoch 2": [
+    "Demand at 1 for chunk 1 from 0 met by epoch 2": [
       [
         [
           0,
-          "2->1 with volume 0.75 in epoch 0 via switches 4"
+          "0->1 with volume 0.75 in epoch 0 via switches 4"
         ]
       ],
       [
         [
           2,
-          "2->1 with volume 0.25 in epoch 2 via switches 4"
+          "0->1 with volume 0.25 in epoch 2 via switches 4"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 1 from 2 met by epoch 3": [
+      [
+        [
+          1,
+          "2->1 with volume 0.75 in epoch 1 via switches 4"
+        ]
+      ],
+      [
+        [
+          3,
+          "2->1 with volume 0.25 in epoch 3 via switches 4"
         ]
       ]
     ],
     "Demand at 1 for chunk 1 from 3 met by epoch 2": [
       [
         [
-          0,
-          "3->1 with volume 0.25 in epoch 0 via switches 4"
+          1,
+          "3->1 with volume 0.25 in epoch 1 via switches 4"
         ]
       ],
       [
@@ -162,14 +169,14 @@
     "Demand at 1 for chunk 1 from 5 met by epoch 15": [
       [
         [
-          8,
-          "5->1 with volume 0.25 in epoch 8 via switches 4"
+          0,
+          "5->1 with volume 0.25 in epoch 0 via switches 4"
         ]
       ],
       [
         [
-          11,
-          "5->1 with volume 0.25 in epoch 11 via switches 4"
+          10,
+          "5->1 with volume 0.25 in epoch 10 via switches 4"
         ]
       ],
       [
@@ -188,8 +195,8 @@
     "Demand at 2 for chunk 2 from 0 met by epoch 2": [
       [
         [
-          0,
-          "0->2 with volume 0.25 in epoch 0 via switches 4"
+          1,
+          "0->2 with volume 0.25 in epoch 1 via switches 4"
         ]
       ],
       [
@@ -199,41 +206,29 @@
         ]
       ]
     ],
-    "Demand at 2 for chunk 2 from 1 met by epoch 1": [
-      [
-        [
-          0,
-          "1->2 with volume 0.75 in epoch 0 via switches 4"
-        ]
-      ],
+    "Demand at 2 for chunk 2 from 1 met by epoch 2": [
       [
         [
           1,
-          "1->2 with volume 0.25 in epoch 1 via switches 4"
-        ]
-      ]
-    ],
-    "Demand at 2 for chunk 2 from 3 met by epoch 3": [
-      [
-        [
-          1,
-          "3->2 with volume 0.75 in epoch 1 via switches 4"
+          "1->2 with volume 0.75 in epoch 1 via switches 4"
         ]
       ],
-      [
-        [
-          3,
-          "3->2 with volume 0.25 in epoch 3 via switches 4"
-        ]
-      ]
-    ],
-    "Demand at 2 for chunk 2 from 5 met by epoch 10": [
       [
         [
           2,
-          "5->2 with volume 0.25 in epoch 2 via switches 4"
+          "1->2 with volume 0.25 in epoch 2 via switches 4"
         ]
-      ],
+      ]
+    ],
+    "Demand at 2 for chunk 2 from 3 met by epoch 0": [
+      [
+        [
+          0,
+          "3->2 with volume 1.0 in epoch 0 via switches 4"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 2 from 5 met by epoch 8": [
       [
         [
           3,
@@ -242,50 +237,62 @@
       ],
       [
         [
-          6,
-          "5->2 with volume 0.25 in epoch 6 via switches 4"
+          4,
+          "5->2 with volume 0.25 in epoch 4 via switches 4"
         ]
       ],
       [
         [
-          10,
-          "5->2 with volume 0.25 in epoch 10 via switches 4"
-        ]
-      ]
-    ],
-    "Demand at 3 for chunk 3 from 0 met by epoch 2": [
-      [
-        [
-          0,
-          "0->3 with volume 0.75 in epoch 0 via switches 4"
+          5,
+          "5->2 with volume 0.25 in epoch 5 via switches 4"
         ]
       ],
       [
         [
-          2,
-          "0->3 with volume 0.25 in epoch 2 via switches 4"
+          8,
+          "5->2 with volume 0.25 in epoch 8 via switches 4"
         ]
       ]
     ],
-    "Demand at 3 for chunk 3 from 1 met by epoch 1": [
+    "Demand at 3 for chunk 3 from 0 met by epoch 3": [
       [
         [
           0,
-          "1->3 with volume 0.25 in epoch 0 via switches 4"
+          "0->3 with volume 0.25 in epoch 0 via switches 4"
         ]
       ],
       [
         [
           1,
-          "1->3 with volume 0.75 in epoch 1 via switches 4"
+          "0->3 with volume 0.5 in epoch 1 via switches 4"
+        ]
+      ],
+      [
+        [
+          3,
+          "0->3 with volume 0.25 in epoch 3 via switches 4"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 3 from 1 met by epoch 2": [
+      [
+        [
+          1,
+          "1->3 with volume 0.25 in epoch 1 via switches 4"
+        ]
+      ],
+      [
+        [
+          2,
+          "1->3 with volume 0.75 in epoch 2 via switches 4"
         ]
       ]
     ],
     "Demand at 3 for chunk 3 from 2 met by epoch 3": [
       [
         [
-          2,
-          "2->3 with volume 0.75 in epoch 2 via switches 4"
+          0,
+          "2->3 with volume 0.75 in epoch 0 via switches 4"
         ]
       ],
       [
@@ -295,7 +302,7 @@
         ]
       ]
     ],
-    "Demand at 3 for chunk 3 from 5 met by epoch 13": [
+    "Demand at 3 for chunk 3 from 5 met by epoch 7": [
       [
         [
           1,
@@ -304,8 +311,14 @@
       ],
       [
         [
-          5,
-          "5->3 with volume 0.25 in epoch 5 via switches 4"
+          2,
+          "5->3 with volume 0.25 in epoch 2 via switches 4"
+        ]
+      ],
+      [
+        [
+          6,
+          "5->3 with volume 0.25 in epoch 6 via switches 4"
         ]
       ],
       [
@@ -313,45 +326,45 @@
           7,
           "5->3 with volume 0.25 in epoch 7 via switches 4"
         ]
+      ]
+    ],
+    "Demand at 5 for chunk 4 from 0 met by epoch 15": [
+      [
+        [
+          1,
+          "0->5 with volume 0.25 in epoch 1 via switches 4"
+        ]
       ],
       [
         [
-          13,
-          "5->3 with volume 0.25 in epoch 13 via switches 4"
+          5,
+          "0->5 with volume 0.25 in epoch 5 via switches 4"
+        ]
+      ],
+      [
+        [
+          10,
+          "0->5 with volume 0.25 in epoch 10 via switches 4"
+        ]
+      ],
+      [
+        [
+          15,
+          "0->5 with volume 0.25 in epoch 15 via switches 4"
         ]
       ]
     ],
-    "Demand at 5 for chunk 4 from 0 met by epoch 12": [
+    "Demand at 5 for chunk 4 from 1 met by epoch 12": [
+      [
+        [
+          4,
+          "1->5 with volume 0.25 in epoch 4 via switches 4"
+        ]
+      ],
       [
         [
           6,
-          "0->5 with volume 0.25 in epoch 6 via switches 4"
-        ]
-      ],
-      [
-        [
-          8,
-          "0->5 with volume 0.25 in epoch 8 via switches 4"
-        ]
-      ],
-      [
-        [
-          11,
-          "0->5 with volume 0.25 in epoch 11 via switches 4"
-        ]
-      ],
-      [
-        [
-          12,
-          "0->5 with volume 0.25 in epoch 12 via switches 4"
-        ]
-      ]
-    ],
-    "Demand at 5 for chunk 4 from 1 met by epoch 15": [
-      [
-        [
-          7,
-          "1->5 with volume 0.25 in epoch 7 via switches 4"
+          "1->5 with volume 0.25 in epoch 6 via switches 4"
         ]
       ],
       [
@@ -362,18 +375,12 @@
       ],
       [
         [
-          14,
-          "1->5 with volume 0.25 in epoch 14 via switches 4"
-        ]
-      ],
-      [
-        [
-          15,
-          "1->5 with volume 0.25 in epoch 15 via switches 4"
+          12,
+          "1->5 with volume 0.25 in epoch 12 via switches 4"
         ]
       ]
     ],
-    "Demand at 5 for chunk 4 from 2 met by epoch 10": [
+    "Demand at 5 for chunk 4 from 2 met by epoch 14": [
       [
         [
           0,
@@ -382,49 +389,49 @@
       ],
       [
         [
-          1,
-          "2->5 with volume 0.25 in epoch 1 via switches 4"
-        ]
-      ],
-      [
-        [
-          3,
-          "2->5 with volume 0.25 in epoch 3 via switches 4"
-        ]
-      ],
-      [
-        [
-          10,
-          "2->5 with volume 0.25 in epoch 10 via switches 4"
-        ]
-      ]
-    ],
-    "Demand at 5 for chunk 4 from 3 met by epoch 13": [
-      [
-        [
           2,
-          "3->5 with volume 0.25 in epoch 2 via switches 4"
-        ]
-      ],
-      [
-        [
-          4,
-          "3->5 with volume 0.25 in epoch 4 via switches 4"
-        ]
-      ],
-      [
-        [
-          5,
-          "3->5 with volume 0.25 in epoch 5 via switches 4"
+          "2->5 with volume 0.25 in epoch 2 via switches 4"
         ]
       ],
       [
         [
           13,
-          "3->5 with volume 0.25 in epoch 13 via switches 4"
+          "2->5 with volume 0.25 in epoch 13 via switches 4"
+        ]
+      ],
+      [
+        [
+          14,
+          "2->5 with volume 0.25 in epoch 14 via switches 4"
+        ]
+      ]
+    ],
+    "Demand at 5 for chunk 4 from 3 met by epoch 11": [
+      [
+        [
+          3,
+          "3->5 with volume 0.25 in epoch 3 via switches 4"
+        ]
+      ],
+      [
+        [
+          7,
+          "3->5 with volume 0.25 in epoch 7 via switches 4"
+        ]
+      ],
+      [
+        [
+          8,
+          "3->5 with volume 0.25 in epoch 8 via switches 4"
+        ]
+      ],
+      [
+        [
+          11,
+          "3->5 with volume 0.25 in epoch 11 via switches 4"
         ]
       ]
     ]
   },
-  "Solver_Time": 1.0683817863464355
+  "Solver_Time": 0.5149226188659668
 }
