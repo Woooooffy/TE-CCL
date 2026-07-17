@@ -10,7 +10,7 @@ from gurobipy import GRB
 from teccl.input_data import *
 from teccl.solvers.allgather import AllGatherFormulation
 from teccl.solvers.allgather_astar import AStarFormulation
-from teccl.solvers.alltoall import AlltoAllFormulation
+from teccl.solvers.lp_formulation import LPFormulation
 from teccl.solvers.base_formulation import BaseFormulation
 from teccl.topologies.dgx1 import DGX1
 from teccl.topologies.dgx2 import DGX2
@@ -64,31 +64,54 @@ class TECCLSolver(object):
                 f"Input topology {topology_params.name} not implemented")
 
 
+    def _resolve_formulation(self, user_input: UserInputParams) -> Formulation:
+        """
+            Resolves the effective solver formulation. If the user set one explicitly it is
+            honored; otherwise the per-collective default is used (ALLGATHER -> MILP,
+            ALLTOALL -> LP).
+        """
+        f = user_input.instance.formulation
+        if f is not None:
+            return f
+        return Formulation.LP if user_input.instance.collective == Collective.ALLTOALL else Formulation.MILP
+
     def get_solver(self, user_input: UserInputParams, topology: Topology) -> BaseFormulation:
-        if user_input.instance.collective == Collective.ALLGATHER:
+        collective = user_input.instance.collective
+        formulation = self._resolve_formulation(user_input)
+
+        if formulation == Formulation.MILP:
+            if collective != Collective.ALLGATHER:
+                raise NotImplementedError(
+                    f"MILP formulation is only implemented for ALLGATHER, not {collective}")
             if user_input.instance.objective_type == ObjectiveType.ASTAR:
                 return AStarFormulation(user_input, topology)
             return AllGatherFormulation(user_input, topology)
-        elif user_input.instance.collective == Collective.ALLTOALL:
+
+        # LP formulation: collective-agnostic, demand-matrix driven.
+        assert formulation == Formulation.LP
+        if collective == Collective.ALLGATHER and user_input.instance.switch_copy:
+            raise ValueError(
+                "AllGather with the LP formulation requires switch_copy=False: the LP aggregates "
+                "flow per source and cannot represent switch/GPU copy (replication).")
+        if collective == Collective.ALLTOALL:
             # Scale the per-GPU chunk count up to the total number of alltoall
             # chunks (one group of chunks per active GPU). Do this on a copy so
             # we never mutate the caller's instance in place: get_solver is
             # called repeatedly (feasible search / iterative binary search) and
             # an in-place scaling would compound (num_chunks *= num_gpus every
             # call), inflating every subsequent solve.
-            alltoall_input = copy.deepcopy(user_input)
-            alltoall_input.instance.num_chunks = user_input.instance.num_chunks * \
+            lp_input = copy.deepcopy(user_input)
+            lp_input.instance.num_chunks = user_input.instance.num_chunks * \
                 (len(topology.capacity) - len(topology.switch_indices) - len(topology.passive_indices))
-            return AlltoAllFormulation(alltoall_input, topology)
-        else:
-            raise NotImplementedError(
-                f"Input collective {user_input.instance.collective} not implemented")
+            return LPFormulation(lp_input, topology)
+        # AllGather (and future demand-driven collectives): num_chunks passes through unscaled.
+        return LPFormulation(user_input, topology)
 
     def feasible_solution_search(self, user_input: UserInputParams, topology_obj: Topology, final_epoch_duration: float) -> Union[Tuple[float, int], ValueError]:
         """
             Finds a feasible time in which the collective can finish using large epochs with fewer of them.
         """
-        if user_input.instance.collective == Collective.ALLTOALL:
+        if self._resolve_formulation(user_input) == Formulation.LP:
             num_epochs = math.ceil(topology_obj.get_max_hop_distance() * 20)
             factor = 100
         else:

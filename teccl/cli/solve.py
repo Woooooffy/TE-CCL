@@ -27,6 +27,8 @@ def make_handle_solve(cmd_parsers):
                     user_input.instance.__setattr__(k, SolutionMethod(v))
                 elif k == 'collective':
                     user_input.instance.__setattr__(k, Collective(v))
+                elif k == 'formulation':
+                    user_input.instance.__setattr__(k, Formulation(v))
                 elif k == 'epoch_type':
                     user_input.instance.__setattr__(k, EpochType(v))
                 else:

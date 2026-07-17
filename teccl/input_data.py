@@ -45,6 +45,19 @@ class Collective(Enum):
     ALLGATHER = 1
     ALLTOALL = 2
 
+class Formulation(Enum):
+    """
+        Which solver formulation to use for the collective.
+            1 - MILP - The chunk-level integer program (AllGatherFormulation). Supports switch/GPU copy.
+            2 - LP   - The continuous per-source flow LP (LPFormulation). Demand-matrix driven and
+                       collective-agnostic; used for AllToAll, and usable for AllGather only when
+                       switch_copy is disabled (the LP cannot represent copy/replication).
+        Leave unset (None) on InstanceParams to use the per-collective default:
+            ALLGATHER -> MILP, ALLTOALL -> LP.
+    """
+    MILP = 1
+    LP = 2
+
 class EpochType(Enum):
     """ 
         Epoch_type is used to set the epoch duration. 
@@ -67,6 +80,7 @@ class SolutionMethod(Enum):
 @dataclass
 class InstanceParams:
     collective: Collective = Collective.ALLGATHER
+    formulation: Formulation = None # Solver formulation (None = per-collective default: ALLGATHER->MILP, ALLTOALL->LP)
     num_chunks: int = 1 # Number of chunks to be transferred from each node to each other node
     epoch_type: EpochType = EpochType.FASTEST_LINK 
     epoch_duration: float = -1

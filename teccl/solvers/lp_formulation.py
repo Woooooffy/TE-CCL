@@ -14,10 +14,21 @@ from teccl.solvers.base_formulation import BaseFormulation
 from teccl.topologies.topology import Topology
 
 
-class AlltoAllFormulation(BaseFormulation):
+class LPFormulation(BaseFormulation):
+    """
+    Collective-agnostic continuous-flow LP solver.
+
+    This formulation satisfies an *arbitrary* demand matrix (`self.demand`, produced by the
+    demand generator in BaseFormulation) — it never branches on the collective type. A new
+    collective is added simply by supplying its demand generator; the solver body here is
+    reused unchanged. AllToAll is the canonical user, and AllGather can also be routed here
+    (only meaningful with switch copy disabled: the LP aggregates flow per source and bounds
+    a node's outgoing flow by its incoming+buffered flow, so it has no replication/copy).
+    """
+
     def __init__(self, user_input: UserInputParams, topology: Topology) -> None:
         super().__init__(user_input, topology)
-        self.solver_name = "AllToAll_LP"
+        self.solver_name = f"{self.user_input.instance.collective.name}_LP"
 
     def initialize_variables(self) -> None:
         """
@@ -27,7 +38,7 @@ class AlltoAllFormulation(BaseFormulation):
           consumed_at_k(s, i, k) : fraction of demand coming from source s that is satisfied at node i in epoch k
         """
 
-        logging.debug("starting to initialize the variables for alltoall")
+        logging.debug("starting to initialize the variables for the LP")
         start_time = time.time()
 
         # compute the total demand across all nodes to set upper bound on flow variable.
@@ -110,7 +121,7 @@ class AlltoAllFormulation(BaseFormulation):
     def switch_ingress_cut_through(self) -> bool:
         """
         Whether a switch's ingress hops are modeled as cut-through, i.e. the switch relays
-        without paying the store-and-forward "+1" epoch. In alltoall a pipelined switch
+        without paying the store-and-forward "+1" epoch. In this LP a pipelined switch
         fabric makes both ingress hop types cut-through: switch->switch and gpu->switch
         (the final switch->gpu egress leg is already propagation-only by construction).
         Gated by the single switch_pipeline flag.
@@ -332,7 +343,7 @@ class AlltoAllFormulation(BaseFormulation):
 
     def encode_problem(self, use_one_less_epoch=False) -> int:
         setup_start = time.time()
-        self.model = gp.Model('AlltoAll_LP', env=get_gurobi_env())
+        self.model = gp.Model('LP', env=get_gurobi_env())
         self.initialize_variables()
         self.destination_constraints()
         self.node_constraints()
@@ -671,7 +682,7 @@ class AlltoAllFormulation(BaseFormulation):
         #   Volume is CONTINUOUS and AGGREGATED over all chunks that share source s;
         #   there is no chunk index here yet. dig_to_source() below splits it per chunk.
         print("\n" + "=" * 78)
-        print("RAW ALLTOALL FLOW VARS  f_s_i_j_k = flow[source s][link i->j][epoch k]")
+        print("RAW LP FLOW VARS  f_s_i_j_k = flow[source s][link i->j][epoch k]")
         print("(continuous volume, summed over all of source s's chunks; not yet per-chunk)")
         print("=" * 78)
         for s in sorted({x[0] for x in full_flow_list}):
