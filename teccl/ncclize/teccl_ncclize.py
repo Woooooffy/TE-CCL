@@ -14,12 +14,26 @@ Requires taccl package (https://github.com/microsoft/taccl)'s ncclize dependenci
 import argparse
 import bisect
 import json
+import math
 import re
 import sys
 from collections import defaultdict
+from fractions import Fraction
+
+# Rationalize each solver volume to a fraction with denominator <= MAX_DENOM
+# before taking the lcm. This is the "error factor" that keeps float noise in
+# the LP output (e.g. 0.3333333) from producing an absurd denominator; LP path
+# splits are simple fractions (halves/thirds/quarters).
+MAX_DENOM = 64
+# Hard cap on the global subdivision factor M. alltoall(N).chunk_up(M) makes
+# N*N*M chunks and check_implements allocates an O(N^3 * M) state array, so an
+# unbounded M would blow up. Raise clearly instead.
+MAX_M = 128
 
 FLOW_RE = re.compile(
-    r'Chunk (\d+) from (\d+) traveled over (\d+)->(\d+) in epoch (\d+)'
+    r'Chunk (\d+) from (\d+) traveled over (\d+)->(\d+)'
+    r'(?:\s+with volume\s+(?P<volume>[\d.]+))?'
+    r'\s+in epoch (?P<epoch>\d+)'
     r'(?:\s+via switches\s+(?P<switches>[\d\s\->]+))?$'
 )
 
@@ -30,10 +44,15 @@ DEMAND_RE = re.compile(
 )
 
 # Matches one entry of an "8-Chunk paths" demand's path list, e.g.
-# "0->3 in epoch 0 via switches 4 -> 7 -> 5". Same grammar as FLOW_RE's
-# suffix, minus the "Chunk C from O traveled over " prefix.
+# "0->3 in epoch 0 via switches 4 -> 7 -> 5", or the LP form
+# "0->3 with volume 0.5 in epoch 0 via switches 4->6->5". Same grammar as
+# FLOW_RE's suffix, minus the "Chunk C from O traveled over " prefix. The
+# "with volume V" token is optional so both the older allgather MILP format
+# (no volume) and the LP/alltoall format parse with one regex.
 PATH_SEGMENT_RE = re.compile(
-    r'(\d+)->(\d+) in epoch (\d+)'
+    r'(\d+)->(\d+)'
+    r'(?:\s+with volume\s+(?P<volume>[\d.]+))?'
+    r'\s+in epoch (?P<epoch>\d+)'
     r'(?:\s+via switches\s+(?P<switches>[\d\s\->]+))?$'
 )
 
@@ -123,8 +142,8 @@ def parse_flows(schedule):
         m = FLOW_RE.match(line)
         if not m:
             raise ValueError(f'Could not parse flow line: {line!r}')
-        subchunk, origin, src, dst, epoch = (
-            int(x) for x in m.group(1, 2, 3, 4, 5))
+        subchunk, origin, src, dst = (int(x) for x in m.group(1, 2, 3, 4))
+        epoch = int(m.group('epoch'))
         path_key = _parse_switch_path(m.group('switches'))
         raw_ids.update((origin, src, dst))
         if path_key:
@@ -179,8 +198,8 @@ def parse_flows(schedule):
         sm = PATH_SEGMENT_RE.match(last_segment)
         if not sm:
             raise ValueError(f'Could not parse path segment: {last_segment!r}')
-        hop_src_raw, hop_dst_raw, hop_epoch = (
-            int(x) for x in sm.group(1, 2, 3))
+        hop_src_raw, hop_dst_raw = (int(x) for x in sm.group(1, 2))
+        hop_epoch = int(sm.group('epoch'))
 
         if hop_dst_raw != dst_raw:
             raise ValueError(
@@ -208,6 +227,205 @@ def parse_flows(schedule):
     return (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
             switch_rank_map, flow_completion_steps, sorted_epochs,
             flow_completion_epochs)
+
+
+def _segment_volume(match):
+    """Volume fraction from a FLOW_RE / PATH_SEGMENT_RE match, defaulting to 1.0
+    when the 'with volume' token is absent (older allgather MILP format). A
+    default of 1.0 makes the subdivision factor collapse to 1 for those
+    schedules, so their handling is unchanged."""
+    v = match.group('volume')
+    return 1.0 if v is None else float(v)
+
+
+def detect_collective(schedule):
+    """Decide whether a schedule is an alltoall (LP) or allgather (MILP) one.
+
+    Prefers the explicit "0-Collective" field the solvers now emit. For schedules
+    predating that field, falls back to the structural divergence of "8-Chunk
+    paths": the LP/alltoall generator emits a *nested* value per demand (a list
+    of paths, each a list of [epoch, segment] pairs), while the allgather MILP
+    emits a *flat* list of segment strings.
+    """
+    explicit = schedule.get('0-Collective')
+    if explicit:
+        return explicit
+    for paths in schedule['8-Chunk paths'].values():
+        if not paths:
+            continue
+        return 'alltoall' if isinstance(paths[0], list) else 'allgather'
+    return 'allgather'
+
+
+def _compute_subdivision(schedule):
+    """Global subdivision factor M so every flow's fractional volume becomes an
+    integer number of sub-chunks.
+
+    Each distinct volume is rationalized to a bounded-denominator fraction (see
+    MAX_DENOM) and M is the lcm of those denominators, so v * M is an integer
+    for every v. Capped at MAX_M to avoid an intractable chunk_up() expansion.
+    Old allgather schedules (all volumes default to 1.0) yield M = 1.
+    """
+    M = 1
+    denoms = set()
+    for paths in schedule['8-Chunk paths'].values():
+        for path in paths:
+            for _epoch, segment in path:
+                m = PATH_SEGMENT_RE.match(segment)
+                if not m:
+                    raise ValueError(f'Could not parse path segment: {segment!r}')
+                frac = Fraction(_segment_volume(m)).limit_denominator(MAX_DENOM)
+                d = frac.denominator
+                if d not in denoms:
+                    denoms.add(d)
+                    M = M * d // math.gcd(M, d)
+                    if M > MAX_M:
+                        raise ValueError(
+                            f'Volume denominators {sorted(denoms)} require a '
+                            f'subdivision factor M > MAX_M={MAX_M}; refusing to '
+                            f'expand chunks that finely.')
+    return M
+
+
+def parse_flows_alltoall(schedule):
+    """Parse an LP/alltoall schedule the way parse_flows() does for allgather,
+    but generate sends from the nested "8-Chunk paths" so each chunk's multipath
+    decomposition can be split into disjoint integer sub-chunk pieces.
+
+    The schedule may carry S sub-chunks per (source, dest) pair: its chunk label
+    encodes both, c = subchunk * N + dest (so dest = c % N, subchunk = c // N),
+    giving N * N * S distinct data units. Each is further subdivided into M
+    volume pieces (M from _compute_subdivision) so fractional volumes become
+    integer piece counts. Piece p of (source s -> dest d, sub-chunk sc) gets
+
+        chunk_id = (d * N + s) * (S * M) + sc * M + p
+
+    which is the address alltoall(N).chunk_up(S*M) assigns it: alltoall's base
+    chunk index is destination-major (precondition rank == index % N is the
+    source, postcondition rank == index // N is the destination), and chunk_up
+    fans each base address a out to a * (S*M) + local, all inheriting a's
+    source/dest. A source-major id instead would make check_implements() believe
+    the chunk starts and ends at the transposed ranks and raise.
+
+    Returns the same 8-tuple shape as parse_flows(); the second element is the
+    chunk_up factor S * M (the alltoall analogue of num_subchunks).
+    """
+    M = _compute_subdivision(schedule)
+
+    # First pass: collect the id universe and a structured per-demand view.
+    raw_ids = set()
+    switch_raw_ids = set()
+    demands = []  # (dst_raw, chunk, src_raw, met_epoch, [(volume_fraction, hops), ...])
+    for demand_key, paths in schedule['8-Chunk paths'].items():
+        dm = DEMAND_RE.match(demand_key)
+        if not dm:
+            raise ValueError(f'Could not parse demand key: {demand_key!r}')
+        dst_raw, chunk, src_raw, met_epoch = (int(x) for x in dm.group(1, 2, 3, 4))
+        raw_ids.update((dst_raw, src_raw))
+
+        path_records = []
+        for path in paths:
+            hops = []      # (hop_epoch, hop_src_raw, hop_dst_raw, path_key)
+            volumes = []
+            for _epoch, segment in path:
+                sm = PATH_SEGMENT_RE.match(segment)
+                if not sm:
+                    raise ValueError(f'Could not parse path segment: {segment!r}')
+                hop_src_raw, hop_dst_raw = int(sm.group(1)), int(sm.group(2))
+                hop_epoch = int(sm.group('epoch'))
+                path_key = _parse_switch_path(sm.group('switches'))
+                raw_ids.update((hop_src_raw, hop_dst_raw))
+                if path_key:
+                    switch_raw_ids.update(path_key)
+                volumes.append(_segment_volume(sm))
+                hops.append((hop_epoch, hop_src_raw, hop_dst_raw, path_key))
+
+            # Flow is conserved along a route, so every hop of one path carries
+            # the same volume; that shared value is the fraction of the chunk
+            # this path delivers.
+            v0 = volumes[0]
+            for v in volumes[1:]:
+                if abs(v - v0) > 1e-6:
+                    raise ValueError(
+                        f'Path in {demand_key!r} has inconsistent per-hop '
+                        f'volumes {volumes}.')
+            hops.sort(key=lambda h: h[0])  # order hops by (start) epoch
+            path_records.append(
+                (Fraction(v0).limit_denominator(MAX_DENOM), hops))
+        demands.append((dst_raw, chunk, src_raw, met_epoch, path_records))
+
+    rank_map = {raw: idx for idx, raw in enumerate(sorted(raw_ids))}
+    switch_rank_map = {raw: idx for idx, raw in enumerate(sorted(switch_raw_ids))}
+    num_nodes = len(rank_map)
+
+    # Chunk labels pack a sub-chunk index above the destination:
+    # c = subchunk * N + dest. S is the number of sub-chunks per pair; the
+    # chunk_up factor is S * M (S real sub-chunks x M volume pieces each).
+    num_subchunks = max(chunk for _, chunk, _, _, _ in demands) // num_nodes + 1
+    factor = num_subchunks * M
+
+    # Second pass: assign disjoint piece ranges per demand and emit sends.
+    by_epoch = defaultdict(list)   # epoch -> [(chunk_id, src_dense, dst_dense)]
+    raw_flows = []                 # (epoch, chunk_id, src, dst, path_key, completion_epoch)
+    for dst_raw, chunk, src_raw, met_epoch, path_records in demands:
+        dst_dense = rank_map[dst_raw]
+        src_dense = rank_map[src_raw]
+        subchunk = chunk // num_nodes
+        # Chunk labels index the destination by its *dense* GPU rank (0..N-1),
+        # which differs from the raw node id when switches occupy interior
+        # indices (e.g. incast, where GPU ids skip the switch).
+        if chunk % num_nodes != dst_dense:
+            raise ValueError(
+                f'Alltoall chunk label {chunk} implies dense destination '
+                f'{chunk % num_nodes} but demand is at raw {dst_raw} '
+                f'(dense {dst_dense}).')
+        base = (dst_dense * num_nodes + src_dense) * factor + subchunk * M
+        cum = Fraction(0)
+        for v_frac, hops in path_records:
+            lo = cum * M
+            cum += v_frac
+            hi = cum * M
+            if lo.denominator != 1 or hi.denominator != 1:
+                raise ValueError(
+                    f'Non-integral piece range {lo}..{hi} (M={M}) for demand '
+                    f'dest {dst_raw} src {src_raw}; volume {v_frac} does not '
+                    f'divide the subdivision.')
+            lo, hi = int(lo), int(hi)
+            for h_idx, (hop_epoch, hsrc_raw, hdst_raw, path_key) in enumerate(hops):
+                hsrc, hdst = rank_map[hsrc_raw], rank_map[hdst_raw]
+                # A relay forwards only after it has received, so the next hop's
+                # start epoch is this hop's completion; the last hop completes
+                # when the demand is met.
+                if h_idx + 1 < len(hops):
+                    completion_epoch = hops[h_idx + 1][0]
+                else:
+                    completion_epoch = met_epoch
+                for p in range(lo, hi):
+                    chunk_id = base + p
+                    by_epoch[hop_epoch].append((chunk_id, hsrc, hdst))
+                    raw_flows.append(
+                        (hop_epoch, chunk_id, hsrc, hdst, path_key, completion_epoch))
+        if cum != 1:
+            raise ValueError(
+                f'Paths for demand dest {dst_raw} src {src_raw} carry total '
+                f'volume {cum}, expected exactly 1.')
+
+    sorted_epochs = sorted(by_epoch)
+    steps_in_order = [by_epoch[epoch] for epoch in sorted_epochs]
+    epoch_to_step_idx = {epoch: idx for idx, epoch in enumerate(sorted_epochs)}
+
+    flow_path_keys = {}
+    flow_completion_steps = {}
+    flow_completion_epochs = {}
+    for hop_epoch, chunk_id, src, dst, path_key, completion_epoch in raw_flows:
+        step_idx = epoch_to_step_idx[hop_epoch]
+        key = (step_idx, chunk_id, src, dst)
+        flow_path_keys[key] = path_key
+        flow_completion_steps[key] = bisect.bisect_left(sorted_epochs, completion_epoch)
+        flow_completion_epochs[key] = completion_epoch
+
+    return (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
+            flow_completion_steps, sorted_epochs, flow_completion_epochs)
 
 
 def build_switch_routes(flow_manifest, switch_rank_map):
@@ -291,30 +509,58 @@ class TeCCLTopology:
 
 def build_algorithm(schedule, name='teccl'):
     from taccl_algorithm import Algorithm, Step
-    from taccl_collectives import allgather
+    from taccl_collectives import allgather, alltoall
     from taccl_instance import Instance
     from helpers import build_gpu_epoch_view
 
-    (num_nodes, num_subchunks, steps_in_order, flow_path_keys, switch_rank_map,
-     flow_completion_steps, sorted_epochs, flow_completion_epochs) = parse_flows(schedule)
+    collective_name = detect_collective(schedule)
+
+    if collective_name == 'alltoall':
+        (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
+         flow_completion_steps, sorted_epochs, flow_completion_epochs) = \
+            parse_flows_alltoall(schedule)
+        collective = alltoall(num_nodes)
+    else:
+        (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
+         flow_completion_steps, sorted_epochs, flow_completion_epochs) = \
+            parse_flows(schedule)
+        collective = allgather(num_nodes)
 
     gpu_epoch_view = build_gpu_epoch_view(
         steps_in_order, sorted_epochs, num_nodes, flow_completion_epochs)
 
-    collective = allgather(num_nodes)
-    if num_subchunks > 1:
-        collective = collective.chunk_up(num_subchunks)
+    # In both cases `factor` is the chunk_up() multiplier. For allgather it is
+    # num_subchunks (each source's data pre-split into that many real chunks by
+    # the solver). For alltoall it is S * M: S real sub-chunks per pair times the
+    # M-way volume subdivision this converter introduced to make fractional
+    # volumes integral.
+    if factor > 1:
+        collective = collective.chunk_up(factor)
 
     topology = TeCCLTopology(name, num_nodes, steps_in_order)
 
     steps = [Step(1, sends) for sends in steps_in_order]
 
-    instance = Instance(steps=len(steps), extra_rounds=0, chunks=num_subchunks)
+    instance = Instance(steps=len(steps), extra_rounds=0, chunks=factor)
 
     algo = Algorithm.make_implementation(
         collective, topology, instance, steps, cont=False, suffix='-teccl')
+
+    # Physical send rate (GB/s) per unit piece sent, so a merged op of `cnt`
+    # pieces gets rate = cnt * piece_rate. Each schedule "chunk"/"sub-chunk" is
+    # one chunk_size; for alltoall the converter split each into M volume pieces
+    # of chunk_size/M, so volume v -> round(v*M) pieces gives v*chunk_size/epoch
+    # back. For allgather each "Chunk C from S" piece is already a full
+    # chunk_size (no extra 1/M division).
+    epoch_duration = schedule['1-Epoch_Duration']
+    chunk_size = schedule.get('9-Chunk_Size', 1.0)
+    if collective_name == 'alltoall':
+        piece_rate = chunk_size / (_compute_subdivision(schedule) * epoch_duration)
+    else:
+        piece_rate = chunk_size / epoch_duration
+
     return (algo, flow_path_keys, switch_rank_map, flow_completion_steps,
-            gpu_epoch_view)
+            gpu_epoch_view, piece_rate)
 
 
 def enforce_send_epoch_ordering(xml_str, flow_manifest):
@@ -412,7 +658,7 @@ def main():
         schedule = json.load(f)
 
     (algo, flow_path_keys, switch_rank_map, flow_completion_steps,
-     gpu_epoch_view) = build_algorithm(schedule)
+     gpu_epoch_view, piece_rate) = build_algorithm(schedule)
 
     # Always run the feasibility check and surface any realizability warnings;
     # writing the human-readable dump is independent and opt-in.
@@ -432,6 +678,7 @@ def main():
         flow_path_keys=flow_path_keys,
         flow_manifest=flow_manifest,
         flow_completion_steps=flow_completion_steps,
+        piece_rate=piece_rate,
         logging=True,
     )
 

@@ -658,6 +658,7 @@ class AllGatherFormulation(BaseFormulation):
         required_flows_str = list(required_flows_str)
         required_flows_str.sort(key=lambda x: x[0])
         flows_str_info = {}
+        flows_str_info["0-Collective"] = "allgather"
         flows_str_info["1-Epoch_Duration"] = self.epoch_duration
         flows_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
         flows_str_info["3-Epochs_Required"] = self.find_demand_satisfied_k() + 1
@@ -666,6 +667,7 @@ class AllGatherFormulation(BaseFormulation):
         flows_str_info["6-Demand_Met"] = demand_met_str
         flows_str_info['7-Flows'] = [x[1] for x in required_flows_str]
         flows_str_info['8-Chunk paths'] = chunk_paths
+        flows_str_info["9-Chunk_Size"] = self.topology.chunk_size
         return required_flows, flows_str_info
 
     def find_demand_satisfied_k(self):

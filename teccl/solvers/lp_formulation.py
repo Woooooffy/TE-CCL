@@ -769,6 +769,7 @@ class LPFormulation(BaseFormulation):
             if k in per_chunk_flows.keys():
                 required_flows += per_chunk_flows[k]
         flow_str_info = {}
+        flow_str_info["0-Collective"] = "alltoall"
         flow_str_info["1-Epoch_Duration"] = self.epoch_duration
         flow_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
         flow_str_info["3-Epochs_Required"] = self.find_demand_satisfied_k() + 1
@@ -777,6 +778,7 @@ class LPFormulation(BaseFormulation):
         flows_str = sorted(list(flows_str), key=lambda x: x[0])
         flow_str_info['7-Flows'] = [x[1] for x in flows_str]
         flow_str_info['8-Chunk paths'] = chunk_paths
+        flow_str_info["9-Chunk_Size"] = self.topology.chunk_size
         return required_flows, flow_str_info
 
     def find_demand_satisfied_k(self) -> int:

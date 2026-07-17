@@ -35,7 +35,7 @@ def generate_xml(schedule_path):
                          warn_epoch_ordering_violations)
 
     (algo, flow_path_keys, switch_rank_map, flow_completion_steps,
-     gpu_epoch_view) = build_algorithm(schedule)
+     gpu_epoch_view, piece_rate) = build_algorithm(schedule)
     warn_epoch_ordering_violations(check_epoch_ordering_feasibility(gpu_epoch_view))
     flow_manifest = []
     xml = ncclize(
@@ -48,6 +48,7 @@ def generate_xml(schedule_path):
         flow_path_keys=flow_path_keys,
         flow_manifest=flow_manifest,
         flow_completion_steps=flow_completion_steps,
+        piece_rate=piece_rate,
         logging=False,
     )
     return enforce_send_epoch_ordering(xml, flow_manifest)

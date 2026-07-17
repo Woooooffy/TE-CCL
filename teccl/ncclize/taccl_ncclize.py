@@ -405,7 +405,7 @@ class ChannelPolicy(Enum):
     def __str__(self):
         return self.value
 
-def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, flow_completion_steps=None, max_channels=32):
+def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, flow_completion_steps=None, piece_rate=None, max_channels=32):
     '''
     Generate the XML format used by the NCCL SCCL backend.
 
@@ -961,6 +961,11 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                     op_elem.set('hasdep', '0')
                 if op.mscclflowid is not None:
                     op_elem.set('mscclflowid', str(op.mscclflowid))
+                # Physical send rate (GB/s): op.cnt pieces at piece_rate each.
+                # Merges only combine chunks within a single step, so an op
+                # never spans epochs and its rate is well-defined.
+                if piece_rate is not None:
+                    op_elem.set('rate', str(op.cnt * piece_rate))
 
     if pretty_print:
         ET.indent(algo_elem, space='  ')
