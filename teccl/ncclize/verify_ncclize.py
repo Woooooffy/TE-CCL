@@ -38,6 +38,7 @@ def generate_xml(schedule_path):
      gpu_epoch_view, piece_rate) = build_algorithm(schedule)
     warn_epoch_ordering_violations(check_epoch_ordering_feasibility(gpu_epoch_view))
     flow_manifest = []
+    send_epoch_manifest = []
     xml = ncclize(
         algo,
         channel_policy=ChannelPolicy.MatchTopology,
@@ -49,9 +50,10 @@ def generate_xml(schedule_path):
         flow_manifest=flow_manifest,
         flow_completion_steps=flow_completion_steps,
         piece_rate=piece_rate,
+        send_epoch_manifest=send_epoch_manifest,
         logging=False,
     )
-    return enforce_send_epoch_ordering(xml, flow_manifest)
+    return enforce_send_epoch_ordering(xml, send_epoch_manifest)
 
 
 def check_depid_deps(root):

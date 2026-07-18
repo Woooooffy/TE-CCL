@@ -380,11 +380,11 @@ def parse_flows_alltoall(schedule):
                 f'{chunk % num_nodes} but demand is at raw {dst_raw} '
                 f'(dense {dst_dense}).')
         base = (dst_dense * num_nodes + src_dense) * factor + subchunk * M
-        cum = Fraction(0)
+        cumulative = Fraction(0)
         for v_frac, hops in path_records:
-            lo = cum * M
-            cum += v_frac
-            hi = cum * M
+            lo = cumulative * M
+            cumulative += v_frac
+            hi = cumulative * M
             if lo.denominator != 1 or hi.denominator != 1:
                 raise ValueError(
                     f'Non-integral piece range {lo}..{hi} (M={M}) for demand '
@@ -405,10 +405,10 @@ def parse_flows_alltoall(schedule):
                     by_epoch[hop_epoch].append((chunk_id, hsrc, hdst))
                     raw_flows.append(
                         (hop_epoch, chunk_id, hsrc, hdst, path_key, completion_epoch))
-        if cum != 1:
+        if cumulative != 1:
             raise ValueError(
                 f'Paths for demand dest {dst_raw} src {src_raw} carry total '
-                f'volume {cum}, expected exactly 1.')
+                f'volume {cumulative}, expected exactly 1.')
 
     sorted_epochs = sorted(by_epoch)
     steps_in_order = [by_epoch[epoch] for epoch in sorted_epochs]
@@ -563,7 +563,7 @@ def build_algorithm(schedule, name='teccl'):
             gpu_epoch_view, piece_rate)
 
 
-def enforce_send_epoch_ordering(xml_str, flow_manifest):
+def enforce_send_epoch_ordering(xml_str, send_epoch_manifest):
     """Post-process MSCCL XML to serialize same-GPU sends by epoch.
 
     TACCL's ncclize() only generates depid/deps links for data-flow reasons:
@@ -585,15 +585,23 @@ def enforce_send_epoch_ordering(xml_str, flow_manifest):
       depid  = block_rbid of the dependency op (TB id on the *same* GPU)
       deps   = op.idx of the dependency op (= 's' attribute in the XML)
     hasdep=1 on the target op enables the flag write in the MSCCL runtime.
+
+    send_epoch_manifest is ncclize()'s list of per-send-op records
+    {'gpu', 'tb', 's', 'epoch'}, populated at XML emission. The epoch is looked
+    up by an op's final (gpu, tb, s) location rather than by its mscclflowid,
+    because a flow id is now a bijection with a route and so spans multiple
+    epochs (see the flow_id assignment in ncclize()).
     """
     import xml.etree.ElementTree as ET
 
-    # flow_id -> epoch index (= index into steps_in_order)
-    flow_epoch = {r['flow_id']: r['step'] for r in flow_manifest}
+    # (gpu, tb, s) -> epoch index (= index into steps_in_order)
+    epoch_by_op = {(r['gpu'], r['tb'], r['s']): r['epoch']
+                   for r in send_epoch_manifest}
 
     root = ET.fromstring(xml_str)
 
     for gpu_elem in root.findall('gpu'):
+        gpu_id = int(gpu_elem.get('id'))
         # Collect every send op: (epoch, tb_rbid, s_idx, step_elem)
         sends = []
         for tb_elem in gpu_elem.findall('tb'):
@@ -601,13 +609,11 @@ def enforce_send_epoch_ordering(xml_str, flow_manifest):
             for step_elem in tb_elem.findall('step'):
                 if step_elem.get('type') != 's':
                     continue
-                fid_str = step_elem.get('mscclflowid')
-                if fid_str is None:
-                    continue
-                epoch = flow_epoch.get(int(fid_str))
+                s_idx = int(step_elem.get('s'))
+                epoch = epoch_by_op.get((gpu_id, tb_rbid, s_idx))
                 if epoch is None:
                     continue
-                sends.append((epoch, tb_rbid, int(step_elem.get('s')), step_elem))
+                sends.append((epoch, tb_rbid, s_idx, step_elem))
 
         if len(sends) <= 1:
             continue
@@ -665,8 +671,10 @@ def main():
     violations = check_epoch_ordering_feasibility(gpu_epoch_view)
     warn_epoch_ordering_violations(violations)
 
-    # Always collect flow_manifest: needed for epoch ordering and optional routing.
+    # flow_manifest drives switch routing (one entry per route); the per-op
+    # send_epoch_manifest drives epoch ordering.
     flow_manifest = []
+    send_epoch_manifest = []
 
     xml = ncclize(
         algo,
@@ -679,10 +687,11 @@ def main():
         flow_manifest=flow_manifest,
         flow_completion_steps=flow_completion_steps,
         piece_rate=piece_rate,
+        send_epoch_manifest=send_epoch_manifest,
         logging=True,
     )
 
-    xml = enforce_send_epoch_ordering(xml, flow_manifest)
+    xml = enforce_send_epoch_ordering(xml, send_epoch_manifest)
 
     with open(args.output, 'w') as f:
         f.write(xml)

@@ -405,7 +405,7 @@ class ChannelPolicy(Enum):
     def __str__(self):
         return self.value
 
-def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, flow_completion_steps=None, piece_rate=None, max_channels=32):
+def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, flow_completion_steps=None, piece_rate=None, send_epoch_manifest=None, max_channels=32):
     '''
     Generate the XML format used by the NCCL SCCL backend.
 
@@ -565,6 +565,10 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
 
     # Turn all steps of the algorithm into operations
     op_sets = []
+    # (src, dst, path_key) route -> its flow id. A flow id is a bijection with a
+    # physical route, so every send/recv on that route (across all epochs and
+    # chunks) shares one id (see the flow_id assignment below).
+    route_flow_ids = {}
     # Track the latest op that wrote to each buffer index
     writers = defaultdict(list)
     # Track all the reads since the last write to each buffer index
@@ -670,8 +674,15 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             # already correct for a send.
             recv_op.step = group_completion_step.get((src, dst, path_key), recv_op.step)
 
-            # Assign a unique flow id shared by this send and its matching recv
-            flow_id = len(op_sets)
+            # The flow id is a bijection with the physical route (src -> switches
+            # -> dst), keyed by (src, dst, path_key): every send/recv on that
+            # route, in any epoch and for any chunk, shares one id. This gives the
+            # switch forwarding table and channel assignment exactly one entry per
+            # route. Per-op epoch ordering is recovered from send_epoch_manifest
+            # (populated at XML emission), not from the flow id, precisely because
+            # one flow id now spans multiple epochs.
+            route = (src, dst, path_key)
+            flow_id = route_flow_ids.setdefault(route, len(route_flow_ids))
             send_op.mscclflowid = flow_id
             recv_op.mscclflowid = flow_id
 
@@ -966,6 +977,12 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                 # never spans epochs and its rate is well-defined.
                 if piece_rate is not None:
                     op_elem.set('rate', str(op.cnt * piece_rate))
+                # Record each send op's epoch, keyed by its final XML location
+                # (gpu, tb, s). Epoch ordering can no longer read the epoch off
+                # the flow id (one route-based id spans epochs), so it uses this.
+                if send_epoch_manifest is not None and op.is_send:
+                    send_epoch_manifest.append(
+                        {'gpu': rank, 'tb': tb.rbid, 's': op.idx, 'epoch': op.step})
 
     if pretty_print:
         ET.indent(algo_elem, space='  ')
