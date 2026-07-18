@@ -432,9 +432,13 @@ def build_switch_routes(flow_manifest, switch_rank_map):
     """Build a per-switch flow_id -> next-hop forwarding table.
 
     flow_manifest is the list of {'flow_id', 'step', 'src', 'dst', 'path_key'}
-    records recorded by ncclize() (one per emitted send op). Since ncclize()
-    only merges chunks sharing the same path_key into one op (see
-    flow_path_keys), each flow_id here has exactly one, unambiguous path.
+    records recorded by ncclize(). Since a flow_id is a bijection with a
+    physical route (src, dst, path_key), the same flow_id can appear in several
+    records (one per epoch/chunk that used the route); they all describe the
+    identical forwarding, so building the table is idempotent per flow_id. The
+    'step' (epoch) field is intentionally NOT carried into the table: forwarding
+    is a property of the route, not of when it is used, so a route-level entry
+    has no single meaningful epoch.
 
     Returns {'switches': {switch_id_str: {flow_id_str: {...}}}}, with switch
     and GPU ids both in the same dense 0-indexed numbering used elsewhere
@@ -448,8 +452,8 @@ def build_switch_routes(flow_manifest, switch_rank_map):
         if not path_key:
             continue  # direct GPU-GPU link, no switch hop involved
         switch_path = tuple(switch_rank_map[s] for s in path_key)
-        flow_id, src, dst, step = (
-            record['flow_id'], record['src'], record['dst'], record['step'])
+        flow_id, src, dst = (
+            record['flow_id'], record['src'], record['dst'])
         for i, switch in enumerate(switch_path):
             is_last = i == len(switch_path) - 1
             next_hop_type = 'gpu' if is_last else 'switch'
@@ -459,7 +463,6 @@ def build_switch_routes(flow_manifest, switch_rank_map):
                 'next_hop': next_hop,
                 'src_gpu': src,
                 'dst_gpu': dst,
-                'step': step,
             }
 
     return {
