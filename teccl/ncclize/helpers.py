@@ -1,7 +1,8 @@
 """Shared helpers for inspecting a parsed TE-CCL schedule.
 
 Two concerns live here, both built from the per-epoch flow lists that
-teccl_ncclize.parse_flows() already produces (so they add no new parsing):
+teccl_ncclize.parse_flows() / parse_flows_alltoall() already produce (so they
+add no new parsing):
 
   * a per-GPU, per-epoch human-readable view of the schedule, and
   * a realizability feasibility check over that view.
@@ -30,8 +31,14 @@ class EpochStep:
     (this GPU -> peer) and False when it is the destination (peer -> this GPU).
 
     A recv is bucketed at the epoch the chunk *arrives* (its completion epoch),
-    which for a switch-relayed flow is later than start_epoch (the epoch the
-    flow was sent). start_epoch is None for sends.
+    which for a switch-relayed flow is at or after start_epoch (the epoch the
+    flow was sent) -- later under store-and-forward, the same epoch under
+    cut-through. start_epoch is None for sends.
+
+    chunk_id is whatever id the parser assigned the flow: a whole logical chunk
+    for an allgather schedule, but a subdivided *piece* id for an alltoall one
+    (parse_flows_alltoall splits each chunk into M volume pieces), so it is only
+    an opaque handle for reading the view, not a small 0..N-1 value.
     """
     chunk_id: int
     peer: int
@@ -82,10 +89,13 @@ class OrderingViolation:
 
 def build_gpu_epoch_view(steps_in_order, sorted_epochs, num_nodes,
                          flow_completion_epochs=None) -> GpuEpochView:
-    """Turn parse_flows() output into a per-GPU, per-epoch view.
+    """Turn parse_flows() / parse_flows_alltoall() output into a per-GPU,
+    per-epoch view.
 
     steps_in_order[i] is the flow list for raw epoch sorted_epochs[i]; each
     flow is a (chunk_id, src, dst) tuple in the dense 0-indexed GPU numbering.
+    chunk_id is an opaque handle (a subdivided piece id for alltoall); the view
+    treats it as a label only.
 
     A send is placed at its flow-start epoch (when the source initiates it). A
     recv is placed at its *arrival* epoch, looked up in flow_completion_epochs
@@ -196,10 +206,15 @@ def format_gpu_epoch_view(
     else:
         lines.append(f'# GPUs: {view.num_nodes}   Epochs: (none)')
     lines.append('# Epochs with no send and no recv arrival are shown as NONE.')
-    lines.append('# Steps: "send cC -> gD" (this GPU sends chunk C to GPU D),')
-    lines.append('#        "recv cC <- gS" (chunk C from GPU S *arrives* here;')
+    lines.append('# cC is the internal chunk id; for an alltoall schedule each')
+    lines.append('# logical chunk is subdivided into pieces, so C indexes a piece')
+    lines.append('# (ids are not a small 0..N range).')
+    lines.append('# Steps: "send cC -> gD" (this GPU sends chunk/piece C to GPU D),')
+    lines.append('#        "recv cC <- gS" (chunk/piece C from GPU S *arrives* here;')
     lines.append('#        a relayed recv is shown at its arrival epoch, tagged')
-    lines.append('#        "(sent epoch N)" when it was in flight from earlier).')
+    lines.append('#        "(sent epoch N)" when it arrives after the epoch it was')
+    lines.append('#        sent; a cut-through relay can instead arrive in the same')
+    lines.append('#        epoch, shown untagged).')
     lines.append('# [!] marks a send whose immediately-preceding epoch is NONE')
     lines.append('#     for this GPU: no same-GPU op (send or recv arrival) exists')
     lines.append('#     to gate it, so it cannot be held to its intended epoch on')

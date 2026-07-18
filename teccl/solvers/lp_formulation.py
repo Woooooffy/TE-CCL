@@ -671,6 +671,14 @@ class LPFormulation(BaseFormulation):
                             (sending_epoch, f'{start_node}->{end_node} with volume {volume} in epoch {sending_epoch}'))
                     start = next = next + 1
                 chunk_flow_paths[(s, d, c)].append(path)
+            # Order a demand's multipath branches by their start epoch so the
+            # emitted "8-Chunk paths" is canonical. teccl_ncclize's
+            # parse_flows_alltoall assigns sub-chunk piece indices in path-list
+            # order, so sorting here makes piece 0 correspond to the earliest
+            # epoch (the pieces are interchangeable, so this is purely for a
+            # readable, deterministic piece<->epoch correspondence).
+            chunk_flow_paths[(s, d, c)].sort(
+                key=lambda p: min(epoch for epoch, _ in p))
         return chunk_flow_paths
 
     def get_flow_schedule(self) -> Tuple[List, Dict]:
