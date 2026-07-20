@@ -23,8 +23,8 @@
         "num_epochs": -1,
         "alpha_threshold": 0.1,
         "switch_copy": false,
-        "objective_type": 3,
-        "solution_method": 2,
+        "objective_type": 2,
+        "solution_method": 1,
         "schedule_output_file": "teccl/examples/schedules/dgx1_allgather_lp.json"
     }
 }
