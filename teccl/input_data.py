@@ -44,6 +44,8 @@ class ObjectiveType(Enum):
 class Collective(Enum):
     ALLGATHER = 1
     ALLTOALL = 2
+    GATHER = 3    # every (non-root) GPU sends its distinct data to a single root GPU
+    BROADCAST = 4 # a single root GPU sends its data to every other GPU
 
 class Formulation(Enum):
     """
@@ -80,7 +82,8 @@ class SolutionMethod(Enum):
 @dataclass
 class InstanceParams:
     collective: Collective = Collective.ALLGATHER
-    formulation: Formulation = None # Solver formulation (None = per-collective default: ALLGATHER->MILP, ALLTOALL->LP)
+    formulation: Formulation = None # Solver formulation (None = per-collective default: ALLGATHER->MILP, everything else->LP)
+    root: int = 0 # Root GPU index for rooted collectives (GATHER destination / BROADCAST source); ignored otherwise
     num_chunks: int = 1 # Number of chunks to be transferred from each node to each other node
     epoch_type: EpochType = EpochType.FASTEST_LINK 
     epoch_duration: float = -1

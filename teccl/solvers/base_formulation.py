@@ -29,6 +29,10 @@ class BaseFormulation(ABC):
 
         elif user_input.instance.collective == Collective.ALLTOALL:
             self.all_to_all_demand_generator()
+        elif user_input.instance.collective == Collective.GATHER:
+            self.gather_demand_generator()
+        elif user_input.instance.collective == Collective.BROADCAST:
+            self.broadcast_demand_generator()
         else:
             raise ValueError(
                 f"Demand type {user_input.instance.collective} is not expected")
@@ -203,7 +207,63 @@ class BaseFormulation(ABC):
                 for c in range(chunks_per_gpu // gpus):
                     if s != t:
                         self.demand[s][t][device_chunk_map[t] + c * gpus] = 1
-        
+
+    def _validate_root(self, root: int) -> None:
+        """
+            Validates that the configured root of a rooted collective (GATHER/BROADCAST) is a
+            real GPU that participates in the collective (not out of range, not a switch, not a
+            passive forwarding-only node).
+        """
+        gpus = len(self.topology.capacity)
+        if root < 0 or root >= gpus:
+            raise ValueError(f"root {root} is out of range for a topology with {gpus} nodes")
+        if root in self.topology.switch_indices:
+            raise ValueError(f"root {root} is a switch index and cannot source/sink demand")
+        if root in self.topology.passive_indices:
+            raise ValueError(f"root {root} is a passive index and cannot source/sink demand")
+
+    def gather_demand_generator(self) -> None:
+        """
+            Gather: every participating GPU (except the root) sends its own distinct data to the
+            single root GPU. Chunks from different sources are distinguished by the source index
+            in the demand tensor, so num_chunks is per-source (no scaling, like allgather). This
+            is a pure multi-source single-sink flow with no replication, so the copy-free LP
+            solves it exactly.
+        """
+        gpus = len(self.topology.capacity)
+        chunks = self.user_input.instance.num_chunks
+        root = self.user_input.instance.root
+        self._validate_root(root)
+        self.demand = np.zeros((gpus, gpus, chunks), dtype=np.int32)
+        for s in range(gpus):
+            if s == root:
+                continue
+            if s in self.topology.switch_indices or s in self.topology.passive_indices:
+                continue
+            for c in range(chunks):
+                self.demand[s][root][c] = 1
+
+    def broadcast_demand_generator(self) -> None:
+        """
+            Broadcast: the single root GPU sends its data to every other participating GPU (all
+            destinations want the same chunks). num_chunks is per-source (no scaling, like
+            allgather). Broadcast inherently needs replication/copy; the LP is copy-free, so it
+            models broadcast as the root unicasting a separate copy to each destination --
+            feasible and correct but generally suboptimal versus a multicast tree.
+        """
+        gpus = len(self.topology.capacity)
+        chunks = self.user_input.instance.num_chunks
+        root = self.user_input.instance.root
+        self._validate_root(root)
+        self.demand = np.zeros((gpus, gpus, chunks), dtype=np.int32)
+        for t in range(gpus):
+            if t == root:
+                continue
+            if t in self.topology.switch_indices or t in self.topology.passive_indices:
+                continue
+            for c in range(chunks):
+                self.demand[root][t][c] = 1
+
     def set_gurobi_params(self) -> None:
         self.model.Params.OutputFlag = self.user_input.gurobi.output_flag
         self.model.Params.TimeLimit = self.user_input.gurobi.time_limit * 60 * 60

@@ -67,13 +67,13 @@ class TECCLSolver(object):
     def _resolve_formulation(self, user_input: UserInputParams) -> Formulation:
         """
             Resolves the effective solver formulation. If the user set one explicitly it is
-            honored; otherwise the per-collective default is used (ALLGATHER -> MILP,
-            ALLTOALL -> LP).
+            honored; otherwise the per-collective default is used: ALLGATHER -> MILP (the only
+            collective the MILP implements), every other collective -> LP.
         """
         f = user_input.instance.formulation
         if f is not None:
             return f
-        return Formulation.LP if user_input.instance.collective == Collective.ALLTOALL else Formulation.MILP
+        return Formulation.MILP if user_input.instance.collective == Collective.ALLGATHER else Formulation.LP
 
     def get_solver(self, user_input: UserInputParams, topology: Topology) -> BaseFormulation:
         collective = user_input.instance.collective

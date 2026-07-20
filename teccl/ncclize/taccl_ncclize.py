@@ -885,6 +885,8 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     if old_format:
         algo_elem.set('nchunksperloop', str(max(max(gpu.input_chunks, gpu.output_chunks) for gpu in gpus.values())))
         algo_elem.set('proto', "Simple")
+        algo_elem.set('maxBytes', str(2**63 - 1))
+        algo_elem.set('minBytes', "0")
         if "Allgather" in algorithm.name:
             algo_elem.set('coll', "allgather")
             algo_elem.set('inplace', "1")
@@ -897,6 +899,7 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         elif "ReduceScatter" in algorithm.name:
             algo_elem.set('coll', "reduce_scatter")
             algo_elem.set('inplace', "1")
+        algo_elem.set('outofplace', "0" if algo_elem.get('inplace') == "1" else "1")
         algo_elem.set('redop', "nop")
         algo_elem.set('ngpus', str(len(gpus)))
     for rank, gpu in gpus.items():
