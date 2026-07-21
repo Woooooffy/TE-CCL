@@ -777,7 +777,14 @@ class LPFormulation(BaseFormulation):
             if k in per_chunk_flows.keys():
                 required_flows += per_chunk_flows[k]
         flow_str_info = {}
-        flow_str_info["0-Collective"] = "alltoall"
+        # Emit the actual collective this LP solved (the LP is collective-agnostic and now
+        # serves alltoall/allgather/gather/broadcast), so downstream tools (e.g. ncclize)
+        # build the right collective instead of assuming alltoall.
+        collective = self.user_input.instance.collective
+        flow_str_info["0-Collective"] = collective.name.lower()
+        if collective in (Collective.GATHER, Collective.BROADCAST):
+            # Rooted collectives need the root GPU index to reconstruct the collective.
+            flow_str_info["0-Root"] = self.user_input.instance.root
         flow_str_info["1-Epoch_Duration"] = self.epoch_duration
         flow_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
         flow_str_info["3-Epochs_Required"] = self.find_demand_satisfied_k() + 1
