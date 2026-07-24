@@ -741,6 +741,11 @@ def main():
                     help='optional path to write a human-readable per-GPU, '
                          'per-epoch schedule dump. The realizability feasibility '
                          'check (and its warnings) runs regardless of this flag.')
+    p.add_argument('--no-rate', action='store_true',
+                    help='omit the per-op rate attribute from the emitted XML. '
+                         'The schedule is computed identically; only the final '
+                         'written output differs, to enable regression testing '
+                         'against outputs that predate the rate field.')
     args = p.parse_args()
 
     from taccl_ncclize import ncclize, ChannelPolicy
@@ -779,6 +784,11 @@ def main():
     )
 
     xml = enforce_send_epoch_ordering(xml, send_epoch_manifest)
+
+    if args.no_rate:
+        # Strip the per-op rate attribute from the already-serialized XML so the
+        # schedule computation stays untouched; only the written output changes.
+        xml = re.sub(r'\s+rate="[^"]*"', '', xml)
 
     with open(args.output, 'w') as f:
         f.write(xml)
