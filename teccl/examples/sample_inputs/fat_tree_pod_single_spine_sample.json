@@ -21,8 +21,8 @@
     "InstanceParams": {
         "collective": 2,
         "num_chunks": 1,
-        "epoch_type": 3,
-        "epoch_duration": 0.04,
+        "epoch_type": 1,
+        "epoch_duration": -1,
         "num_epochs": -1,
         "alpha_threshold": 0.1,
         "switch_copy": false,
@@ -30,6 +30,6 @@
         "debug_output_file": "",
         "objective_type": 2,
         "solution_method": 1,
-        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_single_spine_alltoall_schedule_double_epoch.json"
+        "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_single_spine_alltoall_schedule.json"
     }
 }
