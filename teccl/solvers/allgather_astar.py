@@ -60,8 +60,13 @@ class AStarFormulation(AllGatherFormulation):
 
         varType = GRB.INTEGER
 
-        self.flow = np.zeros((self.num_nodes, self.num_nodes,
-                            self.num_nodes, self.num_chunks, self.num_epochs)).tolist()
+        # Sparse container (see AllGatherFormulation.initialize_variables): the dense
+        # num_nodes^3 x num_chunks x num_epochs list is almost all zeros -- only real
+        # links carry a variable. A 5-level nested defaultdict makes a missing
+        # (s, i, j, c, k) read as 0.0 (the old np.zeros default), so every LinExpr.add()
+        # downstream is unchanged, while only the created real-link entries are stored.
+        self.flow = defaultdict(lambda: defaultdict(lambda: defaultdict(
+            lambda: defaultdict(lambda: defaultdict(float)))))
 
         for i, j, in product(self.nodes, self.nodes):
             if self.topology.capacity[i][j] <= 0:

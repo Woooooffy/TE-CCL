@@ -29,8 +29,15 @@ class AllGatherFormulation(BaseFormulation):
         """
         logging.debug(f'Initializing flow variables')
         time_start = time.time()
-        self.flow = np.zeros((self.num_nodes, self.num_nodes,
-                              self.num_nodes, self.num_chunks, self.num_epochs)).tolist()
+        # Sparse container: the dense num_nodes^3 x num_chunks x num_epochs list this
+        # used to be is almost entirely zeros -- only real links carry a variable, and
+        # even on real links many (s, c, k) entries are skipped below (s == j,
+        # not_necessary_k). A 5-level nested defaultdict makes a missing
+        # (s, i, j, c, k) read as 0.0 -- exactly the old np.zeros default -- so every
+        # LinExpr.add()/gp.max_() downstream (which already received those 0.0's for
+        # skipped entries) is unchanged, while only the created entries are stored.
+        self.flow = defaultdict(lambda: defaultdict(lambda: defaultdict(
+            lambda: defaultdict(lambda: defaultdict(float)))))
 
         for i, j, in product(self.nodes, self.nodes):
             if self.topology.capacity[i][j] <= 0:

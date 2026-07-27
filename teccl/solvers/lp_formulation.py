@@ -47,12 +47,23 @@ class LPFormulation(BaseFormulation):
             for c in range(len(self.demand[s][d])):
                 self.all_demand += self.demand[s][d][c]
 
-        # initialize flow variables
-        self.flow = np.zeros(
-            (self.num_nodes, self.num_nodes, self.num_nodes, self.num_epochs)).tolist()
+        # initialize flow variables.
+        # Sparse container: the dense num_nodes^3 x num_epochs list this used to be
+        # (2.16B cells at 300 nodes / 80 epochs -> ~17 GB for the numpy array alone,
+        # far more once .tolist()'d -> OOM-killed before Gurobi ever starts) is almost
+        # entirely zeros; only real links ever carry a variable. A nested defaultdict
+        # makes a missing (s, i, j, k) read as 0.0 -- exactly the old np.zeros default,
+        # so every LinExpr.add() downstream is unchanged -- while storing only the
+        # real-link entries that are actually created below.
+        self.flow = defaultdict(
+            lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(float))))
 
         for i, j in product(self.nodes, self.nodes):
-            if self.topology.capacity[i][j] < 0:
+            # Skip non-links. Non-links have capacity 0 in these topologies (only
+            # explicit edges are set positive), and every downstream read of flow
+            # guards on capacity > 0, so `<= 0` here keeps variable creation
+            # consistent with use and keeps the container sparse (real links only).
+            if self.topology.capacity[i][j] <= 0:
                 continue
             for s in self.nodes:
                 for k in self.epochs:
