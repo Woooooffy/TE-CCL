@@ -278,6 +278,12 @@ class LPFormulation(BaseFormulation):
     def capacity_constraints(self) -> None:
         """
         encodes capacity constraints.
+
+        The RHS (capacity * epoch_duration) is the ONLY coefficient in the whole
+        model that changes when just epoch_duration changes. We keep a handle to
+        every capacity constraint in self._cap_constrs so update_epoch_duration()
+        can rescale those RHS values in place (and warm-start) instead of
+        rebuilding the model -- see build_model()/update_epoch_duration().
         """
 
         # Uncomment this if you want to impose buffer limits.
@@ -298,7 +304,7 @@ class LPFormulation(BaseFormulation):
             cap_constr = gp.LinExpr(0.0)
             for s in self.nodes:
                 cap_constr.add(self.flow[s][i][j][k])
-            self.model.addConstr(
+            self._cap_constrs[(i, j, k)] = self.model.addConstr(
                 cap_constr <= (self.topology.capacity[i][j] * self.epoch_duration), name=f"cap_constr_link_{i}-{j}-{k}")
 
     def objective_formulation(self, objective_type: ObjectiveType = ObjectiveType.PAPER) -> gp.LinExpr:
@@ -352,39 +358,105 @@ class LPFormulation(BaseFormulation):
                         self.flow[s][i][d][k], 10 * (pow(10, -1) / (self.num_epochs + 1)) * 2)
         return objective
 
-    def encode_problem(self, use_one_less_epoch=False) -> int:
+    def _compute_alpha_signature(self) -> Tuple[int, ...]:
+        """
+        The per-link alpha_num_back values are the ONLY thing that changes the
+        *structure* (not just a coefficient) of the model when epoch_duration
+        changes: they shift which epoch index k - alpha_num_back each
+        flow-conservation term refers to. Everything else -- the variables, the
+        objective, the destination constraints, and the capacity-constraint
+        incidence (only its RHS scales) -- is invariant in epoch_duration.
+
+        This returns a hashable signature of those values (read at the current
+        self.epoch_duration) so update_epoch_duration() can tell whether the node
+        (flow-conservation) constraints can be reused as-is (signature unchanged)
+        or must be rebuilt (signature changed). For typical topologies alpha is
+        tiny relative to epoch_duration, so every alpha_num_back is 0 across the
+        whole feasible search and this signature never changes -> the node
+        constraints are reused every iteration.
+        """
+        return tuple(
+            self.get_alpha_num_back(i, j)
+            for i in self.nodes for j in self.nodes
+            if self.topology.capacity[i][j] > 0
+        )
+
+    def build_model(self) -> None:
+        """
+        Build the full model from scratch for the current self.epoch_duration.
+
+        Records the capacity-constraint handles (self._cap_constrs) and the alpha
+        signature (self._alpha_signature) so a subsequent epoch_duration change can
+        be applied incrementally via update_epoch_duration() -- reusing every
+        variable and constraint and warm-starting Gurobi -- instead of rebuilding.
+        """
         setup_start = time.time()
         self.model = gp.Model('LP', env=get_gurobi_env())
+        # These accumulate model objects, so reset them on every (re)build.
+        self.aux_var = []
+        self._cap_constrs = {}
         self.initialize_variables()
         self.destination_constraints()
         self.node_constraints()
         self.capacity_constraints()
         self.model.setObjective(self.objective_formulation(self.user_input.instance.objective_type))
+        self._alpha_signature = self._compute_alpha_signature()
 
-        log_file = f'Logs/{self.solver_name}_{self.user_input.topology.name}_{self.num_nodes}-nodes_' \
+        self._log_file = f'Logs/{self.solver_name}_{self.user_input.topology.name}_{self.num_nodes}-nodes_' \
             f'{self.num_chunks}-chunks_{self.num_epochs}-epochs_{self.epoch_duration}-epoch_duration_{self.user_input.instance.objective_type}'
 
         if self.user_input.gurobi.output_flag == 1 or self.user_input.instance.debug:
             if self.user_input.gurobi.log_file:
-                log_file += self.user_input.gurobi.log_file
-            self.model.setParam("LogFile", log_file + ".log")
+                self._log_file += self.user_input.gurobi.log_file
+            self.model.setParam("LogFile", self._log_file + ".log")
             self.model.Params.LogToConsole = 0
             # if self.user_input.instance.debug:
-            #     self.model.write(log_file + '.lp')
+            #     self.model.write(self._log_file + '.lp')
 
         self.set_gurobi_params()
-        setup_end = time.time()
+        self._model_built = True
+        logging.debug(f'Total time for build {time.time() - setup_start}')
 
-        logging.debug(f'Total time for setup {setup_end - setup_start}')
+    def update_epoch_duration(self, epoch_duration: float) -> None:
+        """
+        Refresh the model for a new epoch_duration WITHOUT rebuilding it: reuse all
+        variables/objective/constraints and warm-start Gurobi from the previous
+        solve's basis. Only two things depend on epoch_duration:
+          - capacity-constraint RHS (capacity * epoch_duration): rescaled in place.
+          - flow-conservation structure via alpha_num_back: unchanged for typical
+            topologies (alpha << epoch_duration); if the alpha signature does change
+            we fall back to a full rebuild (correct, and rare).
+
+        The feasible search calls this ~10x with num_epochs held fixed, so this
+        turns ~10 full builds + cold solves into 1 build + ~10 warm re-solves.
+        """
+        self.epoch_duration = epoch_duration
+        if not getattr(self, "_model_built", False):
+            # First call: nothing to reuse yet.
+            self.build_model()
+            return
+        if self._compute_alpha_signature() != self._alpha_signature:
+            # Structural change in the flow-conservation constraints -> rebuild.
+            self.build_model()
+            return
+        # Fast path: only the capacity RHS moved. Rescale in place and warm-start.
+        for (i, j, k), constr in self._cap_constrs.items():
+            constr.RHS = self.topology.capacity[i][j] * self.epoch_duration
+        self.model.update()
+
+    def solve_model(self) -> int:
+        """
+        Optimize the already-built model (see build_model / update_epoch_duration)
+        and return its Gurobi status. Separated from build_model so the feasible
+        search can rebuild once and re-solve many times.
+        """
         logging.debug(f'Epoch duration {self.epoch_duration}')
-        logging.debug(f'Starting model optimization {log_file}')
+        logging.debug(f'Starting model optimization {self._log_file}')
 
         solve_start = time.time()
         self.model.optimize()
-        solve_end = time.time()
-
         logging.debug(
-            f'Finished model optimization {log_file} in {solve_end - solve_start}')
+            f'Finished model optimization {self._log_file} in {time.time() - solve_start}')
 
         if self.model.Status != GRB.OPTIMAL:
             logging.warning(
@@ -398,13 +470,18 @@ class LPFormulation(BaseFormulation):
             # https://www.gurobi.com/documentation/10.0/refman/py_model_computeiis.html
             # else:
             # self.model.computeIIS()
-            # self.model.write(log_file + '_unsat.ilp')
+            # self.model.write(self._log_file + '_unsat.ilp')
             return self.model.Status
 
         if self.user_input.instance.debug:
             logging.debug(
                 f"Epoch at the end of which all demands are satisfied: {self.find_demand_satisfied_k() + 1}")
         return self.model.Status
+
+    def encode_problem(self, use_one_less_epoch=False) -> int:
+        """Build the model from scratch and solve it (one-shot / iterative paths)."""
+        self.build_model()
+        return self.solve_model()
 
     def get_flows_and_consumes(self) -> Tuple[List[Tuple[int, int, int, float, int]], Dict]:
         """

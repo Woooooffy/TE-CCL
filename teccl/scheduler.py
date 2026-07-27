@@ -111,7 +111,8 @@ class TECCLSolver(object):
         """
             Finds a feasible time in which the collective can finish using large epochs with fewer of them.
         """
-        if self._resolve_formulation(user_input) == Formulation.LP:
+        is_lp = self._resolve_formulation(user_input) == Formulation.LP
+        if is_lp:
             num_epochs = math.ceil(topology_obj.get_max_hop_distance() * 20)
             factor = 100
         else:
@@ -130,20 +131,44 @@ class TECCLSolver(object):
         attempts = 0
         feasible_time = upper_bound
 
+        # Across this search only epoch_duration changes; num_epochs is fixed, so the
+        # LP model (variables, objective, most constraints) is invariant. Build it
+        # once and refresh only the epoch_duration-dependent parts each iteration
+        # (LPFormulation.update_epoch_duration) so Gurobi warm-starts instead of
+        # rebuilding + cold-solving ~10 large models. (The MILP path is left on the
+        # per-iteration rebuild; its structure depends on epoch_duration in more
+        # ways -- beta_num_back, switch pipelining -- so it is not reused here.)
+        reusable_lp_solver = None
+        if is_lp:
+            base_input = copy.deepcopy(user_input)
+            base_input.gurobi = copy.deepcopy(user_input.gurobi)
+            base_input.instance = copy.deepcopy(user_input.instance)
+            base_input.gurobi.solution_limit = 1
+            base_input.instance.num_epochs = num_epochs
+            reusable_lp_solver = self.get_solver(base_input, topology_obj)
+
         while lower_bound <= upper_bound:
             mid = (upper_bound + lower_bound) / 2
-            new_user_input = copy.deepcopy(user_input)
-            new_user_input.gurobi = copy.deepcopy(user_input.gurobi)
-            new_user_input.instance = copy.deepcopy(user_input.instance)
-            # find some feasible solution
-            new_user_input.gurobi.solution_limit = 1
-            new_user_input.instance.num_epochs = num_epochs
-            new_user_input.instance.epoch_duration = mid / num_epochs
-            if new_user_input.instance.epoch_duration <= final_epoch_duration and feasible_time != collective_time_estimate * factor:
+            epoch_duration = mid / num_epochs
+            if epoch_duration <= final_epoch_duration and feasible_time != collective_time_estimate * factor:
                 break
             # user_input.instance.debug = True
-            solver_inst = self.get_solver(new_user_input, topology_obj)
-            result = solver_inst.encode_problem()
+            if is_lp:
+                # Reuse the built model; only rescale the epoch_duration-dependent
+                # capacity RHS (and rebuild only if the alpha structure changes).
+                reusable_lp_solver.update_epoch_duration(epoch_duration)
+                solver_inst = reusable_lp_solver
+                result = solver_inst.solve_model()
+            else:
+                new_user_input = copy.deepcopy(user_input)
+                new_user_input.gurobi = copy.deepcopy(user_input.gurobi)
+                new_user_input.instance = copy.deepcopy(user_input.instance)
+                # find some feasible solution
+                new_user_input.gurobi.solution_limit = 1
+                new_user_input.instance.num_epochs = num_epochs
+                new_user_input.instance.epoch_duration = epoch_duration
+                solver_inst = self.get_solver(new_user_input, topology_obj)
+                result = solver_inst.encode_problem()
             if result != GRB.INFEASIBLE:
                 epochs_taken = solver_inst.find_demand_satisfied_k() + 1
                 time_taken = epochs_taken * solver_inst.epoch_duration
