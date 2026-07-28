@@ -47,6 +47,38 @@ class LPFormulation(BaseFormulation):
             for c in range(len(self.demand[s][d])):
                 self.all_demand += self.demand[s][d][c]
 
+        # calculate the demand at each node to set better variable limits.
+        # total_demand_at_s : total volume of data that node s needs to send
+        # demand_at_i : total volume of data node s needs to send to node i
+        # (computed before creating variables so we can restrict them to the
+        # demand-bearing sources below.)
+        self.total_demand_at_s = defaultdict(float)
+        self.demand_at_i = defaultdict(float)
+        for s in self.nodes:
+            node_demand = 0
+            for d in self.nodes:
+                for c in self.chunks:
+                    node_demand += self.demand[s][d][c]
+                    self.demand_at_i[(s, d)] += self.demand[s][d][c]
+            self.total_demand_at_s[s] = node_demand
+
+        # Only demand-bearing sources originate any flow. Every flow / buffer /
+        # consume / demand-sat variable and every constraint is indexed by a
+        # source s (the ORIGIN of the data); for a zero-demand source (switches,
+        # passive nodes, and any GPU with no demand) flow[s][.][.] is provably 0 in
+        # every feasible solution -- nothing is injected at s and nothing consumes
+        # s's data -- so building those variables/constraints only inflates the
+        # model without changing the feasible set or optimum. Restricting the
+        # *source* dimension to self.sources shrinks the variable / row / nonzero
+        # counts by num_nodes / #demand_sources -- ~13x for the 300-node /
+        # 23-active-GPU MoE topologies, which is what pushed the feasible-search LP
+        # (47.7M cols / 140M nonzeros) over the memory limit and OOM-killed it in
+        # presolve. Relaying is unaffected: a zero-demand node still forwards and
+        # buffers an active source's data as an intermediate i/j/n hop in
+        # flow[active_source][i][j] (the node/link dimension stays all num_nodes),
+        # so ONLY the source dimension is restricted here.
+        self.sources = [s for s in self.nodes if self.total_demand_at_s[s] > 0]
+
         # initialize flow variables.
         # Sparse container: the dense num_nodes^3 x num_epochs list this used to be
         # (2.16B cells at 300 nodes / 80 epochs -> ~17 GB for the numpy array alone,
@@ -65,7 +97,7 @@ class LPFormulation(BaseFormulation):
             # consistent with use and keeps the container sparse (real links only).
             if self.topology.capacity[i][j] <= 0:
                 continue
-            for s in self.nodes:
+            for s in self.sources:
                 for k in self.epochs:
                     self.flow[s][i][j][k] = self.model.addVar(
                         0, self.all_demand, vtype=GRB.CONTINUOUS, name='f_%d_%d_%d_%d' % (s, i, j, k))
@@ -74,6 +106,10 @@ class LPFormulation(BaseFormulation):
 
         start_time = time.time()
 
+        # Dense lists indexed [source][node][epoch]; only the self.sources rows are
+        # populated with variables, the rest stay 0.0 (matching the old np.zeros
+        # default) and are never read, since every constraint loop below is also
+        # restricted to self.sources.
         self.buffer = np.zeros(
             (self.num_nodes, self.num_nodes, self.num_epochs)).tolist()
         self.consumed_at_k = np.zeros(
@@ -81,24 +117,8 @@ class LPFormulation(BaseFormulation):
         self.total_demand_sat = np.zeros(
             (self.num_nodes, self.num_nodes, self.num_epochs)).tolist()
 
-        # calculate the demand at each node to set better variable limits.
-        # total_demand_at_s : total volume of data that node s needs to send
-        # demand_at_i : total volume of data node s needs to send to node i
-        self.total_demand_at_s = defaultdict(float)
-        self.demand_at_i = defaultdict(float)
-        for s in self.nodes:
-            node_demand = 0
-            for d in self.nodes:
-                for c in self.chunks:
-                    node_demand += self.demand[s][d][c]
-                    self.demand_at_i[(s, d)] += self.demand[s][d][c]
-            self.total_demand_at_s[s] = node_demand
-        logging.debug(
-            f"Time for computing variable limits: {time.time() - start_time}")
-
-        # initialize remaining variables
-        start_time = time.time()
-        for s, i, k in product(self.nodes, self.nodes, self.epochs):
+        # initialize remaining variables (source dimension restricted to self.sources)
+        for s, i, k in product(self.sources, self.nodes, self.epochs):
             self.buffer[s][i][k] = self.model.addVar(
                 0, self.total_demand_at_s[s], vtype=GRB.CONTINUOUS, name='B_%d_%d_%d' % (s, i, k))
             self.consumed_at_k[s][i][k] = self.model.addVar(
@@ -111,7 +131,10 @@ class LPFormulation(BaseFormulation):
         add constraints to the model to account for how much of the demand is met at the end
         of each epoch.
         """
-        for s, d, k in product(self.nodes, self.nodes, self.epochs):
+        # s ranges only over demand-bearing sources (see initialize_variables):
+        # a zero-demand source's demand is 0 everywhere, so these constraints are
+        # vacuous for it and its total_demand_sat/consumed vars are not created.
+        for s, d, k in product(self.sources, self.nodes, self.epochs):
             consume_constr = gp.LinExpr(0.0)
             # the demand met so far is the sum of all the chunk the node has consumed so far.
             if k > 0:
@@ -272,7 +295,12 @@ class LPFormulation(BaseFormulation):
                                      name=f"FC_epoch_{k}-node_{n}-source_{s}")
 
     def node_constraints(self) -> None:
-        for n, s, k in product(self.nodes, self.nodes, self.epochs):
+        # n ranges over ALL nodes (any node can relay/buffer an active source's
+        # data), while s ranges only over demand-bearing sources -- flow[s][.][.]
+        # is provably 0 for a zero-demand source, so its conservation constraints
+        # are vacuous. This is the source-only restriction: relaying through
+        # zero-demand nodes is preserved via the full n (and i/j) range.
+        for n, s, k in product(self.nodes, self.sources, self.epochs):
             self.node_constraint_helper(s, n, k)
 
     def capacity_constraints(self) -> None:
@@ -302,7 +330,11 @@ class LPFormulation(BaseFormulation):
             if self.topology.capacity[i][j] <= 0:
                 continue
             cap_constr = gp.LinExpr(0.0)
-            for s in self.nodes:
+            # Only demand-bearing sources carry flow; a zero-demand source's
+            # flow[s][i][j][k] is provably 0, so it contributes nothing to the
+            # link's load. Summing over self.sources keeps the capacity constraint
+            # identical while cutting its nonzero count from num_nodes to #sources.
+            for s in self.sources:
                 cap_constr.add(self.flow[s][i][j][k])
             self._cap_constrs[(i, j, k)] = self.model.addConstr(
                 cap_constr <= (self.topology.capacity[i][j] * self.epoch_duration), name=f"cap_constr_link_{i}-{j}-{k}")
@@ -714,12 +746,24 @@ class LPFormulation(BaseFormulation):
 
     def get_per_chunk_flows(self) -> Dict:
         per_chunk_flow_list = {}
-        for s, i, j, c, k in product(self.nodes, self.nodes, self.nodes, self.chunks, self.epochs):
-            if self.per_chunk_flows[s][i][j][c][k] > 0:
-                if k not in per_chunk_flow_list:
-                    per_chunk_flow_list[k] = []
-                per_chunk_flow_list[k].append((int(s), int(i), int(j), int(
-                    c), self.per_chunk_flows[s][i][j][c][k], int(k)))
+        # Iterate only the populated (s, i, j, c, k) entries of the sparse
+        # per_chunk_flows container (a nested defaultdict) rather than the dense
+        # num_nodes^3 x chunks x epochs product -- almost all of that product is
+        # zero, and materializing/scanning it at 300 nodes is what OOM-killed /
+        # hung schedule extraction.
+        for s, s_map in self.per_chunk_flows.items():
+            for i, i_map in s_map.items():
+                for j, j_map in i_map.items():
+                    for c, c_map in j_map.items():
+                        for k, vol in c_map.items():
+                            if vol > 0:
+                                per_chunk_flow_list.setdefault(k, []).append(
+                                    (int(s), int(i), int(j), int(c), vol, int(k)))
+        # Preserve the old dense-product emission order (sorted by s, i, j, c
+        # within each epoch) so the produced schedule is byte-identical to the
+        # previous version for the same solver solution.
+        for k in per_chunk_flow_list:
+            per_chunk_flow_list[k].sort(key=lambda x: (x[0], x[1], x[2], x[3]))
         return per_chunk_flow_list
 
     def chunk_flow_paths_to_string(self) -> Dict:
@@ -806,8 +850,16 @@ class LPFormulation(BaseFormulation):
         # it forever (RecursionError). Cancelling it changes no buffer/consume/delivery.
         full_flow_list = self.cancel_flow_cycles(full_flow_list)
 
-        self.per_chunk_flows = np.zeros(
-            (self.num_nodes, self.num_nodes, self.num_nodes, self.num_chunks, self.num_epochs))
+        # Sparse per-chunk flow container (see the flow-cube note in
+        # initialize_variables). The dense num_nodes^3 x num_chunks x num_epochs
+        # array this used to be is ~60 GB at 300 nodes / 23 chunks and is almost
+        # entirely zero -- only the handful of (s, i, j, c, k) pieces the path
+        # tracer assigns are nonzero. A 5-level nested defaultdict stores just
+        # those; writes below are unchanged (per_chunk_flows[s][i][j][c][k] = vol),
+        # and get_per_chunk_flows() iterates the populated keys instead of the
+        # dense product (which was also far too large/slow to scan).
+        self.per_chunk_flows = defaultdict(
+            lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(float)))))
         self.per_chunk_flow_paths = {}
         self.demand_copy = np.array(copy.deepcopy(self.demand), dtype=float)
 
