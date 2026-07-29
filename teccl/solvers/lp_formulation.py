@@ -734,36 +734,6 @@ class LPFormulation(BaseFormulation):
             print(f"[dig-debug] {total} cross-epoch cycle(s) found -- these are what let "
                   "dig_to_source re-enter a hop and trip the stale-snapshot assert.")
 
-    def _dump_missing_hop(self, missing, previous_hops, traffic, hop, step, source, dest) -> None:
-        """DEBUG: full diagnostic for a failed pre-recursion lookup in dig_to_source."""
-        print("\n" + "!" * 78)
-        print("[dig-debug] STALE-SNAPSHOT FAILURE in dig_to_source")
-        print(f"            source={source} dest={dest} current hop={hop} step={step}")
-        print(f"            tuple layout = (source, sender, receiver, volume, epoch)")
-        print(f"            missing previous_hop (from entry snapshot) = {missing}")
-        print("            previous_hops snapshot (taken on entry to this hop):")
-        for ph in previous_hops:
-            tag = "  <-- MISSING" if ph == missing else ""
-            print(f"                {ph}{tag}")
-        live = sorted([x for x in traffic if x[2] == hop], key=lambda e: e[-1])
-        print(f"            LIVE traffic entries now feeding hop {hop}:")
-        for x in live:
-            print(f"                {x}")
-        ident = [x for x in traffic if x[0] == missing[0] and x[1] == missing[1]
-                 and x[2] == missing[2] and x[4] == missing[4]]
-        if ident:
-            print(f"            same link+epoch still present, volume CHANGED: {ident}")
-            print("            => partial-spend case: a nested dig reduced this edge's "
-                  "volume, so full-tuple equality no longer matches.")
-        else:
-            print("            link+epoch is entirely gone from traffic.")
-            print("            => full-spend case: a nested dig drained this edge to 0 "
-                  "and removed it.")
-        print("            recursion stack (root -> here); re-entry = same hop twice:")
-        for (h, st, v) in getattr(self, "_dig_stack", []):
-            print(f"                hop={h} step={st} vol={round(v, 6)}")
-        print("!" * 78 + "\n")
-
     def dig_to_source(self, hop: int, traffic: List[Tuple[int, int, int, int, float, int]],
                       consumed: Dict[int, Tuple[int, int, float]], source: int, step: int, dest: int,
                       volume: float, path: List[Tuple[int, int, int, float, int]], paths: Dict[int, List[Tuple[int, int, int, int, float, int]]] = {}) -> List[Tuple[int, int, int, int, float, int]]:
@@ -794,17 +764,29 @@ class LPFormulation(BaseFormulation):
             paths = old_paths
             if volume == 0:
                 break
-            found = False
+            # Re-resolve this back-hop against the LIVE traffic list by identity
+            # (source, sender, receiver, epoch) rather than full-tuple equality.
+            # A nested dig that re-entered this same hop through a cross-epoch
+            # circulation may already have spent part or all of this edge, so its
+            # volume field can differ from the entry-snapshot tuple, or the edge
+            # may be gone entirely. Matching on identity + reading the CURRENT
+            # remaining volume mirrors the post-recursion lookup below and replaces
+            # the old stale-snapshot assert. If the edge was fully drained by that
+            # nested dig, its volume was already attributed there, so skip it.
+            stored_traffic = None
             for i in range(len(traffic)):
-                if traffic[i] == each_previous_hop:
-                    consume = min(traffic[i][3], volume)
-                    stored_traffic = traffic[i]
-                    found = True
+                t = traffic[i]
+                if (t[0] == each_previous_hop[0] and t[1] == each_previous_hop[1]
+                        and t[2] == each_previous_hop[2] and t[4] == each_previous_hop[4]):
+                    stored_traffic = t
+                    consume = min(t[3], volume)
                     break
-            if not found and self._dig_debug():
-                self._dump_missing_hop(each_previous_hop, previous_hops, traffic, hop, step, source, dest)
-            assert found, "the previous hop not found in traffic list, must be a bug"
-            
+            if stored_traffic is None:
+                if self._dig_debug():
+                    print(f"[dig-debug] skip drained back-hop {each_previous_hop} "
+                          f"(no longer in live traffic) at hop={hop} step={step}")
+                continue
+
             step = each_previous_hop[-1]
             new_path = copy.deepcopy(path)
             new_path += [(source, each_previous_hop[1], hop, consume, step)]
@@ -814,20 +796,30 @@ class LPFormulation(BaseFormulation):
             traffic, consumed_volume = self.dig_to_source(
                     each_previous_hop[1], traffic, consumed, source, step, dest, consume, new_path, paths)
             
+            # Re-find the same edge by identity (its volume/position may have moved
+            # during the recursion) so we can debit what this back-hop supplied. A
+            # re-entrant dig into this hop can have already drained and removed it.
+            index = -1
             for i in range(len(traffic)):
-                if traffic[i][0] == stored_traffic[0]:
-                    if traffic[i][1] == stored_traffic[1]:
-                        if traffic[i][2] == stored_traffic[2]:
-                                if traffic[i][4] == stored_traffic[4]:
-                                    index = i
-                                    break
+                if (traffic[i][0] == stored_traffic[0] and traffic[i][1] == stored_traffic[1]
+                        and traffic[i][2] == stored_traffic[2] and traffic[i][4] == stored_traffic[4]):
+                    index = i
+                    break
 
             this_hop_consumed_volume += consumed_volume
             if consumed_volume < volume:
                 volume = volume - consumed_volume
             else:
                 volume = 0
-           
+
+            if index == -1:
+                # Already drained and removed by a nested re-entrant dig; the
+                # attribution happened there, so there is nothing left to debit.
+                if self._dig_debug():
+                    print(f"[dig-debug] back-hop {stored_traffic} already removed by a "
+                          f"nested dig; skipping debit at hop={hop} step={step}")
+                continue
+
             traffic[index] = (traffic[index][0], traffic[index][1], traffic[index]
                                   [2], traffic[index][3] - consumed_volume, traffic[index][4])
             if traffic[index][3] == 0:
@@ -849,8 +841,8 @@ class LPFormulation(BaseFormulation):
                     self.per_chunk_flow_paths[(source, dest, c)] += [paths[c]]
                     paths[c] = []
 
-        # DEBUG: balance the stack push done on entry (only on normal return; an
-        # assert failure intentionally leaves the stack for _dump_missing_hop).
+        # DEBUG: balance the stack push done on entry. The re-entry trace and the
+        # per-hop skip logs above read this stack while a dig is in flight.
         if self._dig_stack:
             self._dig_stack.pop()
         return traffic, this_hop_consumed_volume
