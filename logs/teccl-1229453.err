@@ -1,0 +1,47 @@
+cpu-bind=MASK - lanka26, task  0  0 [3491910]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka26, task  0  0 [3492279]: mask 0xff0000ff set
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/bin/teccl", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/__main__.py", line 21, in main
+    if handler(args, args.command):
+       ~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/cli/solve.py", line 38, in handler
+    solver.solve()
+    ~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/scheduler.py", line 258, in solve
+    epoch_result_schedule_solver = self.get_schedules(
+        solver, user_input, self.topology_obj)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/scheduler.py", line 200, in get_schedules
+    schedule, schedule_json = initial_solver.get_schedule()
+                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/solvers/lp_formulation.py", line 1067, in get_schedule
+    return self.get_flow_schedule()
+           ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/solvers/lp_formulation.py", line 1000, in get_flow_schedule
+    traffic, _ = self.dig_to_source(
+                 ~~~~~~~~~~~~~~~~~~^
+        hop, traffic, consumed, each_source, each_step, each_dest, volume, [])
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/solvers/lp_formulation.py", line 796, in dig_to_source
+    traffic, consumed_volume = self.dig_to_source(
+                               ~~~~~~~~~~~~~~~~~~^
+            each_previous_hop[1], traffic, consumed, source, step, dest, consume, new_path, paths)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/solvers/lp_formulation.py", line 796, in dig_to_source
+    traffic, consumed_volume = self.dig_to_source(
+                               ~~~~~~~~~~~~~~~~~~^
+            each_previous_hop[1], traffic, consumed, source, step, dest, consume, new_path, paths)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/solvers/lp_formulation.py", line 796, in dig_to_source
+    traffic, consumed_volume = self.dig_to_source(
+                               ~~~~~~~~~~~~~~~~~~^
+            each_previous_hop[1], traffic, consumed, source, step, dest, consume, new_path, paths)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  [Previous line repeated 44 more times]
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/solvers/lp_formulation.py", line 828, in dig_to_source
+    assert source == hop
+           ^^^^^^^^^^^^^
+AssertionError
+srun: error: lanka26: task 0: Exited with exit code 1
