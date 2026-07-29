@@ -29,6 +29,18 @@ class AllGatherFormulation(BaseFormulation):
         """
         logging.debug(f'Initializing flow variables')
         time_start = time.time()
+        # Demand-bearing sources: the GPUs that actually originate a chunk (in
+        # allgather, every active GPU sources its own data; switches and passive
+        # nodes source nothing). Every flow/buffer/demand variable is indexed by a
+        # source s; for a zero-demand source flow[s][.] is provably 0 (its chunk
+        # never exists), so restricting the source dimension to self.sources
+        # removes only structurally-zero variables/constraints -- no change to the
+        # feasible set or optimum -- and shrinks the model by num_nodes/#sources.
+        # Relaying is preserved: an idle node still forwards an active source's
+        # chunk as an intermediate i/j hop in flow[active_source][i][j] (the node
+        # dimension stays all num_nodes). (AStarFormulation overrides this to keep
+        # all nodes as sources -- see its initialize_variables.)
+        self.sources = [s for s in self.nodes if self.demand[s].any()]
         # Sparse container: the dense num_nodes^3 x num_chunks x num_epochs list this
         # used to be is almost entirely zeros -- only real links carry a variable, and
         # even on real links many (s, c, k) entries are skipped below (s == j,
@@ -51,7 +63,7 @@ class AllGatherFormulation(BaseFormulation):
                 extra_epochs += 1
             not_necessary_k = [self.num_epochs -
                                i - 1 for i in range(extra_epochs)]
-            for s, c, k in product(self.nodes, self.chunks, self.epochs):
+            for s, c, k in product(self.sources, self.chunks, self.epochs):
                 if s == j:
                     # Node j never need to receive its chunks from others
                     continue
@@ -74,7 +86,7 @@ class AllGatherFormulation(BaseFormulation):
         self.total_demand_sat = np.zeros(
             (self.num_nodes, self.num_nodes, self.num_chunks, self.num_epochs)).tolist()
 
-        for s, i, c, k in product(self.nodes, self.nodes, self.chunks, self.epochs):
+        for s, i, c, k in product(self.sources, self.nodes, self.chunks, self.epochs):
             self.buffer[s][i][c][k] = self.model.addVar(
                 0, 1, vtype=GRB.INTEGER, name='buffer_%d_%d_%d_%d' % (s, i, c, k))
             if self.demand[s][i][c]:
@@ -246,7 +258,11 @@ class AllGatherFormulation(BaseFormulation):
     def node_constraints(self, previous_buffers=None) -> None:
         logging.debug(f'Adding node buffer and flow constraints')
         start = time.time()
-        for i, s, c, k in product(self.nodes, self.nodes, self.chunks, self.epochs):
+        # s ranges only over demand-bearing sources; i (the node whose buffer/flow
+        # conservation we write) stays all nodes, so any node can still relay/buffer
+        # an active source's chunk. flow/buffer for a zero-demand source are provably
+        # 0 and were not created, so their constraints would be vacuous.
+        for i, s, c, k in product(self.nodes, self.sources, self.chunks, self.epochs):
             self.node_constraint_helper(i, s, c, k, previous_buffers)
         logging.debug(
             f'Finished adding node buffer and flow constraints in {time.time() - start}')
@@ -263,7 +279,9 @@ class AllGatherFormulation(BaseFormulation):
             if k - beta_num_back < 0:
                 continue
             for l in range(beta_num_back + 1):
-                for s, c in product(self.nodes, self.chunks):
+                # Only demand-bearing sources carry flow; a zero-demand source's
+                # flow is 0 and contributes nothing to the link load.
+                for s, c in product(self.sources, self.chunks):
                     if k - l >= 0:
                         cap_constr.add(self.flow[s][i][j][c][k - l])
             self.model.addConstr(
@@ -313,7 +331,7 @@ class AllGatherFormulation(BaseFormulation):
             for j in symmetry_nodes[1:]:
                 flow_equality_out_constr = gp.LinExpr(0.0)
                 flow_equality_in_constr = gp.LinExpr(0.0)
-                for s, l, c, k in product(self.nodes, self.nodes, self.chunks, self.epochs):
+                for s, l, c, k in product(self.sources, self.nodes, self.chunks, self.epochs):
                     flow_equality_out_constr.add(self.flow[s][i][l][c][k])
                     flow_equality_out_constr.add(self.flow[s][j][l][c][k], -1)
                     flow_equality_in_constr.add(self.flow[s][l][i][c][k])
@@ -359,7 +377,7 @@ class AllGatherFormulation(BaseFormulation):
                     if k - beta_num_back < 0:
                         continue
                     for l in range(beta_num_back + 1):
-                        for s, c in product(self.nodes, self.chunks):
+                        for s, c in product(self.sources, self.chunks):
                             if k - l >= 0:
                                 tmp.add(self.flow[s][i][j][c][k - l])
                 self.model.addConstr(

@@ -60,6 +60,16 @@ class AStarFormulation(AllGatherFormulation):
 
         varType = GRB.INTEGER
 
+        # Opt out of the demand-source restriction that AllGatherFormulation applies:
+        # the A* formulation's own constraints (source_constraints, the buffer
+        # look-ahead, astar_objective_clique) and its multi-round demand bookkeeping
+        # assume flow/buffer exist for every node, and it creates them for all nodes
+        # below. Setting self.sources = self.nodes makes the shared inherited
+        # constraints (node/capacity/destination_constraints, which iterate
+        # self.sources) behave exactly as before for A*, so this formulation is
+        # unchanged. (AllGatherFormulation restricts self.sources to demand GPUs.)
+        self.sources = self.nodes
+
         # Sparse container (see AllGatherFormulation.initialize_variables): the dense
         # num_nodes^3 x num_chunks x num_epochs list is almost all zeros -- only real
         # links carry a variable. A 5-level nested defaultdict makes a missing
