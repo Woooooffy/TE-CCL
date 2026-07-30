@@ -138,11 +138,50 @@ def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
         cid for cid, f in coarse_passthrough.items() if f in topology.switch_indices
     ]
 
-    coarse_equivalent: List[List[int]] = []
-    for group in topology.equivalent_node_indices:
-        cgroup = sorted({fine_to_coarse[x] for x in group})
-        if len(cgroup) > 1:
-            coarse_equivalent.append(cgroup)
+    # Coarse symmetry groups = the fine equivalences forwarded through the collapse
+    # PLUS emergent twins that only exist after coarsening. The fine graph declares
+    # only the 4 spines: the 8 leaves are NOT twins in the fine graph (leaf r touches
+    # only rail-r GPUs, so each leaf's fine neighborhood differs), so no forwarding step
+    # could ever produce a leaf group. Collapsing each host's rail GPUs into one node
+    # erases the rail identity from the capacity matrix (it moves into boundary_gpu),
+    # after which every leaf connects to all hosts @50 and all spines @400 -- identical
+    # neighborhoods, hence interchangeable. We discover these by neighbor-profile hashing
+    # on the COARSE matrix: nodes whose (sorted out-edges, sorted in-edges) fingerprints
+    # match are twins (swapping them is a graph automorphism), and grouping by fingerprint
+    # finds every twin class in one pass.
+    #
+    # RESTRICTED TO SWITCHES on purpose. The data-bearing hosts ALSO share an identical
+    # fingerprint (each connects to exactly the 8 leaves @50), so an unrestricted detector
+    # would report them as a twin group too. But a host swap permutes the source index
+    # (host a carries source-a's data, host b does not), so it is a source-permuting
+    # symmetry, valid only when the demand is host-symmetric -- that belongs to a separate,
+    # demand-gated mechanism, not to the relay-twin groups consumed here. Only relay
+    # switches (whose swap fixes every source) are safe to emit as equivalent_node_indices.
+    #
+    # Generalization note: this catches only "identical-neighborhood" twins, and it works
+    # unmasked because every twin class here is an independent set (no leaf<->leaf or
+    # spine<->spine edges). For twins that ARE adjacent to each other, the mutual edge makes
+    # their raw fingerprints differ, so mask group-mates out of the key before comparing.
+    # Symmetries that are not identical-neighborhood (e.g. rotational, or twins-of-twins)
+    # are not detected here and would need real graph-automorphism refinement (nauty-style).
+    def _twin_key(i: int) -> Tuple:
+        outs = tuple(sorted((j, capacity[i][j]) for j in range(num_coarse) if capacity[i][j] > 0))
+        ins = tuple(sorted((j, capacity[j][i]) for j in range(num_coarse) if capacity[j][i] > 0))
+        return (outs, ins)
+
+    coarse_equivalent_set = {
+        tuple(sorted({fine_to_coarse[x] for x in group}))
+        for group in topology.equivalent_node_indices
+        if len({fine_to_coarse[x] for x in group}) > 1
+    }
+    emergent: Dict[Tuple, List[int]] = defaultdict(list)
+    for cid in coarse_switch_indices:
+        emergent[_twin_key(cid)].append(cid)
+    for cids in emergent.values():
+        if len(cids) > 1:
+            coarse_equivalent_set.add(tuple(sorted(cids)))
+    coarse_equivalent: List[List[int]] = sorted(
+        (list(g) for g in coarse_equivalent_set), key=lambda g: g[0])
 
     # Coarse "GPUs per chassis" is a diagnostic only (drives Algo_Bandwidth in the coarse
     # solve); the final fine-grained bandwidth is recomputed during stitching. Use the number

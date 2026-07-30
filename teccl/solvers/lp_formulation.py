@@ -339,6 +339,57 @@ class LPFormulation(BaseFormulation):
             self._cap_constrs[(i, j, k)] = self.model.addConstr(
                 cap_constr <= (self.topology.capacity[i][j] * self.epoch_duration), name=f"cap_constr_link_{i}-{j}-{k}")
 
+    def add_symmetry_constraints(self) -> None:
+        """
+        Pin the LP onto the symmetric (barycenter) optimum by forcing flow through
+        interchangeable relay nodes to be equal, killing the automorphism-orbit
+        degeneracy that otherwise makes the barrier solver return ugly analytic-center
+        fractions (e.g. a leaf's fan-out split 0.11/0.82/0.06 across destinations).
+
+        These groups (self.topology.equivalent_node_indices) are RELAY twins -- switches
+        that are interchangeable with every source fixed (the coarse leaves and spines).
+        Because swapping two such twins fixes every source s AND every neighbor x (a leaf's
+        neighbors are hosts and spines, none of which move under a leaf swap), we can
+        equalize flow at full per-source / per-neighbor / per-epoch granularity. Enforcing
+        it on consecutive pairs (a, b) of a group makes the whole group equal.
+
+        This is the LP analog of allgather.py::add_symmetry_constraints, but strictly
+        stronger: summing these per-neighbor equalities over neighbors and sources recovers
+        that method's aggregate Sigma flow_i == Sigma flow_j, so it preserves exactly what
+        the original constraint enforced and adds the resolution that actually pins the
+        barycenter. (The LP flow has no chunk index -- it aggregates over a source's chunks
+        -- so there is simply no c to sum over here.)
+
+        Correctness: for any twin-swap automorphism sigma, the feasible polytope is
+        sigma-invariant, so averaging any optimum over the (finite) twin group yields a
+        sigma-invariant optimum of equal objective value. Adding these equalities therefore
+        leaves the optimal value unchanged while removing the degeneracy; Gurobi presolve
+        substitutes each var == var equality out, so the solved model is smaller, not larger.
+
+        NOTE: this handles only the source-fixing (relay/switch) symmetry. Host
+        interchangeability under a symmetric demand is a source-PERMUTING symmetry and is
+        intentionally NOT covered here (it needs a separate, demand-gated mechanism).
+        """
+        logging.debug('Adding symmetry constraints')
+        start = time.time()
+        for group in self.topology.equivalent_node_indices:
+            for a, b in zip(group, group[1:]):
+                for s in self.sources:
+                    for k in self.epochs:
+                        for x in self.nodes:
+                            # capacity[x][a] > 0 <=> capacity[x][b] > 0 for twins, so the
+                            # guards select the same real links on both sides; the sparse
+                            # flow container returns 0.0 for any absent link regardless.
+                            if self.topology.capacity[x][a] > 0:      # ingress x -> {a, b}
+                                self.model.addConstr(
+                                    self.flow[s][x][a][k] == self.flow[s][x][b][k],
+                                    name='symIn_%d_%d_%d_%d_%d' % (a, b, s, x, k))
+                            if self.topology.capacity[a][x] > 0:      # egress {a, b} -> x
+                                self.model.addConstr(
+                                    self.flow[s][a][x][k] == self.flow[s][b][x][k],
+                                    name='symOut_%d_%d_%d_%d_%d' % (a, b, s, x, k))
+        logging.debug(f'Finished adding symmetry constraints in {time.time() - start}')
+
     def objective_formulation(self, objective_type: ObjectiveType = ObjectiveType.PAPER) -> gp.LinExpr:
         """
         returns the objective for the optimization.
@@ -453,6 +504,8 @@ class LPFormulation(BaseFormulation):
         self.destination_constraints()
         self.node_constraints()
         self.capacity_constraints()
+        if self.user_input.instance.symmetry:
+            self.add_symmetry_constraints()
         self.model.setObjective(self.objective_formulation(self.user_input.instance.objective_type))
         self._alpha_signature = self._compute_alpha_signature()
 
