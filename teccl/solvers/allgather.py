@@ -622,6 +622,74 @@ class AllGatherFormulation(BaseFormulation):
             start = next = next + 1
         return path
 
+    @staticmethod
+    def _find_cycle(adj: Dict[int, List[int]]) -> List[int]:
+        """
+        Return a directed cycle in `adj` as a node list [n0, ..., n0], or None if the
+        graph is acyclic. Recursive DFS is fine: each (source, chunk, epoch) subgraph
+        has at most num_nodes vertices. (Mirror of lp_formulation._find_cycle.)
+        """
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = defaultdict(int)  # defaults to WHITE
+        stack: List[int] = []
+
+        def visit(u: int):
+            color[u] = GRAY
+            stack.append(u)
+            for v in adj.get(u, []):
+                if color[v] == GRAY:
+                    # found a back edge: the cycle is the tail of the stack from v.
+                    return stack[stack.index(v):] + [v]
+                if color[v] == WHITE:
+                    found = visit(v)
+                    if found is not None:
+                        return found
+            stack.pop()
+            color[u] = BLACK
+            return None
+
+        for node in list(adj.keys()):
+            if color[node] == WHITE:
+                found = visit(node)
+                if found is not None:
+                    return found
+        return None
+
+    def cancel_same_epoch_cycles(self, flows: List[Tuple[int, int, int, int, int]]
+                                 ) -> List[Tuple[int, int, int, int, int]]:
+        """
+        MILP analog of lp_formulation.cancel_flow_cycles for the binary per-chunk flow
+        set. The time-expanded MILP flow graph is a DAG across epochs (GPU forwarding
+        advances the epoch), so the only directed cycles are same-epoch cut-through
+        circulations -- confined to a single (source, chunk, epoch) group, since a
+        cut-through leg keeps the stored epoch constant (find_flow uses beta_num_back=-1).
+        Such a cycle adds zero to every node's net divergence, so it delivers nothing;
+        dropping its edges preserves every buffer/consume/delivery and is exactly what
+        stops dfs_remove_unnecessary_flows' back-trace from looping forever. Unlike the
+        continuous LP (which subtracts a bottleneck volume), flows here are binary, so an
+        edge on a directed cycle is pure circulation and is removed whole. Each entry is
+        (source, sender, receiver, chunk, epoch).
+        """
+        groups: Dict[Tuple[int, int, int], Set[Tuple[int, int]]] = defaultdict(set)
+        for (s, i, j, c, k) in flows:
+            groups[(s, c, k)].add((i, j))
+        removed: Set[Tuple[int, int, int, int, int]] = set()
+        for (s, c, k), edges in groups.items():
+            while True:
+                adj: Dict[int, List[int]] = defaultdict(list)
+                for (i, j) in edges:
+                    adj[i].append(j)
+                cycle = self._find_cycle(adj)
+                if cycle is None:
+                    break
+                for e in zip(cycle[:-1], cycle[1:]):
+                    edges.discard(e)
+                    removed.add((s, e[0], e[1], c, k))
+        if removed:
+            logging.debug(
+                f'cancel_same_epoch_cycles removed {len(removed)} circulating flow edges')
+        return [f for f in flows if f not in removed]
+
     def dfs_remove_unnecessary_flows(self, astar: bool) -> Tuple[List[Tuple[int, int, int, int, int]], Dict]:
         """
             This function removes the unnecessary flows from the list of flows.
@@ -643,6 +711,11 @@ class AllGatherFormulation(BaseFormulation):
             flows_str_info['7-Flows'] = [
                 f"Chunk {c} from {s} traveled over {i}->{j} in epoch {k}" for s, i, j, c, k in flows]
             return flows, flows_str_info
+        # Remove pure same-epoch circulations before tracing paths. Cut-through
+        # switches keep the epoch constant across a hop, so a degenerate optimal
+        # solution can contain a loop the back-trace below would follow forever.
+        # This is the MILP twin of lp_formulation.cancel_flow_cycles().
+        flows = self.cancel_same_epoch_cycles(flows)
         required_flows = set()
         required_flows_str = set()
         flows = set(flows)
@@ -670,11 +743,21 @@ class AllGatherFormulation(BaseFormulation):
             required_flows.add(closest_flow)
             my_path.append(closest_flow)
             #  Trace the path to the source node.
+            # Defensive backstop: cancel_same_epoch_cycles() above should have removed
+            # every same-epoch loop, but if a degeneracy it does not anticipate slips
+            # through, a visited-set on (sending_node, k) makes the trace fail loudly
+            # instead of spinning forever (the original failure mode, teccl-1239952).
+            visited_hops: Set[Tuple[int, int]] = set()
             while True:
                 sending_node = closest_flow[1]
                 if sending_node == s:
                     # we reached the chunk source node
                     break
+                assert (sending_node, closest_flow[4]) not in visited_hops, (
+                    f"Cycle in schedule back-trace for demand s_{s} d_{d} c_{c} at "
+                    f"node {sending_node} epoch {closest_flow[4]}; "
+                    f"cancel_same_epoch_cycles missed a circulation")
+                visited_hops.add((sending_node, closest_flow[4]))
                 if sending_node not in self.topology.switch_indices:
                     # If the sending node is not a switch, then the epoch in which it received the chunk is given by buffer.
                     if (s, sending_node, c) not in buffers:
