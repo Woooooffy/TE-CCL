@@ -522,12 +522,21 @@ class LPFormulation(BaseFormulation):
         """
         consumed = {}
         full_flow_list = []
+        # Gurobi only satisfies constraints to within FeasibilityTol, so variables it
+        # treats as zero come back as tiny positive OR slightly NEGATIVE values. Clamp
+        # at the solver's own tolerance right where noise ENTERS the decomposition:
+        # anything within feasibility_tol of zero IS zero to the solver. This drops the
+        # negatives and sub-tol junk that would otherwise pollute dig_to_source and the
+        # residue check (and trip account_for_consume's `assert consume == 0`). Legit
+        # flow fractions here are >> 1e-4 (unit chunks, integer demands), so real flow
+        # is never dropped.
+        eps = self.user_input.gurobi.feasibility_tol
         for v in self.model.getVars():
-            if 'f_' in v.varName and v.x != 0.0:
+            if 'f_' in v.varName and v.x > eps:
                 components = v.varName.split('_')
                 _, s, i, j, k = components
                 full_flow_list.append((int(s), int(i), int(j), round(v.x,6), int(k)))
-            if 'T_' in v.varName and v.x > 0:
+            if 'T_' in v.varName and v.x > eps:
                 components = v.varName.split('_')
                 _, s, d, k = components
                 if int(d) not in consumed:
@@ -575,7 +584,10 @@ class LPFormulation(BaseFormulation):
         consume = round(consume, 5)
         if consume != 0:
             print(f"source ={source}, destination={destination}, consume={consume}")
-        if consume <= 1e-6:
+        # Backstop at the solver's feasibility tolerance (was a tighter 1e-6, which let
+        # ~1e-4 Gurobi noise survive and trip the assert). Matches the entry-point clamp
+        # in get_flows_and_consumes.
+        if consume <= self.user_input.gurobi.feasibility_tol:
             consume = 0
         assert consume == 0
         return paths
