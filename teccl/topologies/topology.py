@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from itertools import product
 from typing import List
 
+from teccl.hierarchy.cell import Cell
 from teccl.input_data import *
 
 
@@ -14,6 +15,11 @@ class Topology(ABC):
         self.alpha: List[List[float]] = []
         self.switch_indices: List[int] = []
         self.equivalent_node_indices: List[List[int]] = []
+        # Optional hierarchy: groups of fine nodes (e.g. an 8-GPU + NVSwitch host) that a
+        # hierarchical solve collapses into one coarse node. Empty => flat solve (default);
+        # build_hierarchy() is a no-op unless a subclass overrides it, so every existing
+        # topology is unaffected. See teccl/hierarchy and the hierarchical_solver_design note.
+        self.cells: List[Cell] = []
         self.epoch_duration_fast_link = 0.0
         self.epoch_duration_slow_link = 0.0
         self.node_per_chassis = 0
@@ -29,6 +35,7 @@ class Topology(ABC):
         self.passive_indices: List[int] = list(topo_input.passive_node_indices)
         assert not set(self.passive_indices) & set(self.switch_indices), \
             "A node cannot be both a switch and a passive forwarding node"
+        self.build_hierarchy()
 
     @abstractmethod
     def construct_topology(self, topo_input: TopologyParams) -> None:
@@ -36,6 +43,16 @@ class Topology(ABC):
 
     @abstractmethod
     def set_switch_indicies(self) -> None:
+        pass
+
+    def build_hierarchy(self) -> None:
+        """
+        Populate self.cells for a hierarchical solve. Default: no hierarchy (flat solve).
+
+        A subclass overrides this to declare its coarse structure in FINE indices (see
+        teccl.hierarchy.Cell). Called at the end of __init__, after switch_indices and
+        passive_indices are set, so a cell may reference them.
+        """
         pass
 
     def compute_pairwise_hop_distance(self) -> None:

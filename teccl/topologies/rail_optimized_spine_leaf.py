@@ -1,3 +1,4 @@
+from teccl.hierarchy.cell import Cell
 from teccl.input_data import TopologyParams
 from teccl.topologies.topology import Topology
 
@@ -98,3 +99,24 @@ class RailOptimizedSpineLeaf(Topology):
             + [self._leaf(r) for r in range(self.NUM_LEAF)]
             + [self._spine(s) for s in range(self.NUM_SPINE)]
         )
+
+    def build_hierarchy(self) -> None:
+        # One cell per host: its 8 rail GPUs plus the NVSwitch behind them collapse into a
+        # single coarse (data-bearing) node. The NVSwitch is internal and dropped from the
+        # coarse graph. The rail constraint -- GPU r reaches only leaf r -- is captured by
+        # `boundary`: the coarse host<->leaf(r) link is physically owned by gpu(n, r).
+        # The 8 leaf and 4 spine switches are NOT collapsed; they stay as coarse switch
+        # nodes, so the coarse topology is {32 hosts} + {8 leaves} + {4 spines} = 44 nodes.
+        self.cells = []
+        for n in range(self.NUM_NODES):
+            gpus = [self._gpu(n, r) for r in range(self.GPUS_PER_NODE)]
+            nvswitch = self._nvswitch(n)
+            boundary = {
+                self._leaf(r): [self._gpu(n, r)] for r in range(self.GPUS_PER_NODE)
+            }
+            self.cells.append(Cell(
+                members=gpus + [nvswitch],
+                gpus=gpus,
+                internal_switches=[nvswitch],
+                boundary=boundary,
+            ))
