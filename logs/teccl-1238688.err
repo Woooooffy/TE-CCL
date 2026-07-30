@@ -1,0 +1,14 @@
+cpu-bind=MASK - lanka27, task  0  0 [3191758]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka27, task  0  0 [3192203]: mask 0xff0000ff set
+WARNING:root:Not_Optimal_AllGather_MILP_Status-10_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.22000770000000003-epochduration
+WARNING:root:Not_Optimal_AllGather_MILP_Status-3_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.007639156250000001-epochduration
+WARNING:root:Not_Optimal_AllGather_MILP_Status-3_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.011458734375000001-epochduration
+WARNING:root:Not_Optimal_AllGather_MILP_Status-3_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.013368523437500002-epochduration
+WARNING:root:Not_Optimal_AllGather_MILP_Status-3_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.014323417968750002-epochduration
+WARNING:root:Not_Optimal_AllGather_MILP_Status-3_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.014800865234375002-epochduration
+WARNING:root:Not_Optimal_AllGather_MILP_Status-3_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.015039588867187502-epochduration
+WARNING:root:Not_Optimal_AllGather_MILP_Status-3_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.01515895068359375-epochduration
+WARNING:root:Not_Optimal_AllGather_MILP_Status-3_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.015218631591796877-epochduration
+WARNING:root:Not_Optimal_AllGather_MILP_Status-3_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.015248472045898439-epochduration
+[2026-07-30T04:04:11.641] error: Detected 1 oom_kill event in StepId=1238688.0. Some of the step tasks have been OOM Killed.
+srun: error: lanka27: task 0: Out Of Memory

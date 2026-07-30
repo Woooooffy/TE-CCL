@@ -1,0 +1,66 @@
+Processing ./.
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: dataclasses in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from teccl==1.0.0) (0.6)
+Requirement already satisfied: argcomplete in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from teccl==1.0.0) (3.6.3)
+Requirement already satisfied: gurobipy in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from teccl==1.0.0) (13.0.2)
+Requirement already satisfied: numpy in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from teccl==1.0.0) (2.4.6)
+Requirement already satisfied: seaborn in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from teccl==1.0.0) (0.13.2)
+Requirement already satisfied: pandas>=1.2 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from seaborn->teccl==1.0.0) (3.0.3)
+Requirement already satisfied: matplotlib!=3.6.1,>=3.4 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from seaborn->teccl==1.0.0) (3.11.0)
+Requirement already satisfied: contourpy>=1.0.1 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (1.3.3)
+Requirement already satisfied: cycler>=0.10 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (0.12.1)
+Requirement already satisfied: fonttools>=4.22.0 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (4.63.0)
+Requirement already satisfied: kiwisolver>=1.3.1 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (1.5.0)
+Requirement already satisfied: packaging>=20.0 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (26.2)
+Requirement already satisfied: pillow>=9 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (12.2.0)
+Requirement already satisfied: pyparsing>=3 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (3.3.2)
+Requirement already satisfied: python-dateutil>=2.7 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (2.9.0.post0)
+Requirement already satisfied: six>=1.5 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from python-dateutil>=2.7->matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (1.17.0)
+Building wheels for collected packages: teccl
+  Building wheel for teccl (pyproject.toml): started
+  Building wheel for teccl (pyproject.toml): finished with status 'done'
+  Created wheel for teccl: filename=teccl-1.0.0-py3-none-any.whl size=73816 sha256=c5aee2c910650d8d93770c85027a995e3bc95877b66e0ba1d5b5caf9a25e9456
+  Stored in directory: /tmp/home/wangyj05/.cache/pip/wheels/2d/31/f1/88ef48e0a336b237a128de3fcf8e52662d1ed0bfbd5a678f6e
+Successfully built teccl
+Installing collected packages: teccl
+  Attempting uninstall: teccl
+    Found existing installation: teccl 1.0.0
+    Uninstalling teccl-1.0.0:
+      Successfully uninstalled teccl-1.0.0
+Successfully installed teccl-1.0.0
+coarse topology: 44 nodes (32 hosts + 12 switches), num_sub_chunks=1
+
+=== MILP (switch_copy=True, multicast) ===
+Set parameter WLSAccessID
+Set parameter WLSSecret
+Set parameter LicenseID to value 2766017
+Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.22000770000000003-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.09166987500000001-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.007639156250000001-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.011458734375000001-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.013368523437500002-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.014323417968750002-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.014800865234375002-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.015039588867187502-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.01515895068359375-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.015218631591796877-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_6-epochs_0.015248472045898439-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_37-epochs_0.0025-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
