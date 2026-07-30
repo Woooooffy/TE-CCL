@@ -38,14 +38,23 @@ def _solve_on_topology(user_input: UserInputParams, topology: Topology) -> None:
     solver.solve()
 
 
-def _make_input(formulation: Formulation, num_sub_chunks: int, out_file: str) -> UserInputParams:
+def _make_input(formulation: Formulation, num_sub_chunks: int, out_file: str,
+                epoch_multiplier: int = 1) -> UserInputParams:
     ui = UserInputParams()
     ui.topology = TopologyParams(name="RailOptimizedSpineLeaf_coarse", chunk_size=1)
     ui.instance = InstanceParams(
         collective=Collective.ALLGATHER,
         formulation=formulation,
         num_chunks=num_sub_chunks,
-        epoch_type=EpochType.FASTEST_LINK,
+        # The coarse topology mixes two bandwidth tiers -- the 50 GB/s rail uplinks and the
+        # 400 GB/s leaf-spine mesh (an 8x spread). FASTEST_LINK would pin the epoch to the
+        # fast link (0.0025), so the slow-link-bottlenecked collective would need ~8x MORE
+        # epochs (37 vs ~5), bloating the MILP ~8x in its largest dimension and OOM-ing the
+        # branch-and-bound tree. The bottleneck is the slow rail uplink, so size the epoch to
+        # it: SLOWEST_LINK (0.02). Epoch size is only a granularity dial for correctness
+        # (see the epoch_duration_fastest_link memory note); this just right-sizes the model.
+        epoch_type=EpochType.SLOWEST_LINK,
+        epoch_multiplier=epoch_multiplier,
         objective_type=ObjectiveType.PAPER,
         solution_method=SolutionMethod.ONE_SHOT,
         # LP AllGather is copy-free and requires switch_copy=False (scheduler enforces this);
@@ -62,24 +71,42 @@ def _load(path: str) -> dict:
 
 
 def main() -> None:
+    # argv: [num_sub_chunks] [epoch_multiplier] [which:milp|lp|both]
     num_sub_chunks = int(sys.argv[1]) if len(sys.argv) > 1 else RailOptimizedSpineLeaf.GPUS_PER_NODE
+    epoch_multiplier = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+    which = sys.argv[3].lower() if len(sys.argv) > 3 else "both"
 
     fine = RailOptimizedSpineLeaf(TopologyParams(name="RailOptimizedSpineLeaf", chunk_size=1))
     coarse, mapping = abstract(fine)
     lift_demand(mapping, num_sub_chunks)
     print(f"coarse topology: {mapping.num_coarse} nodes "
           f"({len(mapping.coarse_cells)} hosts + {len(coarse.switch_indices)} switches), "
-          f"num_sub_chunks={num_sub_chunks}")
+          f"num_sub_chunks={num_sub_chunks}, epoch_multiplier={epoch_multiplier}, which={which}")
 
     milp_out = f"Schedules/coarse_rail_milp_{num_sub_chunks}chunks.json"
     lp_out = f"Schedules/coarse_rail_lp_{num_sub_chunks}chunks.json"
 
-    print("\n=== MILP (switch_copy=True, multicast) ===")
-    _solve_on_topology(_make_input(Formulation.MILP, num_sub_chunks, milp_out), coarse)
-    print("\n=== LP (switch_copy=False, unicast) ===")
-    _solve_on_topology(_make_input(Formulation.LP, num_sub_chunks, lp_out), coarse)
+    # Run each formulation in its own try-block so an OOM/failure in one (the MILP is the
+    # memory-heavy one) doesn't prevent the other from producing a result. To fully isolate
+    # memory, run them as separate jobs: `... <chunks> <mult> milp` and `... <chunks> <mult> lp`.
+    if which in ("both", "milp"):
+        print("\n=== MILP (switch_copy=True, multicast) ===")
+        try:
+            _solve_on_topology(_make_input(Formulation.MILP, num_sub_chunks, milp_out, epoch_multiplier), coarse)
+        except Exception as e:
+            print(f"MILP solve failed: {type(e).__name__}: {e}")
+    if which in ("both", "lp"):
+        print("\n=== LP (switch_copy=False, unicast) ===")
+        try:
+            _solve_on_topology(_make_input(Formulation.LP, num_sub_chunks, lp_out, epoch_multiplier), coarse)
+        except Exception as e:
+            print(f"LP solve failed: {type(e).__name__}: {e}")
 
-    milp, lp = _load(milp_out), _load(lp_out)
+    try:
+        milp, lp = _load(milp_out), _load(lp_out)
+    except FileNotFoundError:
+        print("\n(one or both schedules missing; skipping comparison table)")
+        return
     keys = ["3-Epochs_Required", "4-Collective_Finish_Time", "5-Algo_Bandwidth", "Solver_Time"]
     print("\n" + "=" * 62)
     print(f"{'Metric':<30}{'MILP':>15}{'LP (no-copy)':>17}")
