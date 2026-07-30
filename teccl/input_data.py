@@ -35,11 +35,18 @@ class ObjectiveType(Enum):
         2 - TOTAL_DEMAND - Gives a reward starting from the epoch all the demands are met.
         3 - PAPER - For each demand met, gives a reward starting from the epoch the demand is met.
         4 - ASTAR - Motivate the solver to make as much progress towards the goal of satisfying all demands as possible in each epoch.
+        5 - TOTAL_DEMAND_MIN_SWITCH_HOPS - Identical reward to TOTAL_DEMAND, plus a tiny per-hop
+            penalty on flow crossing switch->switch links (e.g. leaf<->spine). Among solutions
+            that finish in the same epoch (the TOTAL_DEMAND term dominates), this makes the
+            solver prefer routes with fewer switch relays -- e.g. a direct leaf hop over a spine
+            detour. The penalty is scaled far below the completion reward so it acts purely as a
+            tie-breaker and never trades completion time for fewer hops.
     """
-    BINARY_USED_EPOCHS = 1 
+    BINARY_USED_EPOCHS = 1
     TOTAL_DEMAND = 2
     PAPER = 3
     ASTAR = 4
+    TOTAL_DEMAND_MIN_SWITCH_HOPS = 5
 
 class Collective(Enum):
     ALLGATHER = 1

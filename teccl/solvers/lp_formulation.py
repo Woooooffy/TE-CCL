@@ -347,7 +347,7 @@ class LPFormulation(BaseFormulation):
         objective = gp.LinExpr(0.0)
         multiplier = pow(10, 2)
 
-        if objective_type == ObjectiveType.TOTAL_DEMAND:
+        if objective_type in (ObjectiveType.TOTAL_DEMAND, ObjectiveType.TOTAL_DEMAND_MIN_SWITCH_HOPS):
             for k in self.epochs:
                 tmp = gp.LinExpr(0.0)
                 for s, d in product(self.nodes, self.nodes):
@@ -370,6 +370,28 @@ class LPFormulation(BaseFormulation):
                         continue
                     objective.add(
                         self.flow[s][i][d][k], 10 * (pow(10, -1) / (self.num_epochs + 1)) * 2)
+
+            if objective_type == ObjectiveType.TOTAL_DEMAND_MIN_SWITCH_HOPS:
+                # Tie-breaker layered on the TOTAL_DEMAND reward above: a tiny positive cost on
+                # every unit of flow crossing a switch->switch link (leaf<->spine here). The
+                # completion reward moves the objective by ~multiplier per epoch, so with GAMMA
+                # this small the solver never delays completion to save hops; it only decides
+                # among equal-makespan solutions, where it now prefers fewer switch relays
+                # (e.g. a direct leaf hop over a spine detour). A direct same-rail cross-node
+                # path uses zero switch->switch links; a spine detour uses two. The LP flow is
+                # per-source aggregated (no chunk index), so the term is summed over sources,
+                # switch-switch links, and epochs only.
+                GAMMA = 1e-4
+                switch_switch_links = [
+                    (i, j)
+                    for i in self.topology.switch_indices
+                    for j in self.topology.switch_indices
+                    if self.topology.capacity[i][j] > 0
+                ]
+                for s in self.sources:
+                    for (i, j) in switch_switch_links:
+                        for k in self.epochs:
+                            objective.add(self.flow[s][i][j][k], GAMMA)
         # Experimental objective that has been removed.
         # elif objective_type == ObjectiveType.EXPERIMENTAL:
         #     objective = gp.LinExpr(0.0)

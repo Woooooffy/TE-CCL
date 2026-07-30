@@ -384,7 +384,7 @@ class AllGatherFormulation(BaseFormulation):
                     self.epoch_used[-1] * demand_total >= tmp, name=f'flows_sum_{k}')
                 objective.add(self.epoch_used[-1])
 
-        if objective_type == ObjectiveType.TOTAL_DEMAND:
+        if objective_type in (ObjectiveType.TOTAL_DEMAND, ObjectiveType.TOTAL_DEMAND_MIN_SWITCH_HOPS):
             # Objective based on total demand: Σ max((Σtotal_demand_k - (Demand-1)), 0)
             # aux_var_obj1 = tmp = Σtotal_demand_k - (Demand-1)
             # aux_var_obj2 = max(aux_var_obj1, 0)
@@ -408,6 +408,27 @@ class AllGatherFormulation(BaseFormulation):
                     [self.aux_var[len(self.aux_var) - 2], 0]), name="obj2_s_%d_i_%d_c_%d_k_%d" % (s, d, c, k))
                 objective.add(
                     self.aux_var[len(self.aux_var) - 1], (-mulitplier))
+
+        if objective_type == ObjectiveType.TOTAL_DEMAND_MIN_SWITCH_HOPS:
+            # Tie-breaker layered on the TOTAL_DEMAND reward above: a tiny positive cost on
+            # every unit of flow crossing a switch->switch link (leaf<->spine here). The
+            # completion reward moves the objective by ~mulitplier per epoch, so with GAMMA
+            # this small the solver never delays completion to save hops; it only decides
+            # *among equal-makespan solutions*, where it now prefers fewer switch relays
+            # (e.g. a direct leaf hop over a spine detour). A direct same-rail cross-node
+            # path uses zero switch->switch links; a spine detour uses two, so it is strictly
+            # penalized. Only the handful of leaf-spine links carry a term, keeping the added
+            # objective size small.
+            GAMMA = 1e-4
+            switch_switch_links = [
+                (i, j)
+                for i in self.topology.switch_indices
+                for j in self.topology.switch_indices
+                if self.topology.capacity[i][j] > 0
+            ]
+            for s, c, k in product(self.sources, self.chunks, self.epochs):
+                for (i, j) in switch_switch_links:
+                    objective.add(self.flow[s][i][j][c][k], GAMMA)
 
         if objective_type == ObjectiveType.PAPER:
             # Objective based on incremental progress
