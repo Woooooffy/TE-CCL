@@ -757,6 +757,35 @@ class LPFormulation(BaseFormulation):
                   f"vol={round(volume, 6)} (already on stack at steps {reentry_steps}) "
                   f"source={source} dest={dest}")
 
+        # Terminus: reaching the source completes the backward path. All of source
+        # `s`'s flow ORIGINATES at s, so s never needs any of its own data delivered
+        # back to it -- any inbound edge to s in this per-source flow is part of a
+        # circulation. The source can therefore have viable inbound edges, which used
+        # to make `len(previous_hops)==0` false; cycle-avoidance then skipped those
+        # cyclic edges and the trace fell through WITHOUT accounting, dropping that
+        # destination's delivery (residue with +net at the source and -net at the
+        # dests). Account the accumulated path here and stop -- never dig back past
+        # the source.
+        if hop == source:
+            if len(path) > 0:
+                this_hop_consumed_volume = min([x[3] for x in path])
+                for i in range(len(path)):
+                    paths = self.account_for_consume(
+                        this_hop_consumed_volume, source, dest, path[i][1], path[i][2], path[i][-1], paths)
+                for c in paths.keys():
+                    if (source, dest, c) not in self.per_chunk_flow_paths.keys():
+                        paths[c] = [x for x in paths[c] if len(x) > 0]
+                        if len(paths[c]) == 0:
+                            continue
+                        self.per_chunk_flow_paths[(source, dest, c)] = [paths[c]]
+                        paths[c] = []
+                    else:
+                        self.per_chunk_flow_paths[(source, dest, c)] += [paths[c]]
+                        paths[c] = []
+            if self._dig_stack:
+                self._dig_stack.pop()
+            return traffic, this_hop_consumed_volume
+
         previous_hops = [x for x in traffic if x[2] == hop and (self.check_if_viable(hop, dest, step, x))]
         previous_hops = sorted(previous_hops, key=lambda x: x[-1], reverse = True)
         old_paths = paths
@@ -839,30 +868,15 @@ class LPFormulation(BaseFormulation):
                                   [2], traffic[index][3] - consumed_volume, traffic[index][4])
             if traffic[index][3] == 0:
                 traffic = [x for x in traffic if x != traffic[index]]
-        if len(previous_hops) == 0:
-            if hop == source:
-                this_hop_consumed_volume = min([x[3] for x in path])
-                for i in range(len(path)):
-                    paths = self.account_for_consume(
-                        this_hop_consumed_volume , source, dest, path[i][1], path[i][2], path[i][-1], paths)
-                for c in paths.keys():
-                    if (source, dest, c) not in self.per_chunk_flow_paths.keys():
-                        paths[c] = [x for x in paths[c] if len(x) > 0]
-                        if len(paths[c]) == 0:
-                            continue
-                        self.per_chunk_flow_paths[(source, dest, c)] = [paths[c]]
-                        paths[c] = []
-                    else:
-                        self.per_chunk_flow_paths[(source, dest, c)] += [paths[c]]
-                        paths[c] = []
-            elif self._dig_debug():
-                # Dead-end at a non-source node: cycle avoidance (or greedy attribution
-                # exhausting the acyclic inflow) means this backward branch could not
-                # reach the source. Attribute nothing (this_hop_consumed_volume stays 0);
-                # the volume committed to this branch remains in traffic as residue and
-                # is reconciled as circulation after the digs.
-                print(f"[dig-debug] dead-end at non-source hop={hop} step={step} "
-                      f"vol={round(volume, 6)} source={source} dest={dest}; leaving residue")
+        if len(previous_hops) == 0 and self._dig_debug():
+            # Dead-end at a non-source node (hop==source is handled at the terminus
+            # check above): cycle avoidance (or greedy attribution exhausting the
+            # acyclic inflow) means this backward branch could not reach the source.
+            # Attribute nothing (this_hop_consumed_volume stays 0); the volume
+            # committed to this branch remains in traffic as residue and is reconciled
+            # as circulation after the digs.
+            print(f"[dig-debug] dead-end at non-source hop={hop} step={step} "
+                  f"vol={round(volume, 6)} source={source} dest={dest}; leaving residue")
 
         # DEBUG: balance the stack push done on entry. The re-entry trace and the
         # per-hop skip logs above read this stack while a dig is in flight.
