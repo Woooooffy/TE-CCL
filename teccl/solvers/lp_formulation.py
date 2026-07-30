@@ -672,68 +672,6 @@ class LPFormulation(BaseFormulation):
                     new_list.append((s, i, j, vol, k))
         return new_list
 
-    # ------------------------------------------------------------------ #
-    # DEBUG instrumentation for the flow decomposition (dig_to_source).   #
-    # All of this is gated on InstanceParams.debug and prints nothing on  #
-    # a clean run. It exists to make the "previous hop not found in       #
-    # traffic list" assert analyzable: it isolates the small cross-epoch  #
-    # circulation that causes the re-entrant dig, and dumps the exact     #
-    # snapshot-vs-live mismatch and the recursion chain when it fails.    #
-    # ------------------------------------------------------------------ #
-    def _dig_debug(self) -> bool:
-        return bool(getattr(self.user_input.instance, "debug", False))
-
-    def detect_cross_epoch_cycles(self, full_flow_list: List[Tuple[int, int, int, float, int]]) -> None:
-        """
-        DEBUG: find directed cycles in the epoch-collapsed, per-source flow graph.
-
-        cancel_flow_cycles() only removes circulations confined to a single
-        (source, epoch). A cycle that spans epochs -- node H sends source s's data
-        at an early epoch and receives (more of) it at a later epoch -- survives.
-        That collapsed-graph cycle is exactly what makes dig_to_source() re-enter
-        the same hop at a lower step and drain a previous_hop out from under the
-        outer loop's stale snapshot (the assert at the top of the loop). Printing
-        these cycles isolates the small offending sub-flow from the full solution,
-        so it can be traced by inspection even on a large instance.
-        """
-        per_source_edges: Dict[int, Dict[Tuple[int, int], List[Tuple[float, int]]]] = defaultdict(
-            lambda: defaultdict(list))
-        for (s, i, j, vol, k) in full_flow_list:
-            if vol > 1e-9:
-                per_source_edges[s][(i, j)].append((vol, k))
-
-        total = 0
-        for s in sorted(per_source_edges.keys()):
-            edge_map = per_source_edges[s]
-            local_adj: Dict[int, List[int]] = defaultdict(list)
-            for (i, j) in edge_map.keys():
-                local_adj[i].append(j)
-            while True:
-                cyc = self._find_cycle(local_adj)
-                if cyc is None:
-                    break
-                total += 1
-                edges = list(zip(cyc[:-1], cyc[1:]))
-                print(f"[dig-debug] CROSS-EPOCH CYCLE (source {s}): "
-                      + " -> ".join(str(n) for n in cyc))
-                for (i, j) in edges:
-                    for (vol, k) in edge_map.get((i, j), []):
-                        ti = "SW" if i in self.topology.switch_indices else "gpu"
-                        tj = "SW" if j in self.topology.switch_indices else "gpu"
-                        print(f"             {i}({ti}) -> {j}({tj})  vol={vol}  epoch={k}")
-                # Remove one edge of this cycle from the search graph so any
-                # additional (edge-disjoint) cycles for the same source surface too.
-                bi, bj = edges[0]
-                local_adj[bi].remove(bj)
-                if not local_adj[bi]:
-                    del local_adj[bi]
-        if total == 0:
-            print("[dig-debug] no cross-epoch cycles in the solved flow "
-                  "(per-source, epoch-collapsed) -- decomposition should not re-enter a hop.")
-        else:
-            print(f"[dig-debug] {total} cross-epoch cycle(s) found -- these are what let "
-                  "dig_to_source re-enter a hop and trip the stale-snapshot assert.")
-
     def dig_to_source(self, hop: int, traffic: List[Tuple[int, int, int, int, float, int]],
                       consumed: Dict[int, Tuple[int, int, float]], source: int, step: int, dest: int,
                       volume: float, path: List[Tuple[int, int, int, float, int]], paths: Dict[int, List[Tuple[int, int, int, int, float, int]]] = {}) -> List[Tuple[int, int, int, int, float, int]]:
@@ -744,48 +682,6 @@ class LPFormulation(BaseFormulation):
         
 
         this_hop_consumed_volume = 0
-        # DEBUG: maintain a root->here recursion stack so a failure can print the
-        # exact chain, and flag when we re-enter a hop already on the stack (the
-        # cross-epoch circulation that causes the stale-snapshot bug).
-        if not hasattr(self, "_dig_stack"):
-            self._dig_stack = []
-        reentry_steps = [st for (h, st, _v) in self._dig_stack if h == hop]
-        self._dig_stack.append((hop, step, volume))
-        if self._dig_debug() and reentry_steps:
-            indent = "  " * (len(self._dig_stack) - 1)
-            print(f"[dig-debug] {indent}RE-ENTRY hop={hop} step={step} "
-                  f"vol={round(volume, 6)} (already on stack at steps {reentry_steps}) "
-                  f"source={source} dest={dest}")
-
-        # Terminus: reaching the source completes the backward path. All of source
-        # `s`'s flow ORIGINATES at s, so s never needs any of its own data delivered
-        # back to it -- any inbound edge to s in this per-source flow is part of a
-        # circulation. The source can therefore have viable inbound edges, which used
-        # to make `len(previous_hops)==0` false; cycle-avoidance then skipped those
-        # cyclic edges and the trace fell through WITHOUT accounting, dropping that
-        # destination's delivery (residue with +net at the source and -net at the
-        # dests). Account the accumulated path here and stop -- never dig back past
-        # the source.
-        if hop == source:
-            if len(path) > 0:
-                this_hop_consumed_volume = min([x[3] for x in path])
-                for i in range(len(path)):
-                    paths = self.account_for_consume(
-                        this_hop_consumed_volume, source, dest, path[i][1], path[i][2], path[i][-1], paths)
-                for c in paths.keys():
-                    if (source, dest, c) not in self.per_chunk_flow_paths.keys():
-                        paths[c] = [x for x in paths[c] if len(x) > 0]
-                        if len(paths[c]) == 0:
-                            continue
-                        self.per_chunk_flow_paths[(source, dest, c)] = [paths[c]]
-                        paths[c] = []
-                    else:
-                        self.per_chunk_flow_paths[(source, dest, c)] += [paths[c]]
-                        paths[c] = []
-            if self._dig_stack:
-                self._dig_stack.pop()
-            return traffic, this_hop_consumed_volume
-
         previous_hops = [x for x in traffic if x[2] == hop and (self.check_if_viable(hop, dest, step, x))]
         previous_hops = sorted(previous_hops, key=lambda x: x[-1], reverse = True)
         old_paths = paths
@@ -793,44 +689,15 @@ class LPFormulation(BaseFormulation):
             paths = old_paths
             if volume == 0:
                 break
-            # Path-local cycle avoidance: never step backward into a node already on
-            # the current root->here trace. In the epoch-collapsed traffic list a
-            # legitimate bidirectional switch link (e.g. a GPU <-> its NVSwitch, used
-            # by two different destinations at different epochs) appears as a 2-cycle;
-            # following it wanders off THIS demand's delivery onto unrelated traffic
-            # and fails to terminate cleanly. One demand's real delivery is a simple
-            # path, so skipping on-stack senders keeps the backtrace on it. Leftover
-            # circulation flow is reconciled and discarded after the digs (see
-            # get_flow_schedule). This is what bounds the recursion.
-            if any(h == each_previous_hop[1] for (h, _st, _v) in self._dig_stack):
-                if self._dig_debug():
-                    print(f"[dig-debug] skip cyclic back-hop {each_previous_hop} "
-                          f"(sender {each_previous_hop[1]} already on trace) "
-                          f"at hop={hop} step={step}")
-                continue
-            # Re-resolve this back-hop against the LIVE traffic list by identity
-            # (source, sender, receiver, epoch) rather than full-tuple equality.
-            # A nested dig that re-entered this same hop through a cross-epoch
-            # circulation may already have spent part or all of this edge, so its
-            # volume field can differ from the entry-snapshot tuple, or the edge
-            # may be gone entirely. Matching on identity + reading the CURRENT
-            # remaining volume mirrors the post-recursion lookup below and replaces
-            # the old stale-snapshot assert. If the edge was fully drained by that
-            # nested dig, its volume was already attributed there, so skip it.
-            stored_traffic = None
+            found = False
             for i in range(len(traffic)):
-                t = traffic[i]
-                if (t[0] == each_previous_hop[0] and t[1] == each_previous_hop[1]
-                        and t[2] == each_previous_hop[2] and t[4] == each_previous_hop[4]):
-                    stored_traffic = t
-                    consume = min(t[3], volume)
+                if traffic[i] == each_previous_hop:
+                    consume = min(traffic[i][3], volume)
+                    stored_traffic = traffic[i]
+                    found = True
                     break
-            if stored_traffic is None:
-                if self._dig_debug():
-                    print(f"[dig-debug] skip drained back-hop {each_previous_hop} "
-                          f"(no longer in live traffic) at hop={hop} step={step}")
-                continue
-
+            assert found, "the previous hop not found in traffic list, must be a bug"
+            
             step = each_previous_hop[-1]
             new_path = copy.deepcopy(path)
             new_path += [(source, each_previous_hop[1], hop, consume, step)]
@@ -840,48 +707,41 @@ class LPFormulation(BaseFormulation):
             traffic, consumed_volume = self.dig_to_source(
                     each_previous_hop[1], traffic, consumed, source, step, dest, consume, new_path, paths)
             
-            # Re-find the same edge by identity (its volume/position may have moved
-            # during the recursion) so we can debit what this back-hop supplied. A
-            # re-entrant dig into this hop can have already drained and removed it.
-            index = -1
             for i in range(len(traffic)):
-                if (traffic[i][0] == stored_traffic[0] and traffic[i][1] == stored_traffic[1]
-                        and traffic[i][2] == stored_traffic[2] and traffic[i][4] == stored_traffic[4]):
-                    index = i
-                    break
+                if traffic[i][0] == stored_traffic[0]:
+                    if traffic[i][1] == stored_traffic[1]:
+                        if traffic[i][2] == stored_traffic[2]:
+                                if traffic[i][4] == stored_traffic[4]:
+                                    index = i
+                                    break
 
             this_hop_consumed_volume += consumed_volume
             if consumed_volume < volume:
                 volume = volume - consumed_volume
             else:
                 volume = 0
-
-            if index == -1:
-                # Already drained and removed by a nested re-entrant dig; the
-                # attribution happened there, so there is nothing left to debit.
-                if self._dig_debug():
-                    print(f"[dig-debug] back-hop {stored_traffic} already removed by a "
-                          f"nested dig; skipping debit at hop={hop} step={step}")
-                continue
-
+           
             traffic[index] = (traffic[index][0], traffic[index][1], traffic[index]
                                   [2], traffic[index][3] - consumed_volume, traffic[index][4])
             if traffic[index][3] == 0:
                 traffic = [x for x in traffic if x != traffic[index]]
-        if len(previous_hops) == 0 and self._dig_debug():
-            # Dead-end at a non-source node (hop==source is handled at the terminus
-            # check above): cycle avoidance (or greedy attribution exhausting the
-            # acyclic inflow) means this backward branch could not reach the source.
-            # Attribute nothing (this_hop_consumed_volume stays 0); the volume
-            # committed to this branch remains in traffic as residue and is reconciled
-            # as circulation after the digs.
-            print(f"[dig-debug] dead-end at non-source hop={hop} step={step} "
-                  f"vol={round(volume, 6)} source={source} dest={dest}; leaving residue")
+        if len(previous_hops) == 0:
+            assert source == hop
+            this_hop_consumed_volume = min([x[3] for x in path])
+            for i in range(len(path)):
+                paths = self.account_for_consume(
+                    this_hop_consumed_volume , source, dest, path[i][1], path[i][2], path[i][-1], paths)
+            for c in paths.keys():
+                if (source, dest, c) not in self.per_chunk_flow_paths.keys():
+                    paths[c] = [x for x in paths[c] if len(x) > 0]
+                    if len(paths[c]) == 0:
+                        continue
+                    self.per_chunk_flow_paths[(source, dest, c)] = [paths[c]]
+                    paths[c] = []
+                else:
+                    self.per_chunk_flow_paths[(source, dest, c)] += [paths[c]]
+                    paths[c] = []
 
-        # DEBUG: balance the stack push done on entry. The re-entry trace and the
-        # per-hop skip logs above read this stack while a dig is in flight.
-        if self._dig_stack:
-            self._dig_stack.pop()
         return traffic, this_hop_consumed_volume
 
     def get_per_chunk_flows(self) -> Dict:
@@ -990,13 +850,6 @@ class LPFormulation(BaseFormulation):
         # it forever (RecursionError). Cancelling it changes no buffer/consume/delivery.
         full_flow_list = self.cancel_flow_cycles(full_flow_list)
 
-        # DEBUG: surface any cross-epoch circulation that survived cancellation --
-        # this is the small structure that makes dig_to_source re-enter a hop and
-        # can trip the stale-snapshot assert. Prints nothing unless debug is on.
-        self._dig_stack = []
-        if self._dig_debug():
-            self.detect_cross_epoch_cycles(full_flow_list)
-
         # Sparse per-chunk flow container (see the flow-cube note in
         # initialize_variables). The dense num_nodes^3 x num_chunks x num_epochs
         # array this used to be is ~60 GB at 300 nodes / 23 chunks and is almost
@@ -1040,31 +893,10 @@ class LPFormulation(BaseFormulation):
             traffic = [x for x in traffic if x[3] > 1e-5]
 
             if len(traffic) != 0:
-                # With path-local cycle avoidance the backward trace extracts only the
-                # acyclic path-flow, so any leftover is -- by the flow-decomposition
-                # theorem -- pure circulation: net-zero in/out at every node, delivering
-                # nothing, hence safe to drop. Verify that before discarding. A node with
-                # nonzero net flow in the residue means real demand went untraced (a
-                # genuine bug, e.g. greedy attribution dead-ended on live delivery), so
-                # keep the hard failure for that case.
-                net = defaultdict(float)
-                for (s, i, j, vol, k) in traffic:
-                    net[i] += vol   # flow out of i
-                    net[j] -= vol   # flow into j
-                max_net = max((abs(v) for v in net.values()), default=0.0)
-                resid_vol = sum(x[3] for x in traffic)
-                if max_net > 1e-4:
-                    logging.warning(
-                        "there is a potential bug! there is traffic unaccounted for")
-                    print(f"source {each_source}: residue is NOT a pure circulation "
-                          f"(max |node net| = {max_net}); {len(traffic)} edges, "
-                          f"total volume {resid_vol}")
-                    print(traffic)
-                    assert 0, "potential bug, check code"
-                logging.info(
-                    f"source {each_source}: discarded circulation residue of "
-                    f"{len(traffic)} edges (total volume {resid_vol:.6f}, "
-                    f"max |node net| {max_net:.2e})")
+                logging.warning(
+                    "there is a potential bug! there is traffic unaccounted for")
+                print(traffic)
+                assert 0, "potential bug, check code"
 
         per_chunk_flows = self.get_per_chunk_flows()
         chunk_str_paths = self.chunk_flow_paths_to_string()
