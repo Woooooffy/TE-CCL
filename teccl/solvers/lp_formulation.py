@@ -764,6 +764,21 @@ class LPFormulation(BaseFormulation):
             paths = old_paths
             if volume == 0:
                 break
+            # Path-local cycle avoidance: never step backward into a node already on
+            # the current root->here trace. In the epoch-collapsed traffic list a
+            # legitimate bidirectional switch link (e.g. a GPU <-> its NVSwitch, used
+            # by two different destinations at different epochs) appears as a 2-cycle;
+            # following it wanders off THIS demand's delivery onto unrelated traffic
+            # and fails to terminate cleanly. One demand's real delivery is a simple
+            # path, so skipping on-stack senders keeps the backtrace on it. Leftover
+            # circulation flow is reconciled and discarded after the digs (see
+            # get_flow_schedule). This is what bounds the recursion.
+            if any(h == each_previous_hop[1] for (h, _st, _v) in self._dig_stack):
+                if self._dig_debug():
+                    print(f"[dig-debug] skip cyclic back-hop {each_previous_hop} "
+                          f"(sender {each_previous_hop[1]} already on trace) "
+                          f"at hop={hop} step={step}")
+                continue
             # Re-resolve this back-hop against the LIVE traffic list by identity
             # (source, sender, receiver, epoch) rather than full-tuple equality.
             # A nested dig that re-entered this same hop through a cross-epoch
@@ -825,21 +840,29 @@ class LPFormulation(BaseFormulation):
             if traffic[index][3] == 0:
                 traffic = [x for x in traffic if x != traffic[index]]
         if len(previous_hops) == 0:
-            assert source == hop
-            this_hop_consumed_volume = min([x[3] for x in path])
-            for i in range(len(path)):
-                paths = self.account_for_consume(
-                    this_hop_consumed_volume , source, dest, path[i][1], path[i][2], path[i][-1], paths)
-            for c in paths.keys():
-                if (source, dest, c) not in self.per_chunk_flow_paths.keys():
-                    paths[c] = [x for x in paths[c] if len(x) > 0]
-                    if len(paths[c]) == 0:
-                        continue
-                    self.per_chunk_flow_paths[(source, dest, c)] = [paths[c]]
-                    paths[c] = []
-                else:
-                    self.per_chunk_flow_paths[(source, dest, c)] += [paths[c]]
-                    paths[c] = []
+            if hop == source:
+                this_hop_consumed_volume = min([x[3] for x in path])
+                for i in range(len(path)):
+                    paths = self.account_for_consume(
+                        this_hop_consumed_volume , source, dest, path[i][1], path[i][2], path[i][-1], paths)
+                for c in paths.keys():
+                    if (source, dest, c) not in self.per_chunk_flow_paths.keys():
+                        paths[c] = [x for x in paths[c] if len(x) > 0]
+                        if len(paths[c]) == 0:
+                            continue
+                        self.per_chunk_flow_paths[(source, dest, c)] = [paths[c]]
+                        paths[c] = []
+                    else:
+                        self.per_chunk_flow_paths[(source, dest, c)] += [paths[c]]
+                        paths[c] = []
+            elif self._dig_debug():
+                # Dead-end at a non-source node: cycle avoidance (or greedy attribution
+                # exhausting the acyclic inflow) means this backward branch could not
+                # reach the source. Attribute nothing (this_hop_consumed_volume stays 0);
+                # the volume committed to this branch remains in traffic as residue and
+                # is reconciled as circulation after the digs.
+                print(f"[dig-debug] dead-end at non-source hop={hop} step={step} "
+                      f"vol={round(volume, 6)} source={source} dest={dest}; leaving residue")
 
         # DEBUG: balance the stack push done on entry. The re-entry trace and the
         # per-hop skip logs above read this stack while a dig is in flight.
@@ -1003,10 +1026,31 @@ class LPFormulation(BaseFormulation):
             traffic = [x for x in traffic if x[3] > 1e-5]
 
             if len(traffic) != 0:
-                logging.warning(
-                    "there is a potential bug! there is traffic unaccounted for")
-                print(traffic)
-                assert 0, "potential bug, check code"
+                # With path-local cycle avoidance the backward trace extracts only the
+                # acyclic path-flow, so any leftover is -- by the flow-decomposition
+                # theorem -- pure circulation: net-zero in/out at every node, delivering
+                # nothing, hence safe to drop. Verify that before discarding. A node with
+                # nonzero net flow in the residue means real demand went untraced (a
+                # genuine bug, e.g. greedy attribution dead-ended on live delivery), so
+                # keep the hard failure for that case.
+                net = defaultdict(float)
+                for (s, i, j, vol, k) in traffic:
+                    net[i] += vol   # flow out of i
+                    net[j] -= vol   # flow into j
+                max_net = max((abs(v) for v in net.values()), default=0.0)
+                resid_vol = sum(x[3] for x in traffic)
+                if max_net > 1e-4:
+                    logging.warning(
+                        "there is a potential bug! there is traffic unaccounted for")
+                    print(f"source {each_source}: residue is NOT a pure circulation "
+                          f"(max |node net| = {max_net}); {len(traffic)} edges, "
+                          f"total volume {resid_vol}")
+                    print(traffic)
+                    assert 0, "potential bug, check code"
+                logging.info(
+                    f"source {each_source}: discarded circulation residue of "
+                    f"{len(traffic)} edges (total volume {resid_vol:.6f}, "
+                    f"max |node net| {max_net:.2e})")
 
         per_chunk_flows = self.get_per_chunk_flows()
         chunk_str_paths = self.chunk_flow_paths_to_string()
