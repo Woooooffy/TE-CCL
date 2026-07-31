@@ -460,6 +460,7 @@ class AllGatherFormulation(BaseFormulation):
         self.destination_constraints()
         self.node_constraints(previous_buffers)
         self.capacity_constraints()
+        self.switch_no_same_epoch_cycle_constraints()
         if use_one_less_epoch:
             self.use_one_less_epoch()
         if self.user_input.instance.symmetry:
@@ -795,8 +796,60 @@ class AllGatherFormulation(BaseFormulation):
                         f"Demand not satisfied for s_{s}, i_{i}, c_{c}")
         return max(satisfied_epochs.values())
 
+    def diagnose_switch_phantom_cycles(self) -> None:
+        """
+            Post-solve diagnostic that PROVES/locates same-epoch switch phantom cycles in the
+            raw solved flow (not the pruned schedule). For each (source, chunk, epoch) it finds
+            switch<->switch links carrying the chunk BOTH directions in the same epoch
+            (flow[s][a][b][c][k]==1 AND flow[s][b][a][c][k]==1) -- a circulation the switch
+            conservation constraint (out==in) satisfies with no GPU grounding -- and, for each
+            such source, prints whether/when the chunk ever actually entered the switch fabric
+            via a GPU->switch egress. "NO GPU->switch egress" is the smoking gun: the mesh flow
+            for that source is conjured out of nothing. Reads model vars only; safe to call
+            once a solution exists.
+        """
+        switches = set(self.topology.switch_indices)
+        gpu_to_switch = defaultdict(list)          # (s,c) -> [(gpu, switch, k)]
+        ss_edges = defaultdict(set)                # (s,c,k) -> {(a,b) switch->switch}
+        for v in self.model.getVars():
+            if not v.varName.startswith('flow_') or 'future' in v.varName or v.x <= 0.9:
+                continue
+            parts = v.varName.split('_')
+            if len(parts) != 6:
+                continue
+            _, s, i, j, c, k = (int(p) if idx else p for idx, p in enumerate(parts))
+            if i not in switches and j in switches:
+                gpu_to_switch[(s, c)].append((i, j, k))
+            elif i in switches and j in switches:
+                ss_edges[(s, c, k)].add((i, j))
+
+        phantom_sources = set()
+        cycle_count = 0
+        for (s, c, k), edges in sorted(ss_edges.items()):
+            for (a, b) in edges:
+                if a < b and (b, a) in edges:
+                    cycle_count += 1
+                    phantom_sources.add((s, c))
+                    logging.warning(
+                        f"[PHANTOM] same-epoch switch cycle: source {s} chunk {c} epoch {k}: "
+                        f"flow[{a}->{b}]=1 AND flow[{b}->{a}]=1 (conservation satisfied circularly)")
+        for (s, c) in sorted(phantom_sources):
+            egress = sorted(gpu_to_switch.get((s, c), []), key=lambda x: x[2])
+            if egress:
+                logging.warning(
+                    f"[PHANTOM] source {s} chunk {c} GPU->switch egress (only real way into the mesh): "
+                    + ", ".join(f"{g}->{sw}@ep{k}" for (g, sw, k) in egress))
+            else:
+                logging.warning(
+                    f"[PHANTOM] source {s} chunk {c}: NO GPU->switch egress ANYWHERE -> the mesh flow "
+                    f"is pure circulation, conjured with no real origin at the source GPU")
+        logging.warning(
+            f"[PHANTOM] summary: {cycle_count} same-epoch switch 2-cycle(s) across "
+            f"{len(phantom_sources)} (source,chunk) pair(s)")
+
     def get_schedule(self) -> Tuple[List[Tuple[int, int, int, int, int]], Dict]:
         if self.model.SolCount > 0:
+            self.diagnose_switch_phantom_cycles()
             if not self.required_flows:
                 self.required_flows, self.flows_str_info = self.dfs_remove_unnecessary_flows(
                     astar=False)
