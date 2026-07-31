@@ -560,12 +560,26 @@ class AllGatherFormulation(BaseFormulation):
         correct_k = max(demand_met_epoch.values())
         return (list_of_sends, demand_met_epoch, buffers, correct_k)
 
-    def find_flow(self, flows: Set[Tuple[int, int, int, int, int]], s: int, d: int, c: int, k: int, flow_memoization: Dict) -> Tuple[int, int, int, int, int]:
+    def find_flow(self, flows: Set[Tuple[int, int, int, int, int]], s: int, d: int, c: int, k: int, flow_memoization: Dict, avoid: Set[int] = frozenset()) -> Tuple[int, int, int, int, int]:
         """
             Find the flow (sending node) that causes the node d to have the chunk by epoch k.
+
+            avoid: the set of nodes already on the current back-trace path. A same-epoch
+            switch circulation -- e.g. a wasteful reverse edge that coexists with the
+            legitimate forward edge, both feasible under cut-through switches -- would
+            otherwise make the caller follow the loop forever. Preferring a predecessor
+            that is not already on the path routes around the wasteful edge (which, never
+            being traced, is dropped by dfs_remove_unnecessary_flows as an unnecessary
+            flow) and continues toward the real source. Returns None when every viable
+            predecessor is already on the path, i.e. the solution delivers this chunk to d
+            only via a circulation with no acyclic route back to the source.
         """
         if (s, d, c, k) in flow_memoization:
-            return flow_memoization[(s, d, c, k)]
+            cached = flow_memoization[(s, d, c, k)]
+            if cached is None or cached[1] not in avoid:
+                return cached
+            # The natural (unconstrained) choice is itself on the path; fall through and
+            # re-pick around it below without disturbing the memo.
         viable_flows = []
         # Loop over the neighbors to find such a feasible flow.
         for n in self.nodes:
@@ -588,11 +602,21 @@ class AllGatherFormulation(BaseFormulation):
                 viable_flows) == 1, f"There should only be one viable flow for demand {s} {d} {c} but have {len(viable_flows)}"
         # If d is a switch, then solver can pick a solution where the switch receives the same chunk by same epoch from multiple nodes.
         #  We only need one such flow if switch is copying the chunk.
-        closest_flow = min(viable_flows, key=lambda x: x[4])
-        flow_memoization[(s, d, c, k)] = closest_flow
-        if not self.user_input.instance.switch_copy and d in self.topology.switch_indices:
-            # we remove the chosen flow from the set of flows so that we don't pick it again as there is no copy.
-            flows.remove(closest_flow)
+        natural_flow = min(viable_flows, key=lambda x: x[4]) if viable_flows else None
+        # Prefer a predecessor that is not already on the current path so the trace skips
+        # wasteful same-epoch cycle backedges; None if every predecessor is already visited.
+        candidates = [f for f in viable_flows if f[1] not in avoid]
+        if not candidates:
+            return None
+        closest_flow = min(candidates, key=lambda x: x[4])
+        # Only memoize / consume the single copy when we made the unconstrained natural
+        # choice, so the memo and the no-copy single-copy accounting stay exactly as before
+        # for the common (no-cycle) case; the rare cycle-avoiding re-pick is not cached.
+        if closest_flow == natural_flow:
+            flow_memoization[(s, d, c, k)] = closest_flow
+            if not self.user_input.instance.switch_copy and d in self.topology.switch_indices:
+                # we remove the chosen flow from the set of flows so that we don't pick it again as there is no copy.
+                flows.remove(closest_flow)
         return closest_flow
 
     def chunk_flow_path_to_string(self, chunk_path: List[Tuple[int, int, int, int, int]]) -> Tuple[int, List[str]]:
@@ -622,74 +646,6 @@ class AllGatherFormulation(BaseFormulation):
             start = next = next + 1
         return path
 
-    @staticmethod
-    def _find_cycle(adj: Dict[int, List[int]]) -> List[int]:
-        """
-        Return a directed cycle in `adj` as a node list [n0, ..., n0], or None if the
-        graph is acyclic. Recursive DFS is fine: each (source, chunk, epoch) subgraph
-        has at most num_nodes vertices. (Mirror of lp_formulation._find_cycle.)
-        """
-        WHITE, GRAY, BLACK = 0, 1, 2
-        color = defaultdict(int)  # defaults to WHITE
-        stack: List[int] = []
-
-        def visit(u: int):
-            color[u] = GRAY
-            stack.append(u)
-            for v in adj.get(u, []):
-                if color[v] == GRAY:
-                    # found a back edge: the cycle is the tail of the stack from v.
-                    return stack[stack.index(v):] + [v]
-                if color[v] == WHITE:
-                    found = visit(v)
-                    if found is not None:
-                        return found
-            stack.pop()
-            color[u] = BLACK
-            return None
-
-        for node in list(adj.keys()):
-            if color[node] == WHITE:
-                found = visit(node)
-                if found is not None:
-                    return found
-        return None
-
-    def cancel_same_epoch_cycles(self, flows: List[Tuple[int, int, int, int, int]]
-                                 ) -> List[Tuple[int, int, int, int, int]]:
-        """
-        MILP analog of lp_formulation.cancel_flow_cycles for the binary per-chunk flow
-        set. The time-expanded MILP flow graph is a DAG across epochs (GPU forwarding
-        advances the epoch), so the only directed cycles are same-epoch cut-through
-        circulations -- confined to a single (source, chunk, epoch) group, since a
-        cut-through leg keeps the stored epoch constant (find_flow uses beta_num_back=-1).
-        Such a cycle adds zero to every node's net divergence, so it delivers nothing;
-        dropping its edges preserves every buffer/consume/delivery and is exactly what
-        stops dfs_remove_unnecessary_flows' back-trace from looping forever. Unlike the
-        continuous LP (which subtracts a bottleneck volume), flows here are binary, so an
-        edge on a directed cycle is pure circulation and is removed whole. Each entry is
-        (source, sender, receiver, chunk, epoch).
-        """
-        groups: Dict[Tuple[int, int, int], Set[Tuple[int, int]]] = defaultdict(set)
-        for (s, i, j, c, k) in flows:
-            groups[(s, c, k)].add((i, j))
-        removed: Set[Tuple[int, int, int, int, int]] = set()
-        for (s, c, k), edges in groups.items():
-            while True:
-                adj: Dict[int, List[int]] = defaultdict(list)
-                for (i, j) in edges:
-                    adj[i].append(j)
-                cycle = self._find_cycle(adj)
-                if cycle is None:
-                    break
-                for e in zip(cycle[:-1], cycle[1:]):
-                    edges.discard(e)
-                    removed.add((s, e[0], e[1], c, k))
-        if removed:
-            logging.debug(
-                f'cancel_same_epoch_cycles removed {len(removed)} circulating flow edges')
-        return [f for f in flows if f not in removed]
-
     def dfs_remove_unnecessary_flows(self, astar: bool) -> Tuple[List[Tuple[int, int, int, int, int]], Dict]:
         """
             This function removes the unnecessary flows from the list of flows.
@@ -711,11 +667,6 @@ class AllGatherFormulation(BaseFormulation):
             flows_str_info['7-Flows'] = [
                 f"Chunk {c} from {s} traveled over {i}->{j} in epoch {k}" for s, i, j, c, k in flows]
             return flows, flows_str_info
-        # Remove pure same-epoch circulations before tracing paths. Cut-through
-        # switches keep the epoch constant across a hop, so a degenerate optimal
-        # solution can contain a loop the back-trace below would follow forever.
-        # This is the MILP twin of lp_formulation.cancel_flow_cycles().
-        flows = self.cancel_same_epoch_cycles(flows)
         required_flows = set()
         required_flows_str = set()
         flows = set(flows)
@@ -738,26 +689,26 @@ class AllGatherFormulation(BaseFormulation):
             my_path = list()
             # We use demand_met as the last step may not have a buffer variable.
             demand_met_k = k = demand_met_epoch[(s, d, c)]
-            # Find the flow that causes the node d to have the chunk by epoch k.
+            # Find the flow that causes the node d to have the chunk by epoch k. d is the
+            # GPU destination, so there is exactly one viable flow (asserted in find_flow).
             closest_flow = self.find_flow(flows, s, d, c, k, flow_memoization)
-            required_flows.add(closest_flow)
             my_path.append(closest_flow)
-            #  Trace the path to the source node.
-            # Defensive backstop: cancel_same_epoch_cycles() above should have removed
-            # every same-epoch loop, but if a degeneracy it does not anticipate slips
-            # through, a visited-set on (sending_node, k) makes the trace fail loudly
-            # instead of spinning forever (the original failure mode, teccl-1239952).
-            visited_hops: Set[Tuple[int, int]] = set()
+            # Trace the path back to the source node. `visited` holds the nodes already on
+            # this path; we hand it to find_flow so the trace never follows a wasteful
+            # same-epoch cycle backedge -- that edge, never traced, is then dropped as an
+            # unnecessary flow (which is the whole point of this pass). This replaces the
+            # earlier (unsound) whole-cycle removal: with binary flows a legitimate forward
+            # edge and a wasteful reverse edge form one 2-cycle, and removing the cycle
+            # would delete the legit edge too; steering the trace around it instead keeps
+            # the real path and prunes only the wasteful send.
+            visited = {d}
+            trace_ok = True
             while True:
                 sending_node = closest_flow[1]
                 if sending_node == s:
                     # we reached the chunk source node
                     break
-                assert (sending_node, closest_flow[4]) not in visited_hops, (
-                    f"Cycle in schedule back-trace for demand s_{s} d_{d} c_{c} at "
-                    f"node {sending_node} epoch {closest_flow[4]}; "
-                    f"cancel_same_epoch_cycles missed a circulation")
-                visited_hops.add((sending_node, closest_flow[4]))
+                visited.add(sending_node)
                 if sending_node not in self.topology.switch_indices:
                     # If the sending node is not a switch, then the epoch in which it received the chunk is given by buffer.
                     if (s, sending_node, c) not in buffers:
@@ -771,9 +722,23 @@ class AllGatherFormulation(BaseFormulation):
                     # arrival epoch per incoming link's type (store-and-forward vs. cut-through).
                     k = closest_flow[4] - 1
                 closest_flow = self.find_flow(
-                    flows, s, sending_node, c, k, flow_memoization)
-                required_flows.add(closest_flow)
+                    flows, s, sending_node, c, k, flow_memoization, avoid=visited)
+                if closest_flow is None:
+                    # Every predecessor of sending_node is already on this path: the solver
+                    # solution delivers this demand only via a same-epoch circulation with no
+                    # acyclic route back to the source (a degenerate/suboptimal artifact --
+                    # e.g. a phantom switch cycle). Skip this demand instead of hanging or
+                    # crashing; the flows already collected for other demands are unaffected.
+                    logging.warning(
+                        f"Could not trace demand s_{s} d_{d} c_{c} back to source past node "
+                        f"{sending_node} (cyclic flow with no acyclic path to source); skipping.")
+                    trace_ok = False
+                    break
                 my_path.append(closest_flow)
+            if not trace_ok:
+                continue
+            for f in my_path:
+                required_flows.add(f)
             chunk_str_path = self.chunk_flow_path_to_string(my_path)
             chunk_paths[f"Demand at {d} for chunk {c} from {s} met by epoch {demand_met_k}"] = [
                 x[1] for x in chunk_str_path]
