@@ -460,7 +460,6 @@ class AllGatherFormulation(BaseFormulation):
         self.destination_constraints()
         self.node_constraints(previous_buffers)
         self.capacity_constraints()
-        self.switch_no_same_epoch_cycle_constraints()
         if use_one_less_epoch:
             self.use_one_less_epoch()
         if self.user_input.instance.symmetry:
