@@ -560,32 +560,25 @@ class AllGatherFormulation(BaseFormulation):
         correct_k = max(demand_met_epoch.values())
         return (list_of_sends, demand_met_epoch, buffers, correct_k)
 
-    def find_flow(self, flows: Set[Tuple[int, int, int, int, int]], s: int, d: int, c: int, k: int, flow_memoization: Dict, avoid: Set[Tuple[int, int]] = frozenset()) -> Tuple[int, int, int, int, int]:
+    def get_viable_predecessors(self, flows: Set[Tuple[int, int, int, int, int]], s: int, d: int, c: int, k: int, pred_memo: Dict) -> List[Tuple[int, int, int, int, int]]:
         """
-            Find the flow (sending node) that causes the node d to have the chunk by epoch k.
+            Return every flow that could have delivered chunk (s, c) to node d by epoch k,
+            i.e. all (s, n, d, c, k') in `flows` where n->d with the epoch offset implied by
+            the link type (propagation alpha, per-hop beta, and cut-through switch legs).
+            Sorted by send epoch (earliest first) so the DFS in _dfs_trace_to_source tries
+            the earliest-arriving predecessor first (mirrors the old greedy min-epoch pick).
 
-            avoid: the set of (node, send_epoch) pairs already on the current back-trace
-            path. In the time-expanded flow graph a vertex is a (node, epoch); GPU
-            store-and-forward strictly advances the epoch, so the ONLY directed cycles are
-            same-epoch cut-through switch circulations (e.g. a wasteful reverse switch edge
-            coexisting with the legitimate forward edge). Excluding a predecessor whose
-            (node, send_epoch) is already on the path breaks exactly those zero-time loops
-            -- and nothing else: a node legitimately revisited at a DIFFERENT epoch (which
-            is not a cycle, since back-tracing walks epochs strictly downward and always
-            terminates) is still allowed. The skipped same-epoch backedge, never traced, is
-            dropped by dfs_remove_unnecessary_flows as an unnecessary flow. Returns None
-            only when every viable predecessor would revisit a same-epoch vertex, i.e. the
-            solution delivers this chunk to d only via a same-epoch circulation with no
-            acyclic route back to the source.
+            Memoized on (s, d, c, k): the result is a pure function of `flows` and the query,
+            independent of any back-trace path, so caching is sound. NOTE: the no-copy switch
+            path in dfs_remove_unnecessary_flows mutates `flows` (removes a switch's single
+            copy once committed); it must clear pred_memo when it does so.
         """
-        if (s, d, c, k) in flow_memoization:
-            cached = flow_memoization[(s, d, c, k)]
-            if cached is None or (cached[1], cached[4]) not in avoid:
-                return cached
-            # The natural (unconstrained) choice is itself on the path; fall through and
-            # re-pick around it below without disturbing the memo.
+        key = (s, d, c, k)
+        cached = pred_memo.get(key)
+        if cached is not None:
+            return cached
         viable_flows = []
-        # Loop over the neighbors to find such a feasible flow.
+        # Loop over the neighbors to find every feasible incoming flow.
         for n in self.nodes:
             if self.topology.capacity[n][d] <= 0:
                 continue
@@ -601,28 +594,57 @@ class AllGatherFormulation(BaseFormulation):
             expected_flow = (s, n, d, c, k - alpha_num_back - beta_num_back)
             if expected_flow in flows:
                 viable_flows.append(expected_flow)
-        if d not in self.topology.switch_indices:
-            assert len(
-                viable_flows) == 1, f"There should only be one viable flow for demand {s} {d} {c} but have {len(viable_flows)}"
-        # If d is a switch, then solver can pick a solution where the switch receives the same chunk by same epoch from multiple nodes.
-        #  We only need one such flow if switch is copying the chunk.
-        natural_flow = min(viable_flows, key=lambda x: x[4]) if viable_flows else None
-        # Prefer a predecessor that does not revisit a same-epoch vertex already on the path
-        # so the trace skips wasteful same-epoch cycle backedges (but still allows a node
-        # revisited at a different epoch); None if every predecessor revisits one.
-        candidates = [f for f in viable_flows if (f[1], f[4]) not in avoid]
-        if not candidates:
+        viable_flows.sort(key=lambda x: x[4])
+        pred_memo[key] = viable_flows
+        return viable_flows
+
+    def _dfs_trace_to_source(self, flows: Set[Tuple[int, int, int, int, int]], s: int, node: int, c: int, k: int,
+                             visited: frozenset, pred_memo: Dict, buffers: Dict, budget: List[int]
+                             ) -> List[Tuple[int, int, int, int, int]]:
+        """
+            Trace how `node` received chunk (s, c) by epoch k back to the source, returning
+            the list of flows [flow_into_node, ..., flow_from_source] or None if there is no
+            acyclic route. This is a depth-first search WITH BACKTRACKING: when a switch has
+            several viable predecessors (common under switch_copy) the greedy min-epoch pick
+            may dead-end at a cut-through top-switch mesh even though a real predecessor
+            reaches the source; on a dead end we try the next predecessor instead of dropping
+            the whole demand.
+
+            `visited` holds the (node, send_epoch) vertices already on the current path. In
+            the time-expanded graph GPU forwarding strictly advances the epoch, so the only
+            cycles are same-epoch cut-through loops; excluding a predecessor whose
+            (node, send_epoch) is already visited breaks exactly those zero-time loops while
+            still allowing a node revisited at a DIFFERENT epoch (not a cycle). This also
+            bounds recursion: every step consumes a distinct (node, epoch), so depth is at
+            most num_nodes * num_epochs; `budget` caps total node expansions to keep a
+            pathological (exponential) search from running away.
+        """
+        if budget[0] <= 0:
             return None
-        closest_flow = min(candidates, key=lambda x: x[4])
-        # Only memoize / consume the single copy when we made the unconstrained natural
-        # choice, so the memo and the no-copy single-copy accounting stay exactly as before
-        # for the common (no-cycle) case; the rare cycle-avoiding re-pick is not cached.
-        if closest_flow == natural_flow:
-            flow_memoization[(s, d, c, k)] = closest_flow
-            if not self.user_input.instance.switch_copy and d in self.topology.switch_indices:
-                # we remove the chosen flow from the set of flows so that we don't pick it again as there is no copy.
-                flows.remove(closest_flow)
-        return closest_flow
+        budget[0] -= 1
+        for f in self.get_viable_predecessors(flows, s, node, c, k, pred_memo):
+            pred = f[1]
+            if (pred, f[4]) in visited:
+                # picking f would revisit a same-epoch vertex -> a zero-time cycle; skip it.
+                continue
+            if pred == s:
+                # reached the chunk source node.
+                return [f]
+            if pred not in self.topology.switch_indices:
+                # A GPU relays out of its buffer; the epoch it received the chunk is given by
+                # buffer. Without a buffer var this branch can't be continued -> try the next.
+                if (s, pred, c) not in buffers:
+                    continue
+                nk = buffers[(s, pred, c)] - 1
+            else:
+                # A switch's upstream arrival epoch is one before its own outgoing send epoch;
+                # get_viable_predecessors resolves the exact offset per incoming link type.
+                nk = f[4] - 1
+            sub = self._dfs_trace_to_source(
+                flows, s, pred, c, nk, visited | {(pred, f[4])}, pred_memo, buffers, budget)
+            if sub is not None:
+                return [f] + sub
+        return None
 
     def chunk_flow_path_to_string(self, chunk_path: List[Tuple[int, int, int, int, int]]) -> Tuple[int, List[str]]:
         """
@@ -678,8 +700,9 @@ class AllGatherFormulation(BaseFormulation):
         chunk_paths = {}
         demand_met_str = defaultdict(
             lambda: defaultdict(lambda: defaultdict(float)))
-        # (s, d, c, k) -> (s, i, j, c, k). This is used to memoize the flow that causes the node d to have the chunk by epoch k.
-        flow_memoization = {}
+        # (s, d, c, k) -> [(s, i, d, c, k'), ...]. Memoizes the viable incoming flows that
+        # could have delivered chunk (s, c) to d by epoch k (a pure function of `flows`).
+        pred_memo = {}
         for s, d, c in product(self.nodes, self.nodes, self.chunks):
             if not self.demand[s][d][c]:
                 # If the node d did not request the chunk s c, then we can skip it.
@@ -691,62 +714,44 @@ class AllGatherFormulation(BaseFormulation):
                 continue
             demand_met_str[f"GPU {d}"][f"GPU {s}"][f"Chunk {c}"] = self.epoch_duration * (
                 demand_met_epoch[(s, d, c)] + 1)
-            my_path = list()
             # We use demand_met as the last step may not have a buffer variable.
-            demand_met_k = k = demand_met_epoch[(s, d, c)]
-            # Find the flow that causes the node d to have the chunk by epoch k. d is the
-            # GPU destination, so there is exactly one viable flow (asserted in find_flow).
-            closest_flow = self.find_flow(flows, s, d, c, k, flow_memoization)
-            my_path.append(closest_flow)
-            # Trace the path back to the source node. `visited` holds the (node, send_epoch)
-            # vertices already on this path; we hand it to find_flow so the trace never
-            # follows a same-epoch cut-through cycle backedge -- that edge, never traced, is
-            # then dropped as an unnecessary flow (the whole point of this pass). Keying on
-            # (node, epoch) rather than node alone guards ONLY the zero-time same-epoch loops
-            # that can hang the trace; a node legitimately revisited at a different epoch is
-            # still allowed. This replaces the earlier (unsound) whole-cycle removal: with
-            # binary flows a legitimate forward edge and a wasteful reverse edge form one
-            # 2-cycle, and removing the cycle would delete the legit edge too; steering the
-            # trace around it instead keeps the real path and prunes only the wasteful send.
-            visited = set()
-            trace_ok = True
-            while True:
-                sending_node = closest_flow[1]
-                if sending_node == s:
-                    # we reached the chunk source node
-                    break
-                # closest_flow=(s,i,j,c,k): sending_node i is active (sends) at epoch closest_flow[4].
-                visited.add((sending_node, closest_flow[4]))
-                if sending_node not in self.topology.switch_indices:
-                    # If the sending node is not a switch, then the epoch in which it received the chunk is given by buffer.
-                    if (s, sending_node, c) not in buffers:
-                        logging.error(
-                            f"Buffer not found for s_{s}, sending_node_{sending_node}, c_{c}")
-                        break
-                    k = buffers[(s, sending_node, c)] - 1
-                else:
-                    # If the sending node is a switch, k is the epoch index find_flow expects (one less
-                    # than the switch's own outgoing send epoch); find_flow resolves the actual upstream
-                    # arrival epoch per incoming link's type (store-and-forward vs. cut-through).
-                    k = closest_flow[4] - 1
-                closest_flow = self.find_flow(
-                    flows, s, sending_node, c, k, flow_memoization, avoid=visited)
-                if closest_flow is None:
-                    # Every predecessor of sending_node is already on this path: the solver
-                    # solution delivers this demand only via a same-epoch circulation with no
-                    # acyclic route back to the source (a degenerate/suboptimal artifact --
-                    # e.g. a phantom switch cycle). Skip this demand instead of hanging or
-                    # crashing; the flows already collected for other demands are unaffected.
-                    logging.warning(
-                        f"Could not trace demand s_{s} d_{d} c_{c} back to source past node "
-                        f"{sending_node} (cyclic flow with no acyclic path to source); skipping.")
-                    trace_ok = False
-                    break
-                my_path.append(closest_flow)
-            if not trace_ok:
+            demand_met_k = demand_met_epoch[(s, d, c)]
+            # Trace the chunk's delivery back to the source with a backtracking DFS. It follows
+            # only real hops and, keying its visited set on (node, epoch), never follows a
+            # same-epoch cut-through cycle backedge -- that edge, never traced, is then dropped
+            # as an unnecessary flow (the whole point of this pass). Backtracking matters under
+            # switch_copy: a switch (esp. a cut-through top-switch mesh) can have several viable
+            # predecessors, and the earliest one may dead-end while another reaches the source;
+            # on a dead end the DFS backs up and tries the next instead of dropping the demand.
+            # A budget bounds the (worst-case exponential) search. This supersedes the earlier
+            # unsound whole-cycle removal: with binary flows a legit forward edge and a wasteful
+            # reverse edge form one 2-cycle, so removing the cycle would delete the legit edge.
+            budget = [50 * len(self.nodes) * (self.num_epochs + 1)]
+            my_path = self._dfs_trace_to_source(
+                flows, s, d, c, demand_met_k, frozenset(), pred_memo, buffers, budget)
+            if my_path is None:
+                # No acyclic route to source: the solver delivers this demand only via a
+                # same-epoch circulation (a phantom cut-through switch cycle -- a formulation
+                # artifact), or the search budget was exhausted. Skip this demand instead of
+                # hanging/crashing; flows collected for other demands are unaffected.
+                logging.warning(
+                    f"Could not trace demand s_{s} d_{d} c_{c} back to source "
+                    f"(no acyclic path -- likely a same-epoch switch circulation); skipping.")
                 continue
             for f in my_path:
                 required_flows.add(f)
+            # No-copy: a switch relays a single copy, so once a committed path consumes a flow
+            # INTO a switch, remove it so another demand's trace can't reuse that same copy;
+            # mutating `flows` invalidates the predecessor memo. (Under switch_copy this is a
+            # no-op -- switches may fan the chunk out to many receivers.)
+            if not self.user_input.instance.switch_copy:
+                removed_any = False
+                for f in my_path:
+                    if f[2] in self.topology.switch_indices and f in flows:
+                        flows.discard(f)
+                        removed_any = True
+                if removed_any:
+                    pred_memo.clear()
             chunk_str_path = self.chunk_flow_path_to_string(my_path)
             chunk_paths[f"Demand at {d} for chunk {c} from {s} met by epoch {demand_met_k}"] = [
                 x[1] for x in chunk_str_path]
