@@ -24,6 +24,7 @@ from teccl.topologies.odd_pod import OddPod
 from teccl.topologies.star import Star
 from teccl.topologies.incast_switch import IncastSwitch
 from teccl.topologies.rail_optimized_spine_leaf import RailOptimizedSpineLeaf
+from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
 from teccl.topologies.topology import Topology
 
 
@@ -59,6 +60,8 @@ class TECCLSolver(object):
             return IncastSwitch(topology_params)
         elif topology_params.name == "RailOptimizedSpineLeaf":
             return RailOptimizedSpineLeaf(topology_params)
+        elif topology_params.name == "HeteroTaperedCluster":
+            return HeteroTaperedCluster(topology_params)
         else:
             raise NotImplementedError(
                 f"Input topology {topology_params.name} not implemented")

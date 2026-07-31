@@ -217,17 +217,78 @@ def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
     return coarse, mapping
 
 
-def lift_demand(mapping: HierarchyMapping, num_sub_chunks: int) -> None:
+def coarsify_demand(fine_demand, mapping: HierarchyMapping) -> List[List[List[int]]]:
     """
-    Fill mapping.chunk_origin for a coarse collective with `num_sub_chunks` sub-chunks per
-    cell: coarse sub-chunk c of a cell originates on the cell's c-th gpu.
+    Aggregate a FINE demand tensor into a COARSE demand matrix by cell membership,
+    COLLECTIVE-AGNOSTICALLY. A demand is "what volume goes from where to where"; coarsifying
+    replaces each fine GPU endpoint with its coarse node (cell or passthrough) and counts how
+    much distinct data must cross each inter-cell boundary.
 
-    For an AllGather lifted to the host level, num_sub_chunks is the number of GPUs per cell,
-    so every fine GPU's data is a distinct coarse sub-chunk and the correspondence is exact.
+    General rule (no branch on collective type). Each fine entry is a distinct data identity
+    (source s, chunk index ci) that some set of destinations wants. Its inter-cell contribution
+    is ONE unit crossing from cell(s) into each DISTINCT destination cell that wants it:
+
+        for each identity (s, ci):
+            dest_cells = { coarse(t) : fine_demand[s][t][ci] > 0 }
+            for cv in dest_cells, cv != coarse(s):
+                coarse[coarse(s)][cv] += 1
+
+    Counting an identity once per destination CELL (not once per destination GPU) is exactly
+    what produces AllGather's fan-out saving: all GPUs of cell V wanting identity (s, ci)
+    collapse to a SINGLE coarse crossing, and the intra-cell replication to V's other GPUs is
+    deferred to phase-3 ingress distribution. AllToAll identities are per-destination-GPU
+    distinct (the chunk index encodes the target GPU), so no collapse happens and the coarse
+    volume is the full |U|*|V| -- the same code yields both. Intra-cell demand (coarse(s) ==
+    coarse(t)) is dropped; it is reconstructed by phase 3, never carried on the coarse graph.
+
+    `fine_demand` may be a numpy array or a nested list -- it is only indexed and compared,
+    never reshaped. Returns a coarse demand tensor as a nested list of shape
+    (num_coarse, num_coarse, 1): coarse[U][V][0] is the aggregate volume U -> V. A single
+    weighted chunk-slot is exact for the copy-free LP, which sums demand over the chunk axis
+    into a per-(source, dest) volume.
+    """
+    f2c = mapping.fine_to_coarse
+    num_coarse = mapping.num_coarse
+    n_fine = len(fine_demand)
+    coarse = [[[0] for _ in range(num_coarse)] for _ in range(num_coarse)]
+    for s in range(n_fine):
+        cs = f2c[s]
+        chunks = len(fine_demand[s][s]) if n_fine else 0
+        for ci in range(chunks):
+            dest_cells = set()
+            for t in range(n_fine):
+                if fine_demand[s][t][ci] > 0:
+                    dest_cells.add(f2c[t])
+            for cv in dest_cells:
+                if cv != cs:
+                    coarse[cs][cv][0] += 1
+    return coarse
+
+
+def lift_demand(mapping: HierarchyMapping, num_sub_chunks: int = None) -> None:
+    """
+    Fill mapping.chunk_origin: coarse sub-chunk c of a cell originates on the cell's c-th gpu.
+    This is the identity map identity-resolution uses to split a cell's aggregate coarse
+    commodity back into its fine chunk identities.
+
+    Two modes:
+      * num_sub_chunks=None (default, HETEROGENEOUS): each cell contributes exactly its own
+        GPU count of sub-chunks -- cell H gets sub-chunks 0..len(H.gpus)-1, one per fine GPU.
+        This is the host-level AllGather lift for topologies whose cells have DIFFERENT GPU
+        counts (e.g. HeteroTaperedCluster's 4/4/6), matching the weighted
+        1-commodity-per-cell demand produced by the AllGather demand generator from
+        topology.node_volumes.
+      * num_sub_chunks=int (UNIFORM, backward compatible): every cell contributes exactly
+        num_sub_chunks sub-chunks. Requires every cell to have at least that many GPUs. Used
+        by the symmetric rail-optimized topology where all cells have the same GPU count.
     """
     for cid, cell in mapping.coarse_cells.items():
-        assert num_sub_chunks <= len(cell.gpus), (
-            f"cell {cid} has {len(cell.gpus)} gpus but {num_sub_chunks} sub-chunks requested"
-        )
-        for c in range(num_sub_chunks):
+        if num_sub_chunks is None:
+            count = len(cell.gpus)
+        else:
+            assert num_sub_chunks <= len(cell.gpus), (
+                f"cell {cid} has {len(cell.gpus)} gpus but {num_sub_chunks} sub-chunks requested"
+            )
+            count = num_sub_chunks
+        for c in range(count):
             mapping.chunk_origin[(cid, c)] = cell.gpus[c]

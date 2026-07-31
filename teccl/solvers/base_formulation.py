@@ -1,4 +1,3 @@
-from collections import defaultdict
 import logging
 import math
 from abc import ABC, abstractmethod
@@ -9,6 +8,7 @@ import gurobipy as gp
 import numpy as np
 from teccl.gurobi_env import get_gurobi_env
 from teccl.input_data import *
+from teccl.solvers.demand import build_demand
 from teccl.topologies.topology import Topology
 
 
@@ -24,21 +24,29 @@ class BaseFormulation(ABC):
         self.topology = topology
         self.model = gp.Model('Base', env=get_gurobi_env())
 
-        if user_input.instance.collective == Collective.ALLGATHER:
-            self.all_gather_demand_generator()
+        collective = user_input.instance.collective
+        if collective in (Collective.GATHER, Collective.BROADCAST):
+            self._validate_root(user_input.instance.root)
 
-        elif user_input.instance.collective == Collective.ALLTOALL:
-            self.all_to_all_demand_generator()
-        elif user_input.instance.collective == Collective.GATHER:
-            self.gather_demand_generator()
-        elif user_input.instance.collective == Collective.BROADCAST:
-            self.broadcast_demand_generator()
+        # Hierarchical coarse solve: abstract() attaches a precomputed COARSE demand matrix
+        # (coarsify_demand of the fine demand) to the coarse topology. When present, satisfy it
+        # directly so the coarse solve is collective-agnostic -- it routes the aggregated
+        # inter-cell volumes instead of regenerating a per-chunk demand for the collapsed graph.
+        # Otherwise build the fine demand for the requested collective (single source of truth
+        # in teccl.solvers.demand).
+        demand_override = getattr(self.topology, "demand_override", None)
+        if demand_override is not None:
+            self.demand = np.asarray(demand_override, dtype=np.int32)
         else:
-            raise ValueError(
-                f"Demand type {user_input.instance.collective} is not expected")
+            self.demand = build_demand(
+                collective, self.topology, user_input.instance.num_chunks,
+                user_input.instance.root)
 
         self.num_nodes = len(self.topology.capacity)
-        self.num_chunks = self.user_input.instance.num_chunks
+        # num_chunks tracks the demand tensor's chunk axis exactly. For the ordinary path this
+        # equals the requested num_chunks; an injected coarse demand uses a single weighted
+        # slot, so num_chunks == 1 there.
+        self.num_chunks = self.demand.shape[2]
 
         self.nodes = list(range(self.num_nodes))
         self.chunks = list(range(self.num_chunks))
@@ -166,48 +174,6 @@ class BaseFormulation(ABC):
         else:
             raise ValueError("Invalid link type")
 
-    def all_gather_demand_generator(self) -> None:
-        gpus = len(self.topology.capacity)
-        chunks = self.user_input.instance.num_chunks
-        self.demand = np.zeros((gpus, gpus, chunks), dtype=np.int32)
-        for s in range(gpus):
-            for t in range(gpus):
-                for c in range(chunks):
-                    if s == t:
-                        continue
-                    if s in self.topology.switch_indices or t in self.topology.switch_indices:
-                        continue
-                    if s in self.topology.passive_indices or t in self.topology.passive_indices:
-                        continue
-                    self.demand[s][t][c] = 1
-
-    def all_to_all_demand_generator(self) -> None:
-        devices = len(self.topology.capacity)
-        chunks_per_gpu = self.user_input.instance.num_chunks
-        self.demand = np.zeros((devices, devices, chunks_per_gpu), dtype=np.int32)
-        device_chunk_map = defaultdict(int)
-        i = 0
-        for d in range(devices):
-            if d in self.topology.switch_indices:
-                continue
-            if d in self.topology.passive_indices:
-                continue
-            device_chunk_map[d] = i
-            i += 1
-        for s in range(devices):
-            for t in range(devices):
-                if s == t:
-                    continue
-                # the switch should not be sending/recieving chunks.
-                if s in self.topology.switch_indices or t in self.topology.switch_indices:
-                    continue
-                if s in self.topology.passive_indices or t in self.topology.passive_indices:
-                    continue
-                gpus = devices - len(self.topology.switch_indices) - len(self.topology.passive_indices)
-                for c in range(chunks_per_gpu // gpus):
-                    if s != t:
-                        self.demand[s][t][device_chunk_map[t] + c * gpus] = 1
-
     def _validate_root(self, root: int) -> None:
         """
             Validates that the configured root of a rooted collective (GATHER/BROADCAST) is a
@@ -221,48 +187,6 @@ class BaseFormulation(ABC):
             raise ValueError(f"root {root} is a switch index and cannot source/sink demand")
         if root in self.topology.passive_indices:
             raise ValueError(f"root {root} is a passive index and cannot source/sink demand")
-
-    def gather_demand_generator(self) -> None:
-        """
-            Gather: every participating GPU (except the root) sends its own distinct data to the
-            single root GPU. Chunks from different sources are distinguished by the source index
-            in the demand tensor, so num_chunks is per-source (no scaling, like allgather). This
-            is a pure multi-source single-sink flow with no replication, so the copy-free LP
-            solves it exactly.
-        """
-        gpus = len(self.topology.capacity)
-        chunks = self.user_input.instance.num_chunks
-        root = self.user_input.instance.root
-        self._validate_root(root)
-        self.demand = np.zeros((gpus, gpus, chunks), dtype=np.int32)
-        for s in range(gpus):
-            if s == root:
-                continue
-            if s in self.topology.switch_indices or s in self.topology.passive_indices:
-                continue
-            for c in range(chunks):
-                self.demand[s][root][c] = 1
-
-    def broadcast_demand_generator(self) -> None:
-        """
-            Broadcast: the single root GPU sends its data to every other participating GPU (all
-            destinations want the same chunks). num_chunks is per-source (no scaling, like
-            allgather). Broadcast inherently needs replication/copy; the LP is copy-free, so it
-            models broadcast as the root unicasting a separate copy to each destination --
-            feasible and correct but generally suboptimal versus a multicast tree.
-        """
-        gpus = len(self.topology.capacity)
-        chunks = self.user_input.instance.num_chunks
-        root = self.user_input.instance.root
-        self._validate_root(root)
-        self.demand = np.zeros((gpus, gpus, chunks), dtype=np.int32)
-        for t in range(gpus):
-            if t == root:
-                continue
-            if t in self.topology.switch_indices or t in self.topology.passive_indices:
-                continue
-            for c in range(chunks):
-                self.demand[root][t][c] = 1
 
     def set_gurobi_params(self) -> None:
         self.model.Params.OutputFlag = self.user_input.gurobi.output_flag
