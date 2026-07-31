@@ -1,0 +1,31 @@
+cpu-bind=MASK - lanka27, task  0  0 [3702570]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka27, task  0  0 [3703097]: mask 0xff0000ff set
+WARNING:root:Not_Optimal_AllGather_MILP_Status-10_HeteroTaperedCluster_19-nodes_1-chunks_18-epochs_0.09500332500000001-epochduration
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/bin/teccl", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/__main__.py", line 21, in main
+    if handler(args, args.command):
+       ~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/cli/solve.py", line 38, in handler
+    solver.solve()
+    ~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/scheduler.py", line 261, in solve
+    epoch_result_schedule_solver = self.get_schedules(
+        solver, user_input, self.topology_obj)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/scheduler.py", line 203, in get_schedules
+    schedule, schedule_json = initial_solver.get_schedule()
+                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/solvers/allgather.py", line 823, in get_schedule
+    self.required_flows, self.flows_str_info = self.dfs_remove_unnecessary_flows(
+                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        astar=False)
+        ^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/solvers/allgather.py", line 773, in dfs_remove_unnecessary_flows
+    closest_flow = self.find_flow(
+        flows, s, sending_node, c, k, flow_memoization)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/solvers/allgather.py", line 591, in find_flow
+    closest_flow = min(viable_flows, key=lambda x: x[4])
+ValueError: min() iterable argument is empty
+srun: error: lanka27: task 0: Exited with exit code 1
