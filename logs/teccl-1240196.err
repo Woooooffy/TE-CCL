@@ -1,0 +1,3 @@
+cpu-bind=MASK - lanka27, task  0  0 [3361015]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka27, task  0  0 [3361411]: mask 0xff0000ff set
+WARNING:root:Not_Optimal_AllGather_MILP_Status-9_RailOptimizedSpineLeaf_coarse_44-nodes_8-chunks_6-epochs_0.14667180000000002-epochduration

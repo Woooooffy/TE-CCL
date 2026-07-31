@@ -1,3 +1,0 @@
-cpu-bind=MASK - lanka27, task  0  0 [3233885]: mask 0xffffffffffff set
-cpu-bind=MASK - lanka27, task  0  0 [3234432]: mask 0xff0000ff set
-WARNING:root:there is a potential bug! there is traffic unaccounted for

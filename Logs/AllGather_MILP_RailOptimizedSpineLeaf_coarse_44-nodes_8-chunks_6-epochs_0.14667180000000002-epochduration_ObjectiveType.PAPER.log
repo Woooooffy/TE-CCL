@@ -1,0 +1,352 @@
+
+Gurobi 13.0.2 (linux64) logging started Thu Jul 30 10:53:41 2026
+
+Set parameter LogFile to value "Logs/AllGather_MILP_RailOptimizedSpineLeaf_coarse_44-nodes_8-chunks_6-epochs_0.14667180000000002-epochduration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter OutputFlag to value 1
+Set parameter TimeLimit to value 7200
+Set parameter FeasibilityTol to value 0.0001
+Set parameter IntFeasTol to value 0.0001
+Set parameter OptimalityTol to value 0.0001
+Set parameter MIPGap to value 0.0001
+Set parameter Crossover to value -1
+Set parameter MIPFocus to value 0
+Set parameter Method to value -1
+Set parameter Heuristics to value 0.05
+Set parameter Presolve to value -1
+Set parameter SolutionLimit to value 1
+Set parameter PreSOS1BigM to value 1000000
+Gurobi Optimizer version 13.0.2 build v13.0.2rc1 (linux64 - "Ubuntu 22.04.5 LTS")
+
+CPU model: Intel(R) Xeon(R) CPU E5-2680 v3 @ 2.50GHz, instruction set [SSE2|AVX|AVX2]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Non-default parameters:
+SolutionLimit  1
+TimeLimit  7200
+FeasibilityTol  0.0001
+IntFeasTol  0.0001
+OptimalityTol  0.0001
+LogToConsole  0
+PreSOS1BigM  1000000
+
+Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
+Optimize a model with 194196 rows, 989696 columns and 3421952 nonzeros (Min)
+Model fingerprint: 0x571327ca
+Model has 47616 linear objective coefficients
+Model has 67584 simple general constraints
+  67584 MAX
+Variable types: 67584 continuous, 922112 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [1e+02, 1e+02]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 6e+01]
+
+Presolve removed 136256 rows and 279040 columns (presolve time = 5s)...
+Presolve removed 136256 rows and 279040 columns (presolve time = 10s)...
+Presolve removed 136256 rows and 279040 columns (presolve time = 15s)...
+Presolve removed 535616 rows and 1077760 columns (presolve time = 20s)...
+Presolve removed 535616 rows and 1077760 columns (presolve time = 26s)...
+Presolve removed 535616 rows and 1077760 columns (presolve time = 30s)...
+Presolve removed 535616 rows and 1077760 columns (presolve time = 35s)...
+Presolve added 931776 rows and 120320 columns
+Presolve time: 38.68s
+Presolved: 1125972 rows, 1110016 columns, 5092352 nonzeros
+Variable types: 0 continuous, 1110016 integer (1110016 binary)
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0   -3.4584832e+06   1.885829e+01   0.000000e+00     49s
+      16   -3.3792000e+06   0.000000e+00   0.000000e+00     49s
+      16   -3.3792000e+06   0.000000e+00   0.000000e+00     49s
+
+Use crossover to convert LP symmetric solution to basic solution...
+
+Root crossover log...
+
+   12510 DPushes remaining with DInf 0.0000000e+00                51s
+       0 DPushes remaining with DInf 0.0000000e+00                51s
+
+  725160 PPushes remaining with PInf 0.0000000e+00                51s
+  265955 PPushes remaining with PInf 0.0000000e+00                55s
+  232530 PPushes remaining with PInf 0.0000000e+00                60s
+  216007 PPushes remaining with PInf 0.0000000e+00                65s
+  210155 PPushes remaining with PInf 0.0000000e+00                70s
+  207510 PPushes remaining with PInf 0.0000000e+00                75s
+  204865 PPushes remaining with PInf 0.0000000e+00                81s
+  202749 PPushes remaining with PInf 0.0000000e+00                86s
+  201162 PPushes remaining with PInf 0.0000000e+00                91s
+  200104 PPushes remaining with PInf 0.0000000e+00                95s
+  198517 PPushes remaining with PInf 0.0000000e+00               101s
+  196930 PPushes remaining with PInf 0.0000000e+00               107s
+  195872 PPushes remaining with PInf 0.0000000e+00               111s
+  193756 PPushes remaining with PInf 0.0000000e+00               116s
+  191640 PPushes remaining with PInf 0.0000000e+00               121s
+  190582 PPushes remaining with PInf 0.0000000e+00               125s
+  189524 PPushes remaining with PInf 0.0000000e+00               131s
+  187937 PPushes remaining with PInf 0.0000000e+00               137s
+  186879 PPushes remaining with PInf 0.0000000e+00               140s
+  184763 PPushes remaining with PInf 0.0000000e+00               147s
+  183705 PPushes remaining with PInf 0.0000000e+00               151s
+  182118 PPushes remaining with PInf 0.0000000e+00               156s
+  180531 PPushes remaining with PInf 0.0000000e+00               161s
+  178944 PPushes remaining with PInf 0.0000000e+00               167s
+  177886 PPushes remaining with PInf 0.0000000e+00               171s
+  176828 PPushes remaining with PInf 0.0000000e+00               175s
+  175770 PPushes remaining with PInf 0.0000000e+00               182s
+  174712 PPushes remaining with PInf 0.0000000e+00               186s
+  173654 PPushes remaining with PInf 0.0000000e+00               191s
+  172596 PPushes remaining with PInf 0.0000000e+00               197s
+  171879 PPushes remaining with PInf 0.0000000e+00               200s
+  170457 PPushes remaining with PInf 0.0000000e+00               207s
+  169399 PPushes remaining with PInf 0.0000000e+00               212s
+  168341 PPushes remaining with PInf 0.0000000e+00               218s
+  167812 PPushes remaining with PInf 0.0000000e+00               221s
+  166754 PPushes remaining with PInf 0.0000000e+00               227s
+  166225 PPushes remaining with PInf 0.0000000e+00               231s
+  165167 PPushes remaining with PInf 0.0000000e+00               238s
+  164638 PPushes remaining with PInf 0.0000000e+00               242s
+  164109 PPushes remaining with PInf 0.0000000e+00               246s
+  163580 PPushes remaining with PInf 0.0000000e+00               251s
+  163051 PPushes remaining with PInf 0.0000000e+00               255s
+  161993 PPushes remaining with PInf 0.0000000e+00               263s
+  161464 PPushes remaining with PInf 0.0000000e+00               266s
+  160935 PPushes remaining with PInf 0.0000000e+00               270s
+  159877 PPushes remaining with PInf 0.0000000e+00               278s
+  159348 PPushes remaining with PInf 0.0000000e+00               281s
+  158290 PPushes remaining with PInf 0.0000000e+00               288s
+  157761 PPushes remaining with PInf 0.0000000e+00               293s
+  157232 PPushes remaining with PInf 0.0000000e+00               296s
+  156703 PPushes remaining with PInf 0.0000000e+00               301s
+  155645 PPushes remaining with PInf 0.0000000e+00               309s
+  155116 PPushes remaining with PInf 0.0000000e+00               314s
+  154587 PPushes remaining with PInf 0.0000000e+00               318s
+  154058 PPushes remaining with PInf 0.0000000e+00               321s
+  153529 PPushes remaining with PInf 0.0000000e+00               325s
+  152471 PPushes remaining with PInf 0.0000000e+00               333s
+  151942 PPushes remaining with PInf 0.0000000e+00               338s
+  151413 PPushes remaining with PInf 0.0000000e+00               342s
+  150884 PPushes remaining with PInf 0.0000000e+00               346s
+  150355 PPushes remaining with PInf 0.0000000e+00               350s
+  149297 PPushes remaining with PInf 0.0000000e+00               358s
+  148768 PPushes remaining with PInf 0.0000000e+00               361s
+  147710 PPushes remaining with PInf 0.0000000e+00               368s
+  147181 PPushes remaining with PInf 0.0000000e+00               373s
+  146652 PPushes remaining with PInf 0.0000000e+00               379s
+  146123 PPushes remaining with PInf 0.0000000e+00               382s
+  145594 PPushes remaining with PInf 0.0000000e+00               386s
+  145065 PPushes remaining with PInf 0.0000000e+00               391s
+  144007 PPushes remaining with PInf 0.0000000e+00               402s
+  143478 PPushes remaining with PInf 0.0000000e+00               406s
+  142420 PPushes remaining with PInf 0.0000000e+00               414s
+  141891 PPushes remaining with PInf 0.0000000e+00               418s
+  141362 PPushes remaining with PInf 0.0000000e+00               422s
+  140833 PPushes remaining with PInf 0.0000000e+00               426s
+  140304 PPushes remaining with PInf 0.0000000e+00               430s
+  139246 PPushes remaining with PInf 0.0000000e+00               440s
+  138717 PPushes remaining with PInf 0.0000000e+00               445s
+  137659 PPushes remaining with PInf 0.0000000e+00               455s
+  136601 PPushes remaining with PInf 0.0000000e+00               463s
+  136072 PPushes remaining with PInf 0.0000000e+00               468s
+  135543 PPushes remaining with PInf 0.0000000e+00               472s
+  135014 PPushes remaining with PInf 0.0000000e+00               477s
+  134485 PPushes remaining with PInf 0.0000000e+00               483s
+  133956 PPushes remaining with PInf 0.0000000e+00               487s
+  133427 PPushes remaining with PInf 0.0000000e+00               496s
+  132898 PPushes remaining with PInf 0.0000000e+00               502s
+  132012 PPushes remaining with PInf 0.0000000e+00               508s
+  131242 PPushes remaining with PInf 0.0000000e+00               516s
+  130184 PPushes remaining with PInf 0.0000000e+00               523s
+  129655 PPushes remaining with PInf 0.0000000e+00               528s
+  129126 PPushes remaining with PInf 0.0000000e+00               532s
+  128597 PPushes remaining with PInf 0.0000000e+00               537s
+  128068 PPushes remaining with PInf 0.0000000e+00               541s
+  127539 PPushes remaining with PInf 0.0000000e+00               546s
+  126481 PPushes remaining with PInf 0.0000000e+00               554s
+  125952 PPushes remaining with PInf 0.0000000e+00               560s
+  125423 PPushes remaining with PInf 0.0000000e+00               565s
+  124894 PPushes remaining with PInf 0.0000000e+00               569s
+  124365 PPushes remaining with PInf 0.0000000e+00               573s
+  123836 PPushes remaining with PInf 0.0000000e+00               577s
+  123307 PPushes remaining with PInf 0.0000000e+00               581s
+  122778 PPushes remaining with PInf 0.0000000e+00               586s
+  122249 PPushes remaining with PInf 0.0000000e+00               591s
+  121191 PPushes remaining with PInf 0.0000000e+00               599s
+  120662 PPushes remaining with PInf 0.0000000e+00               604s
+  120133 PPushes remaining with PInf 0.0000000e+00               607s
+  119604 PPushes remaining with PInf 0.0000000e+00               612s
+  119075 PPushes remaining with PInf 0.0000000e+00               616s
+  118546 PPushes remaining with PInf 0.0000000e+00               622s
+  118017 PPushes remaining with PInf 0.0000000e+00               627s
+  117488 PPushes remaining with PInf 0.0000000e+00               631s
+  116959 PPushes remaining with PInf 0.0000000e+00               636s
+  116430 PPushes remaining with PInf 0.0000000e+00               640s
+  115901 PPushes remaining with PInf 0.0000000e+00               647s
+  115372 PPushes remaining with PInf 0.0000000e+00               650s
+  114314 PPushes remaining with PInf 0.0000000e+00               658s
+  113785 PPushes remaining with PInf 0.0000000e+00               662s
+  113256 PPushes remaining with PInf 0.0000000e+00               667s
+  112727 PPushes remaining with PInf 0.0000000e+00               673s
+  112198 PPushes remaining with PInf 0.0000000e+00               678s
+  111669 PPushes remaining with PInf 0.0000000e+00               683s
+  111140 PPushes remaining with PInf 0.0000000e+00               688s
+  110611 PPushes remaining with PInf 0.0000000e+00               693s
+  110082 PPushes remaining with PInf 0.0000000e+00               698s
+  109553 PPushes remaining with PInf 0.0000000e+00               703s
+  109024 PPushes remaining with PInf 0.0000000e+00               706s
+  108495 PPushes remaining with PInf 0.0000000e+00               710s
+  107437 PPushes remaining with PInf 0.0000000e+00               718s
+  106908 PPushes remaining with PInf 0.0000000e+00               722s
+  106379 PPushes remaining with PInf 0.0000000e+00               725s
+  105850 PPushes remaining with PInf 0.0000000e+00               732s
+  105321 PPushes remaining with PInf 0.0000000e+00               736s
+  104263 PPushes remaining with PInf 0.0000000e+00               746s
+  103734 PPushes remaining with PInf 0.0000000e+00               750s
+  102676 PPushes remaining with PInf 0.0000000e+00               761s
+  102147 PPushes remaining with PInf 0.0000000e+00               765s
+  101618 PPushes remaining with PInf 0.0000000e+00               771s
+  101089 PPushes remaining with PInf 0.0000000e+00               776s
+  100560 PPushes remaining with PInf 0.0000000e+00               781s
+  100031 PPushes remaining with PInf 0.0000000e+00               785s
+   98973 PPushes remaining with PInf 0.0000000e+00               795s
+   97915 PPushes remaining with PInf 0.0000000e+00               804s
+   97386 PPushes remaining with PInf 0.0000000e+00               810s
+   96857 PPushes remaining with PInf 0.0000000e+00               815s
+   96328 PPushes remaining with PInf 0.0000000e+00               820s
+   95799 PPushes remaining with PInf 0.0000000e+00               827s
+   95270 PPushes remaining with PInf 0.0000000e+00               831s
+   94589 PPushes remaining with PInf 0.0000000e+00               837s
+   93683 PPushes remaining with PInf 0.0000000e+00               844s
+   93154 PPushes remaining with PInf 0.0000000e+00               848s
+   92625 PPushes remaining with PInf 0.0000000e+00               851s
+   91567 PPushes remaining with PInf 0.0000000e+00               858s
+   91038 PPushes remaining with PInf 0.0000000e+00               861s
+   89980 PPushes remaining with PInf 0.0000000e+00               867s
+   88922 PPushes remaining with PInf 0.0000000e+00               875s
+   88393 PPushes remaining with PInf 0.0000000e+00               878s
+   87864 PPushes remaining with PInf 0.0000000e+00               882s
+   87335 PPushes remaining with PInf 0.0000000e+00               886s
+   86277 PPushes remaining with PInf 0.0000000e+00               894s
+   85748 PPushes remaining with PInf 0.0000000e+00               898s
+   85219 PPushes remaining with PInf 0.0000000e+00               901s
+   84161 PPushes remaining with PInf 0.0000000e+00               908s
+   83632 PPushes remaining with PInf 0.0000000e+00               913s
+   83103 PPushes remaining with PInf 0.0000000e+00               920s
+   82574 PPushes remaining with PInf 0.0000000e+00               925s
+   81516 PPushes remaining with PInf 0.0000000e+00               932s
+   80987 PPushes remaining with PInf 0.0000000e+00               935s
+   79929 PPushes remaining with PInf 0.0000000e+00               944s
+   79400 PPushes remaining with PInf 0.0000000e+00               948s
+   78871 PPushes remaining with PInf 0.0000000e+00               952s
+   78342 PPushes remaining with PInf 0.0000000e+00               955s
+   77284 PPushes remaining with PInf 0.0000000e+00               960s
+   76226 PPushes remaining with PInf 0.0000000e+00               968s
+   75697 PPushes remaining with PInf 0.0000000e+00               971s
+   74639 PPushes remaining with PInf 0.0000000e+00               976s
+   73581 PPushes remaining with PInf 0.0000000e+00               982s
+   73052 PPushes remaining with PInf 0.0000000e+00               985s
+   71994 PPushes remaining with PInf 0.0000000e+00               994s
+   71465 PPushes remaining with PInf 0.0000000e+00               999s
+   70490 PPushes remaining with PInf 0.0000000e+00              1005s
+   69792 PPushes remaining with PInf 0.0000000e+00              1009s
+   69263 PPushes remaining with PInf 0.0000000e+00              1013s
+   68734 PPushes remaining with PInf 0.0000000e+00              1019s
+   68205 PPushes remaining with PInf 0.0000000e+00              1024s
+   67676 PPushes remaining with PInf 0.0000000e+00              1029s
+   67147 PPushes remaining with PInf 0.0000000e+00              1037s
+   66618 PPushes remaining with PInf 0.0000000e+00              1042s
+   66089 PPushes remaining with PInf 0.0000000e+00              1046s
+   65560 PPushes remaining with PInf 0.0000000e+00              1052s
+   65031 PPushes remaining with PInf 0.0000000e+00              1057s
+   64502 PPushes remaining with PInf 0.0000000e+00              1061s
+   63973 PPushes remaining with PInf 0.0000000e+00              1066s
+   63444 PPushes remaining with PInf 0.0000000e+00              1070s
+   62915 PPushes remaining with PInf 0.0000000e+00              1075s
+   61857 PPushes remaining with PInf 0.0000000e+00              1084s
+   61328 PPushes remaining with PInf 0.0000000e+00              1087s
+   60799 PPushes remaining with PInf 0.0000000e+00              1092s
+   60270 PPushes remaining with PInf 0.0000000e+00              1095s
+   59741 PPushes remaining with PInf 0.0000000e+00              1100s
+   58683 PPushes remaining with PInf 0.0000000e+00              1107s
+   58154 PPushes remaining with PInf 0.0000000e+00              1111s
+   57096 PPushes remaining with PInf 0.0000000e+00              1118s
+   56567 PPushes remaining with PInf 0.0000000e+00              1121s
+   55509 PPushes remaining with PInf 0.0000000e+00              1127s
+   54980 PPushes remaining with PInf 0.0000000e+00              1132s
+   54451 PPushes remaining with PInf 0.0000000e+00              1138s
+   53922 PPushes remaining with PInf 0.0000000e+00              1142s
+   53393 PPushes remaining with PInf 0.0000000e+00              1145s
+   52335 PPushes remaining with PInf 0.0000000e+00              1153s
+   51806 PPushes remaining with PInf 0.0000000e+00              1158s
+   51277 PPushes remaining with PInf 0.0000000e+00              1161s
+   50219 PPushes remaining with PInf 0.0000000e+00              1168s
+   49690 PPushes remaining with PInf 0.0000000e+00              1172s
+   49144 PPushes remaining with PInf 0.0000000e+00              1177s
+   48615 PPushes remaining with PInf 0.0000000e+00              1182s
+   48086 PPushes remaining with PInf 0.0000000e+00              1186s
+   47028 PPushes remaining with PInf 0.0000000e+00              1192s
+   46499 PPushes remaining with PInf 0.0000000e+00              1196s
+   45441 PPushes remaining with PInf 0.0000000e+00              1204s
+   44912 PPushes remaining with PInf 0.0000000e+00              1211s
+   44366 PPushes remaining with PInf 0.0000000e+00              1216s
+   43789 PPushes remaining with PInf 0.0000000e+00              1220s
+   42618 PPushes remaining with PInf 0.0000000e+00              1228s
+   42027 PPushes remaining with PInf 0.0000000e+00              1232s
+   41434 PPushes remaining with PInf 0.0000000e+00              1237s
+   40852 PPushes remaining with PInf 0.0000000e+00              1241s
+   39855 PPushes remaining with PInf 0.0000000e+00              1249s
+   39029 PPushes remaining with PInf 0.0000000e+00              1255s
+   38500 PPushes remaining with PInf 0.0000000e+00              1258s
+   37971 PPushes remaining with PInf 0.0000000e+00              1263s
+   37442 PPushes remaining with PInf 0.0000000e+00              1267s
+   36913 PPushes remaining with PInf 0.0000000e+00              1270s
+   35855 PPushes remaining with PInf 0.0000000e+00              1280s
+   35326 PPushes remaining with PInf 0.0000000e+00              1283s
+   34797 PPushes remaining with PInf 0.0000000e+00              1287s
+   33739 PPushes remaining with PInf 0.0000000e+00              1293s
+   33210 PPushes remaining with PInf 0.0000000e+00              1296s
+   32152 PPushes remaining with PInf 0.0000000e+00              1302s
+   31392 PPushes remaining with PInf 0.0000000e+00              1306s
+   29033 PPushes remaining with PInf 0.0000000e+00              1310s
+   27446 PPushes remaining with PInf 0.0000000e+00              1316s
+   25222 PPushes remaining with PInf 0.0000000e+00              1320s
+   23106 PPushes remaining with PInf 0.0000000e+00              1326s
+   20984 PPushes remaining with PInf 0.0000000e+00              1330s
+   18330 PPushes remaining with PInf 0.0000000e+00              1335s
+   16204 PPushes remaining with PInf 0.0000000e+00              1341s
+   14029 PPushes remaining with PInf 0.0000000e+00              1345s
+   11913 PPushes remaining with PInf 0.0000000e+00              1350s
+    9797 PPushes remaining with PInf 0.0000000e+00              1356s
+    8210 PPushes remaining with PInf 0.0000000e+00              1360s
+    6602 PPushes remaining with PInf 0.0000000e+00              1366s
+    5015 PPushes remaining with PInf 0.0000000e+00              1372s
+    3428 PPushes remaining with PInf 0.0000000e+00              1376s
+    2370 PPushes remaining with PInf 0.0000000e+00              1381s
+     455 PPushes remaining with PInf 0.0000000e+00              1390s
+       0 PPushes remaining with PInf 0.0000000e+00              1392s
+
+  Push phase complete: Pinf 0.0000000e+00, Dinf 5.3518887e-08   1392s
+
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+  725469   -3.3792000e+06   0.000000e+00   0.000000e+00   1393s
+Crossover time: 1343.38 seconds (578.46 work units)
+
+Root relaxation: objective -3.379200e+06, 725469 iterations, 1347.36 seconds (580.90 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0 -3379200.0    0 65139          - -3379200.0      -     - 7200s
+
+Explored 1 nodes (976864 simplex iterations) in 7200.15 seconds (3337.51 work units)
+Thread count was 24 (of 48 available processors)
+
+Solution count 0
+
+Time limit reached
+Best objective -, best bound -3.379200000000e+06, gap -
