@@ -1,0 +1,768 @@
+{
+  "0-Collective": "alltoall",
+  "1-Epoch_Duration": 0.02,
+  "2-Expected_Epoch_Duration": 0.02,
+  "3-Epochs_Required": 40,
+  "4-Collective_Finish_Time": 0.8,
+  "5-Algo_Bandwidth": 3.75,
+  "7-Flows": [
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 0 via switches 3",
+    "Chunk 0 from 0 traveled over 0->2 with volume 2.0 in epoch 0 via switches 4",
+    "Chunk 0 from 0 traveled over 0->2 with volume 1.0 in epoch 0 via switches 3->4",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 0 via switches 4->3",
+    "Chunk 0 from 0 traveled over 0->2 with volume 1.0 in epoch 0 via switches 3",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 0 via switches 3",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 0 via switches 4",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 1 via switches 3",
+    "Chunk 0 from 0 traveled over 0->2 with volume 2.0 in epoch 1 via switches 3",
+    "Chunk 0 from 0 traveled over 0->2 with volume 2.0 in epoch 1 via switches 4",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 1 via switches 3->4",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 1 via switches 4->3",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 1 via switches 4",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 2 via switches 4",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 2 via switches 3",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 2 via switches 3",
+    "Chunk 0 from 0 traveled over 0->2 with volume 1.0 in epoch 2 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 2 via switches 4->3",
+    "Chunk 0 from 0 traveled over 0->2 with volume 2.0 in epoch 2 via switches 4",
+    "Chunk 0 from 0 traveled over 0->2 with volume 1.0 in epoch 2 via switches 3->4",
+    "Chunk 0 from 0 traveled over 0->2 with volume 2.0 in epoch 3 via switches 4",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 3 via switches 4",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 3 via switches 3->4",
+    "Chunk 0 from 0 traveled over 0->2 with volume 2.0 in epoch 3 via switches 3",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 3 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 3 via switches 4->3",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 4 via switches 3",
+    "Chunk 0 from 0 traveled over 0->2 with volume 2.0 in epoch 4 via switches 3",
+    "Chunk 0 from 0 traveled over 0->2 with volume 2.0 in epoch 4 via switches 4",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 4 via switches 4",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 4 via switches 4->3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 4 via switches 3->4",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 5 via switches 4->3",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 5 via switches 4",
+    "Chunk 0 from 2 traveled over 2->0 with volume 2.0 in epoch 5 via switches 3",
+    "Chunk 0 from 0 traveled over 0->2 with volume 2.0 in epoch 5 via switches 3",
+    "Chunk 0 from 0 traveled over 0->2 with volume 2.0 in epoch 5 via switches 4",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 5 via switches 3->4",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 6 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 6 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 7 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 7 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 8 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 8 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 9 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 9 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 10 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 10 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 11 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 11 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 12 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 12 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 13 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 13 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 14 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 14 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 15 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 15 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 16 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 16 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 17 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 17 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 18 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 18 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 19 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 19 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 20 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 20 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 21 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 21 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 22 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 22 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 23 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 23 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 24 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 24 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 25 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 25 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 26 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 26 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 27 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 27 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 28 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 28 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 29 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 29 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 30 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 30 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 31 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 31 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 32 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 32 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 33 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 33 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 34 via switches 3",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1.0 in epoch 34 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 35 via switches 3",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 35 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 36 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 36 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 37 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 37 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 38 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 38 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1.0 in epoch 39 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1.0 in epoch 39 via switches 3"
+  ],
+  "8-Chunk paths": {
+    "Demand at 0 for chunk 0 from 1 met by epoch 35": [
+      [
+        [
+          6,
+          "1->0 with volume 1.0 in epoch 6 via switches 3"
+        ]
+      ],
+      [
+        [
+          11,
+          "1->0 with volume 1.0 in epoch 11 via switches 3"
+        ]
+      ],
+      [
+        [
+          13,
+          "1->0 with volume 1.0 in epoch 13 via switches 3"
+        ]
+      ],
+      [
+        [
+          15,
+          "1->0 with volume 1.0 in epoch 15 via switches 3"
+        ]
+      ],
+      [
+        [
+          16,
+          "1->0 with volume 1.0 in epoch 16 via switches 3"
+        ]
+      ],
+      [
+        [
+          18,
+          "1->0 with volume 1.0 in epoch 18 via switches 3"
+        ]
+      ],
+      [
+        [
+          21,
+          "1->0 with volume 1.0 in epoch 21 via switches 3"
+        ]
+      ],
+      [
+        [
+          23,
+          "1->0 with volume 1.0 in epoch 23 via switches 3"
+        ]
+      ],
+      [
+        [
+          24,
+          "1->0 with volume 1.0 in epoch 24 via switches 3"
+        ]
+      ],
+      [
+        [
+          26,
+          "1->0 with volume 1.0 in epoch 26 via switches 3"
+        ]
+      ],
+      [
+        [
+          27,
+          "1->0 with volume 1.0 in epoch 27 via switches 3"
+        ]
+      ],
+      [
+        [
+          28,
+          "1->0 with volume 1.0 in epoch 28 via switches 3"
+        ]
+      ],
+      [
+        [
+          31,
+          "1->0 with volume 1.0 in epoch 31 via switches 3"
+        ]
+      ],
+      [
+        [
+          32,
+          "1->0 with volume 1.0 in epoch 32 via switches 3"
+        ]
+      ],
+      [
+        [
+          33,
+          "1->0 with volume 1.0 in epoch 33 via switches 3"
+        ]
+      ],
+      [
+        [
+          35,
+          "1->0 with volume 1.0 in epoch 35 via switches 3"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 2 met by epoch 5": [
+      [
+        [
+          0,
+          "2->0 with volume 2.0 in epoch 0 via switches 3"
+        ]
+      ],
+      [
+        [
+          0,
+          "2->0 with volume 2.0 in epoch 0 via switches 4"
+        ]
+      ],
+      [
+        [
+          1,
+          "2->0 with volume 2.0 in epoch 1 via switches 3"
+        ]
+      ],
+      [
+        [
+          1,
+          "2->0 with volume 2.0 in epoch 1 via switches 4"
+        ]
+      ],
+      [
+        [
+          2,
+          "2->0 with volume 2.0 in epoch 2 via switches 3"
+        ]
+      ],
+      [
+        [
+          2,
+          "2->0 with volume 2.0 in epoch 2 via switches 4"
+        ]
+      ],
+      [
+        [
+          3,
+          "2->0 with volume 2.0 in epoch 3 via switches 3"
+        ]
+      ],
+      [
+        [
+          3,
+          "2->0 with volume 2.0 in epoch 3 via switches 4"
+        ]
+      ],
+      [
+        [
+          4,
+          "2->0 with volume 2.0 in epoch 4 via switches 3"
+        ]
+      ],
+      [
+        [
+          4,
+          "2->0 with volume 2.0 in epoch 4 via switches 4"
+        ]
+      ],
+      [
+        [
+          5,
+          "2->0 with volume 2.0 in epoch 5 via switches 3"
+        ]
+      ],
+      [
+        [
+          5,
+          "2->0 with volume 2.0 in epoch 5 via switches 4"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 0 from 0 met by epoch 39": [
+      [
+        [
+          9,
+          "0->1 with volume 1.0 in epoch 9 via switches 3"
+        ]
+      ],
+      [
+        [
+          10,
+          "0->1 with volume 1.0 in epoch 10 via switches 3"
+        ]
+      ],
+      [
+        [
+          12,
+          "0->1 with volume 1.0 in epoch 12 via switches 3"
+        ]
+      ],
+      [
+        [
+          13,
+          "0->1 with volume 1.0 in epoch 13 via switches 3"
+        ]
+      ],
+      [
+        [
+          16,
+          "0->1 with volume 1.0 in epoch 16 via switches 3"
+        ]
+      ],
+      [
+        [
+          17,
+          "0->1 with volume 1.0 in epoch 17 via switches 3"
+        ]
+      ],
+      [
+        [
+          18,
+          "0->1 with volume 1.0 in epoch 18 via switches 3"
+        ]
+      ],
+      [
+        [
+          19,
+          "0->1 with volume 1.0 in epoch 19 via switches 3"
+        ]
+      ],
+      [
+        [
+          22,
+          "0->1 with volume 1.0 in epoch 22 via switches 3"
+        ]
+      ],
+      [
+        [
+          24,
+          "0->1 with volume 1.0 in epoch 24 via switches 3"
+        ]
+      ],
+      [
+        [
+          25,
+          "0->1 with volume 1.0 in epoch 25 via switches 3"
+        ]
+      ],
+      [
+        [
+          35,
+          "0->1 with volume 1.0 in epoch 35 via switches 3"
+        ]
+      ],
+      [
+        [
+          36,
+          "0->1 with volume 1.0 in epoch 36 via switches 3"
+        ]
+      ],
+      [
+        [
+          37,
+          "0->1 with volume 1.0 in epoch 37 via switches 3"
+        ]
+      ],
+      [
+        [
+          38,
+          "0->1 with volume 1.0 in epoch 38 via switches 3"
+        ]
+      ],
+      [
+        [
+          39,
+          "0->1 with volume 1.0 in epoch 39 via switches 3"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 0 from 2 met by epoch 34": [
+      [
+        [
+          0,
+          "2->1 with volume 1.0 in epoch 0 via switches 4->3"
+        ]
+      ],
+      [
+        [
+          1,
+          "2->1 with volume 1.0 in epoch 1 via switches 4->3"
+        ]
+      ],
+      [
+        [
+          2,
+          "2->1 with volume 1.0 in epoch 2 via switches 4->3"
+        ]
+      ],
+      [
+        [
+          3,
+          "2->1 with volume 1.0 in epoch 3 via switches 4->3"
+        ]
+      ],
+      [
+        [
+          4,
+          "2->1 with volume 1.0 in epoch 4 via switches 4->3"
+        ]
+      ],
+      [
+        [
+          5,
+          "2->1 with volume 1.0 in epoch 5 via switches 4->3"
+        ]
+      ],
+      [
+        [
+          6,
+          "2->1 with volume 1.0 in epoch 6 via switches 3"
+        ]
+      ],
+      [
+        [
+          7,
+          "2->1 with volume 1.0 in epoch 7 via switches 3"
+        ]
+      ],
+      [
+        [
+          8,
+          "2->1 with volume 1.0 in epoch 8 via switches 3"
+        ]
+      ],
+      [
+        [
+          11,
+          "2->1 with volume 1.0 in epoch 11 via switches 3"
+        ]
+      ],
+      [
+        [
+          14,
+          "2->1 with volume 1.0 in epoch 14 via switches 3"
+        ]
+      ],
+      [
+        [
+          15,
+          "2->1 with volume 1.0 in epoch 15 via switches 3"
+        ]
+      ],
+      [
+        [
+          20,
+          "2->1 with volume 1.0 in epoch 20 via switches 3"
+        ]
+      ],
+      [
+        [
+          21,
+          "2->1 with volume 1.0 in epoch 21 via switches 3"
+        ]
+      ],
+      [
+        [
+          23,
+          "2->1 with volume 1.0 in epoch 23 via switches 3"
+        ]
+      ],
+      [
+        [
+          26,
+          "2->1 with volume 1.0 in epoch 26 via switches 3"
+        ]
+      ],
+      [
+        [
+          27,
+          "2->1 with volume 1.0 in epoch 27 via switches 3"
+        ]
+      ],
+      [
+        [
+          28,
+          "2->1 with volume 1.0 in epoch 28 via switches 3"
+        ]
+      ],
+      [
+        [
+          29,
+          "2->1 with volume 1.0 in epoch 29 via switches 3"
+        ]
+      ],
+      [
+        [
+          30,
+          "2->1 with volume 1.0 in epoch 30 via switches 3"
+        ]
+      ],
+      [
+        [
+          31,
+          "2->1 with volume 1.0 in epoch 31 via switches 3"
+        ]
+      ],
+      [
+        [
+          32,
+          "2->1 with volume 1.0 in epoch 32 via switches 3"
+        ]
+      ],
+      [
+        [
+          33,
+          "2->1 with volume 1.0 in epoch 33 via switches 3"
+        ]
+      ],
+      [
+        [
+          34,
+          "2->1 with volume 1.0 in epoch 34 via switches 3"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 0 met by epoch 5": [
+      [
+        [
+          0,
+          "0->2 with volume 1.0 in epoch 0 via switches 3"
+        ]
+      ],
+      [
+        [
+          0,
+          "0->2 with volume 2.0 in epoch 0 via switches 4"
+        ]
+      ],
+      [
+        [
+          0,
+          "0->2 with volume 1.0 in epoch 0 via switches 3->4"
+        ]
+      ],
+      [
+        [
+          1,
+          "0->2 with volume 2.0 in epoch 1 via switches 3"
+        ]
+      ],
+      [
+        [
+          1,
+          "0->2 with volume 2.0 in epoch 1 via switches 4"
+        ]
+      ],
+      [
+        [
+          2,
+          "0->2 with volume 1.0 in epoch 2 via switches 3"
+        ]
+      ],
+      [
+        [
+          2,
+          "0->2 with volume 2.0 in epoch 2 via switches 4"
+        ]
+      ],
+      [
+        [
+          2,
+          "0->2 with volume 1.0 in epoch 2 via switches 3->4"
+        ]
+      ],
+      [
+        [
+          3,
+          "0->2 with volume 2.0 in epoch 3 via switches 3"
+        ]
+      ],
+      [
+        [
+          3,
+          "0->2 with volume 2.0 in epoch 3 via switches 4"
+        ]
+      ],
+      [
+        [
+          4,
+          "0->2 with volume 2.0 in epoch 4 via switches 3"
+        ]
+      ],
+      [
+        [
+          4,
+          "0->2 with volume 2.0 in epoch 4 via switches 4"
+        ]
+      ],
+      [
+        [
+          5,
+          "0->2 with volume 2.0 in epoch 5 via switches 3"
+        ]
+      ],
+      [
+        [
+          5,
+          "0->2 with volume 2.0 in epoch 5 via switches 4"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 1 met by epoch 39": [
+      [
+        [
+          0,
+          "1->2 with volume 1.0 in epoch 0 via switches 3"
+        ]
+      ],
+      [
+        [
+          1,
+          "1->2 with volume 1.0 in epoch 1 via switches 3->4"
+        ]
+      ],
+      [
+        [
+          2,
+          "1->2 with volume 1.0 in epoch 2 via switches 3"
+        ]
+      ],
+      [
+        [
+          3,
+          "1->2 with volume 1.0 in epoch 3 via switches 3->4"
+        ]
+      ],
+      [
+        [
+          4,
+          "1->2 with volume 1.0 in epoch 4 via switches 3->4"
+        ]
+      ],
+      [
+        [
+          5,
+          "1->2 with volume 1.0 in epoch 5 via switches 3->4"
+        ]
+      ],
+      [
+        [
+          7,
+          "1->2 with volume 1.0 in epoch 7 via switches 3"
+        ]
+      ],
+      [
+        [
+          8,
+          "1->2 with volume 1.0 in epoch 8 via switches 3"
+        ]
+      ],
+      [
+        [
+          9,
+          "1->2 with volume 1.0 in epoch 9 via switches 3"
+        ]
+      ],
+      [
+        [
+          10,
+          "1->2 with volume 1.0 in epoch 10 via switches 3"
+        ]
+      ],
+      [
+        [
+          12,
+          "1->2 with volume 1.0 in epoch 12 via switches 3"
+        ]
+      ],
+      [
+        [
+          14,
+          "1->2 with volume 1.0 in epoch 14 via switches 3"
+        ]
+      ],
+      [
+        [
+          17,
+          "1->2 with volume 1.0 in epoch 17 via switches 3"
+        ]
+      ],
+      [
+        [
+          19,
+          "1->2 with volume 1.0 in epoch 19 via switches 3"
+        ]
+      ],
+      [
+        [
+          20,
+          "1->2 with volume 1.0 in epoch 20 via switches 3"
+        ]
+      ],
+      [
+        [
+          22,
+          "1->2 with volume 1.0 in epoch 22 via switches 3"
+        ]
+      ],
+      [
+        [
+          25,
+          "1->2 with volume 1.0 in epoch 25 via switches 3"
+        ]
+      ],
+      [
+        [
+          29,
+          "1->2 with volume 1.0 in epoch 29 via switches 3"
+        ]
+      ],
+      [
+        [
+          30,
+          "1->2 with volume 1.0 in epoch 30 via switches 3"
+        ]
+      ],
+      [
+        [
+          34,
+          "1->2 with volume 1.0 in epoch 34 via switches 3"
+        ]
+      ],
+      [
+        [
+          36,
+          "1->2 with volume 1.0 in epoch 36 via switches 3"
+        ]
+      ],
+      [
+        [
+          37,
+          "1->2 with volume 1.0 in epoch 37 via switches 3"
+        ]
+      ],
+      [
+        [
+          38,
+          "1->2 with volume 1.0 in epoch 38 via switches 3"
+        ]
+      ],
+      [
+        [
+          39,
+          "1->2 with volume 1.0 in epoch 39 via switches 3"
+        ]
+      ]
+    ]
+  },
+  "9-Chunk_Size": 1,
+  "Solver_Time": 0.2651515007019043
+}

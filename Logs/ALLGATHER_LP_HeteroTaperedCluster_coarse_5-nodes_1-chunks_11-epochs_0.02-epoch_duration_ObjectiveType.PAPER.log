@@ -1,0 +1,52 @@
+
+Gurobi 13.0.2 (linux64) logging started Fri Jul 31 01:53:09 2026
+
+Set parameter LogFile to value "Logs/ALLGATHER_LP_HeteroTaperedCluster_coarse_5-nodes_1-chunks_11-epochs_0.02-epoch_duration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter OutputFlag to value 1
+Set parameter TimeLimit to value 7200
+Set parameter FeasibilityTol to value 0.0001
+Set parameter IntFeasTol to value 0.0001
+Set parameter OptimalityTol to value 0.0001
+Set parameter MIPGap to value 0.0001
+Set parameter Crossover to value -1
+Set parameter MIPFocus to value 0
+Set parameter Method to value -1
+Set parameter Heuristics to value 0.05
+Set parameter Presolve to value -1
+Set parameter SolutionLimit to value 2000000
+Set parameter PreSOS1BigM to value 1000000
+Gurobi Optimizer version 13.0.2 build v13.0.2rc1 (linux64 - "Ubuntu 22.04.5 LTS")
+
+CPU model: Intel(R) Xeon(R) CPU E5-2680 v3 @ 2.50GHz, instruction set [SSE2|AVX|AVX2]
+Thread count: 24 physical cores, 48 logical processors, using up to 24 threads
+
+Non-default parameters:
+SolutionLimit  2000000
+TimeLimit  7200
+FeasibilityTol  0.0001
+IntFeasTol  0.0001
+OptimalityTol  0.0001
+LogToConsole  0
+PreSOS1BigM  1000000
+
+Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
+Optimize a model with 702 rows, 891 columns and 2337 nonzeros (Min)
+Model fingerprint: 0x049fd677
+Model has 561 linear objective coefficients
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [2e-01, 1e+01]
+  Bounds range     [4e+00, 3e+01]
+  RHS range        [1e+00, 1e+01]
+
+Presolve removed 398 rows and 367 columns
+Presolve time: 0.00s
+Presolved: 304 rows, 524 columns, 1462 nonzeros
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0   -8.4389899e+02   3.099600e+01   0.000000e+00      0s
+     168   -4.8557359e+02   0.000000e+00   0.000000e+00      0s
+
+Solved in 168 iterations and 0.00 seconds (0.00 work units)
+Optimal objective -4.855735931e+02
