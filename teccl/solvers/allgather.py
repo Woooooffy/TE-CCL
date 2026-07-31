@@ -560,23 +560,27 @@ class AllGatherFormulation(BaseFormulation):
         correct_k = max(demand_met_epoch.values())
         return (list_of_sends, demand_met_epoch, buffers, correct_k)
 
-    def find_flow(self, flows: Set[Tuple[int, int, int, int, int]], s: int, d: int, c: int, k: int, flow_memoization: Dict, avoid: Set[int] = frozenset()) -> Tuple[int, int, int, int, int]:
+    def find_flow(self, flows: Set[Tuple[int, int, int, int, int]], s: int, d: int, c: int, k: int, flow_memoization: Dict, avoid: Set[Tuple[int, int]] = frozenset()) -> Tuple[int, int, int, int, int]:
         """
             Find the flow (sending node) that causes the node d to have the chunk by epoch k.
 
-            avoid: the set of nodes already on the current back-trace path. A same-epoch
-            switch circulation -- e.g. a wasteful reverse edge that coexists with the
-            legitimate forward edge, both feasible under cut-through switches -- would
-            otherwise make the caller follow the loop forever. Preferring a predecessor
-            that is not already on the path routes around the wasteful edge (which, never
-            being traced, is dropped by dfs_remove_unnecessary_flows as an unnecessary
-            flow) and continues toward the real source. Returns None when every viable
-            predecessor is already on the path, i.e. the solution delivers this chunk to d
-            only via a circulation with no acyclic route back to the source.
+            avoid: the set of (node, send_epoch) pairs already on the current back-trace
+            path. In the time-expanded flow graph a vertex is a (node, epoch); GPU
+            store-and-forward strictly advances the epoch, so the ONLY directed cycles are
+            same-epoch cut-through switch circulations (e.g. a wasteful reverse switch edge
+            coexisting with the legitimate forward edge). Excluding a predecessor whose
+            (node, send_epoch) is already on the path breaks exactly those zero-time loops
+            -- and nothing else: a node legitimately revisited at a DIFFERENT epoch (which
+            is not a cycle, since back-tracing walks epochs strictly downward and always
+            terminates) is still allowed. The skipped same-epoch backedge, never traced, is
+            dropped by dfs_remove_unnecessary_flows as an unnecessary flow. Returns None
+            only when every viable predecessor would revisit a same-epoch vertex, i.e. the
+            solution delivers this chunk to d only via a same-epoch circulation with no
+            acyclic route back to the source.
         """
         if (s, d, c, k) in flow_memoization:
             cached = flow_memoization[(s, d, c, k)]
-            if cached is None or cached[1] not in avoid:
+            if cached is None or (cached[1], cached[4]) not in avoid:
                 return cached
             # The natural (unconstrained) choice is itself on the path; fall through and
             # re-pick around it below without disturbing the memo.
@@ -603,9 +607,10 @@ class AllGatherFormulation(BaseFormulation):
         # If d is a switch, then solver can pick a solution where the switch receives the same chunk by same epoch from multiple nodes.
         #  We only need one such flow if switch is copying the chunk.
         natural_flow = min(viable_flows, key=lambda x: x[4]) if viable_flows else None
-        # Prefer a predecessor that is not already on the current path so the trace skips
-        # wasteful same-epoch cycle backedges; None if every predecessor is already visited.
-        candidates = [f for f in viable_flows if f[1] not in avoid]
+        # Prefer a predecessor that does not revisit a same-epoch vertex already on the path
+        # so the trace skips wasteful same-epoch cycle backedges (but still allows a node
+        # revisited at a different epoch); None if every predecessor revisits one.
+        candidates = [f for f in viable_flows if (f[1], f[4]) not in avoid]
         if not candidates:
             return None
         closest_flow = min(candidates, key=lambda x: x[4])
@@ -693,22 +698,25 @@ class AllGatherFormulation(BaseFormulation):
             # GPU destination, so there is exactly one viable flow (asserted in find_flow).
             closest_flow = self.find_flow(flows, s, d, c, k, flow_memoization)
             my_path.append(closest_flow)
-            # Trace the path back to the source node. `visited` holds the nodes already on
-            # this path; we hand it to find_flow so the trace never follows a wasteful
-            # same-epoch cycle backedge -- that edge, never traced, is then dropped as an
-            # unnecessary flow (which is the whole point of this pass). This replaces the
-            # earlier (unsound) whole-cycle removal: with binary flows a legitimate forward
-            # edge and a wasteful reverse edge form one 2-cycle, and removing the cycle
-            # would delete the legit edge too; steering the trace around it instead keeps
-            # the real path and prunes only the wasteful send.
-            visited = {d}
+            # Trace the path back to the source node. `visited` holds the (node, send_epoch)
+            # vertices already on this path; we hand it to find_flow so the trace never
+            # follows a same-epoch cut-through cycle backedge -- that edge, never traced, is
+            # then dropped as an unnecessary flow (the whole point of this pass). Keying on
+            # (node, epoch) rather than node alone guards ONLY the zero-time same-epoch loops
+            # that can hang the trace; a node legitimately revisited at a different epoch is
+            # still allowed. This replaces the earlier (unsound) whole-cycle removal: with
+            # binary flows a legitimate forward edge and a wasteful reverse edge form one
+            # 2-cycle, and removing the cycle would delete the legit edge too; steering the
+            # trace around it instead keeps the real path and prunes only the wasteful send.
+            visited = set()
             trace_ok = True
             while True:
                 sending_node = closest_flow[1]
                 if sending_node == s:
                     # we reached the chunk source node
                     break
-                visited.add(sending_node)
+                # closest_flow=(s,i,j,c,k): sending_node i is active (sends) at epoch closest_flow[4].
+                visited.add((sending_node, closest_flow[4]))
                 if sending_node not in self.topology.switch_indices:
                     # If the sending node is not a switch, then the epoch in which it received the chunk is given by buffer.
                     if (s, sending_node, c) not in buffers:
