@@ -76,10 +76,24 @@ def main() -> None:
     coarse, mapping = abstract(fine)
     lift_demand(mapping)  # heterogeneous: per-cell GPU-count chunk identities
 
-    # Fine demand -> coarse demand (collective-agnostic aggregation). One chunk per fine GPU
-    # for AllGather; one chunk per ordered GPU pair for AllToAll.
+    # Fine demand -> coarse demand (collective-agnostic aggregation). The fine demand MUST be
+    # built at the same effective resolution the flat ground-truth solve uses, or the coarse
+    # volumes won't correspond to the flat problem and the comparison is meaningless.
+    #
+    # CHUNKS_PER_PAIR is the flat input num_chunks (per source, per destination). AllGather
+    # passes it through unscaled, so fine_chunks == CHUNKS_PER_PAIR. AllToAll is DIFFERENT: the
+    # scheduler scales the flat input by the participating-GPU count (scheduler.get_solver,
+    # ALLTOALL branch: num_chunks *= num_gpus), and build_demand then lays down
+    # fine_chunks // num_gpus chunks per ordered pair -- so to reproduce the flat alltoall we
+    # must pre-scale here to CHUNKS_PER_PAIR * num_gpus (build_demand is called DIRECTLY, it does
+    # not go through the scheduler's scaling). Keep CHUNKS_PER_PAIR in lockstep with the flat
+    # input JSON (hetero_alltoall_lp.json num_chunks).
+    CHUNKS_PER_PAIR = 1
     num_participating = sum(len(c.gpus) for c in mapping.coarse_cells.values())
-    fine_chunks = 1 if collective == Collective.ALLGATHER else num_participating
+    if collective == Collective.ALLGATHER:
+        fine_chunks = CHUNKS_PER_PAIR
+    else:
+        fine_chunks = CHUNKS_PER_PAIR * num_participating
     coarse_demand = coarsify_demand(build_demand(collective, fine, fine_chunks), mapping)
     coarse.demand_override = coarse_demand
 
