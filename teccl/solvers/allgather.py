@@ -917,7 +917,11 @@ class AllGatherFormulation(BaseFormulation):
 
     def get_schedule(self) -> Tuple[List[Tuple[int, int, int, int, int]], Dict]:
         if self.model.SolCount > 0:
-            self.diagnose_switch_phantom_cycles()
+            if self.user_input.instance.debug:
+                # Phantom cycles are made infeasible by switch_acyclicity_constraints when
+                # switch_pipeline+switch_copy are on, so this is normally a no-op; run it only
+                # under debug to confirm/locate any (e.g. if that constraint is disabled).
+                self.diagnose_switch_phantom_cycles()
             if not self.required_flows:
                 self.required_flows, self.flows_str_info = self.dfs_remove_unnecessary_flows(
                     astar=False)
