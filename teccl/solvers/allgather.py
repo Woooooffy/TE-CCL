@@ -813,14 +813,14 @@ class AllGatherFormulation(BaseFormulation):
             # INTO a switch, remove it so another demand's trace can't reuse that same copy;
             # mutating `flows` invalidates the predecessor memo. (Under switch_copy this is a
             # no-op -- switches may fan the chunk out to many receivers.)
-            if not self.user_input.instance.switch_copy:
-                removed_any = False
-                for f in my_path:
-                    if f[2] in self.topology.switch_indices and f in flows:
-                        flows.discard(f)
-                        removed_any = True
-                if removed_any:
-                    pred_memo.clear()
+            # if not self.user_input.instance.switch_copy:
+            #     removed_any = False
+            #     for f in my_path:
+            #         if f[2] in self.topology.switch_indices and f in flows:
+            #             flows.discard(f)
+            #             removed_any = True
+            #     if removed_any:
+            #         pred_memo.clear()
             chunk_str_path = self.chunk_flow_path_to_string(my_path)
             chunk_paths[f"Demand at {d} for chunk {c} from {s} met by epoch {demand_met_k}"] = [
                 x[1] for x in chunk_str_path]
