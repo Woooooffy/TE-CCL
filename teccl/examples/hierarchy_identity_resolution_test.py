@@ -260,8 +260,26 @@ def test_replay_real_allgather_json():
     # Host C's multi-GPU boundary to T1 (g11, g13) is actually used on some egress piece.
     c_egress_gpus = {p.egress_gpu for p in res.pieces if p.src_cell == C}
     assert {11, 13} & c_egress_gpus, sorted(c_egress_gpus)
+
+    # NATIVE-FIRST egress ordering, checked at the granularity it is enforced: per (src_cell,
+    # dst_cell, gateway). Within one demand pair on a gateway, a native identity never sits on a
+    # later epoch than a relayed one -- native_epoch <= every relayed epoch. (Equality is the
+    # forced case, e.g. g8 where the coarse LP packed two units into the same epoch.) NOTE the
+    # property is intentionally NOT asserted across different destinations sharing one physical
+    # uplink -- that cross-pair interleaving is set by the coarse LP's epoch assignment, not by
+    # this per-pair ordering.
+    by_gateway = defaultdict(list)   # (src_cell, dst_cell, egress_gpu) -> [(send_epoch, is_native)]
+    for p in res.pieces:
+        by_gateway[(p.src_cell, p.dst_cell, p.egress_gpu)].append(
+            (p.send_epoch, p.identity[0] == p.egress_gpu))
+    for (U, V, g), rows in by_gateway.items():
+        native_eps = [e for e, nat in rows if nat]
+        relay_eps = [e for e, nat in rows if not nat]
+        if native_eps and relay_eps:
+            assert max(native_eps) <= min(relay_eps), (U, V, g, sorted(rows))
+
     print(f"  [5] replay real allgather JSON OK: {len(res.pieces)} pieces, "
-          f"Host-B relays {b_relays}, C egress gpus {sorted(c_egress_gpus)}")
+          f"Host-B relays {b_relays}, C egress gpus {sorted(c_egress_gpus)}, native-first ordering holds")
 
 
 def main() -> None:

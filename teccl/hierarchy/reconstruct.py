@@ -20,6 +20,15 @@ identity on real GPUs/links, plus intra-cell demand descriptors (egress staging,
 distribution, self distribution) for the downstream phase-3 solve. This module STOPS before the
 phase-3 intra-cell solve and the final flat stitching.
 
+Egress epoch ordering (see back-distribution in resolve_identities): at each gateway GPU, NATIVE
+identities are pinned to the earliest egress epochs and RELAYED identities to the later ones, so
+an early slot is never spent on data not yet on the gateway and relays get maximal staging slack.
+The order AMONG relayed identities is left as identity index for now -- the runtime-optimal choice
+depends on when each relay actually completes, which is only known once phase-3 fixes the
+intra-cell (NVSwitch) schedule. That is the intended home for an intra-cell ordering-heuristic
+knob (earliest-relay-ready-first, longest-intra-path-first, deadline-driven, ...); revisit when
+phase-3 lands.
+
 See the design note hierarchical_lp_identity_resolution / hierarchical_phase3_forward_plan.
 """
 from collections import defaultdict
@@ -330,7 +339,25 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
                 gw_pieces.setdefault(g, []).extend(
                     [[p, p.volume * cap / cap_sum] for p in ordered])
 
-        for (d, g), vol in sorted(x.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+        # Choose which epoch slot each identity takes on its gateway. Ordering rule per gateway g:
+        #   1. NATIVE identities first (g == native[d]): they already sit on g at t=0, so they
+        #      claim the EARLIEST egress epochs -- an early slot is never spent on data that is
+        #      not yet on the gateway.
+        #   2. RELAYED identities after: they take the later slots, which maximizes the staging
+        #      slack of their egress_stage relay (the relay only has to finish before the -- now
+        #      later -- epoch g actually sends them). This is the "own volume out first, relayed
+        #      volume in later epochs" ordering.
+        # The order AMONG relayed identities (and native ties) is left as identity index for now.
+        # That secondary order is a PLACEHOLDER: the runtime-optimal relayed-egress order depends
+        # on when each relay can actually complete, which is only known once phase-3 fixes the
+        # intra-cell (NVSwitch) schedule. That is the natural home for an intra-cell ordering
+        # heuristic knob (e.g. earliest-relay-ready-first, longest-intra-path-first, deadline
+        # driven) selecting among strategies; wire it here when phase-3 lands. See module docstring.
+        def _egress_order(kv):
+            (d, g), _vol = kv
+            return (g, 0 if g == native[d] else 1, d)   # per gateway: native (0) before relayed (1)
+
+        for (d, g), vol in sorted(x.items(), key=_egress_order):
             # Egress-stage relay demand if the gateway is not the identity's native GPU.
             if g != native[d]:
                 # deadline = earliest send epoch of the pieces this identity will feed on g
