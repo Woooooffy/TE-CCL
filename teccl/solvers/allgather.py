@@ -289,6 +289,66 @@ class AllGatherFormulation(BaseFormulation):
         logging.debug(
             f'Finished adding capacity constraints in {time.time() - start}')
 
+    def switch_acyclicity_constraints(self) -> None:
+        """
+            Forbid same-epoch switch cut-through CYCLES of any length.
+
+            The switch flow constraint (node_constraint_helper, switch branch) is pure
+            flow *conservation* (out == in / out <= in), and a cut-through leg relays within
+            the SAME epoch (alpha_num_back == 0). Conservation is satisfied by a circulation
+            with zero external injection, so the solver can route chunk (s, c) around a
+            same-epoch switch loop (e.g. T0->T1->T0) that no GPU ever fed -- a phantom the
+            copy (max) egress then even lets feed a real delivery, satisfying a demand that
+            is physically unrealizable (nothing produces the chunk at any switch within the
+            epoch). See diagnose_switch_phantom_cycles / dfs_remove_unnecessary_flows.
+
+            Fix: an MTZ ordering per (source, chunk, epoch). Give each cut-through-fabric
+            switch v a continuous potential u[s][v][c][k] in [1, N] and require, for every
+            switch->switch flow that is 1, u[a] < u[b]. A directed cycle would need a value
+            strictly less than itself, so no same-epoch switch cycle of ANY length can exist,
+            while a legitimate same-epoch multi-hop cut-through chain (GPU->a->b->GPU') is
+            still allowed -- it just has strictly increasing potential. A chunk genuinely
+            sent one direction never needs to complete a same-epoch loop, so this removes no
+            realizable optimum. Potentials are created lazily, only for (s, c, k) that carry
+            a switch->switch flow, keeping the added model small.
+
+            Only meaningful under cut-through (switch_pipeline); a store-and-forward
+            switch->switch hop advances the epoch, so no same-epoch cycle can form.
+        """
+        if not self.user_input.instance.switch_pipeline:
+            return
+        switches = set(self.topology.switch_indices)
+        ss_links = [(a, b) for a in switches for b in switches
+                    if a != b and self.topology.capacity[a][b] > 0]
+        fabric = sorted({v for link in ss_links for v in link})
+        if len(fabric) < 2:
+            # No switch<->switch pair -> no same-epoch switch cycle is possible.
+            return
+        logging.debug('Adding switch acyclicity (MTZ) constraints')
+        start = time.time()
+        N = len(fabric)
+        order = {}
+
+        def order_var(s: int, v: int, c: int, k: int) -> gp.Var:
+            key = (s, v, c, k)
+            if key not in order:
+                order[key] = self.model.addVar(
+                    1, N, vtype=GRB.CONTINUOUS,
+                    name='switch_order_%d_%d_%d_%d' % (s, v, c, k))
+            return order[key]
+
+        for s, c, k in product(self.sources, self.chunks, self.epochs):
+            for (a, b) in ss_links:
+                f = self.flow[s][a][b][c][k]
+                if not isinstance(f, gp.Var):
+                    continue
+                # f == 1  =>  u[a] - u[b] <= -1  (u[a] < u[b]); f == 0 leaves it slack.
+                self.model.addConstr(
+                    order_var(s, a, c, k) - order_var(s, b, c, k) + N * f <= N - 1,
+                    name="switch_acyc_s_%d_a_%d_b_%d_c_%d_k_%d" % (s, a, b, c, k))
+        logging.debug(
+            f'Finished adding switch acyclicity constraints in {time.time() - start}')
+
     def use_one_less_epoch(self) -> None:
         """
            Constraints to find the solution using one less epoch than the input number of epochs.
@@ -460,6 +520,7 @@ class AllGatherFormulation(BaseFormulation):
         self.destination_constraints()
         self.node_constraints(previous_buffers)
         self.capacity_constraints()
+        self.switch_acyclicity_constraints()
         if use_one_less_epoch:
             self.use_one_less_epoch()
         if self.user_input.instance.symmetry:
