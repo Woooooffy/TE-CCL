@@ -291,16 +291,18 @@ class AllGatherFormulation(BaseFormulation):
 
     def switch_acyclicity_constraints(self) -> None:
         """
-            Forbid same-epoch switch cut-through CYCLES of any length.
+            Forbid same-epoch switch cut-through CYCLES of any length. Only needed when
+            switches BOTH cut through AND copy (see the guard below).
 
             The switch flow constraint (node_constraint_helper, switch branch) is pure
-            flow *conservation* (out == in / out <= in), and a cut-through leg relays within
-            the SAME epoch (alpha_num_back == 0). Conservation is satisfied by a circulation
-            with zero external injection, so the solver can route chunk (s, c) around a
-            same-epoch switch loop (e.g. T0->T1->T0) that no GPU ever fed -- a phantom the
-            copy (max) egress then even lets feed a real delivery, satisfying a demand that
-            is physically unrealizable (nothing produces the chunk at any switch within the
-            epoch). See diagnose_switch_phantom_cycles / dfs_remove_unnecessary_flows.
+            flow *conservation*, and a cut-through leg relays within the SAME epoch
+            (alpha_num_back == 0). Conservation is satisfied by a circulation with zero
+            external injection, so the solver can route chunk (s, c) around a same-epoch
+            switch loop (e.g. T0->T1->T0) that no GPU ever fed. Under switch_copy the egress
+            is `max(outgoing)`, so that one circulating unit can ALSO be copied to a real
+            delivery -- the loop then satisfies a demand that is physically unrealizable
+            (nothing produces the chunk at any switch within the epoch). See
+            diagnose_switch_phantom_cycles / dfs_remove_unnecessary_flows.
 
             Fix: an MTZ ordering per (source, chunk, epoch). Give each cut-through-fabric
             switch v a continuous potential u[s][v][c][k] in [1, N] and require, for every
@@ -311,11 +313,17 @@ class AllGatherFormulation(BaseFormulation):
             sent one direction never needs to complete a same-epoch loop, so this removes no
             realizable optimum. Potentials are created lazily, only for (s, c, k) that carry
             a switch->switch flow, keeping the added model small.
-
-            Only meaningful under cut-through (switch_pipeline); a store-and-forward
-            switch->switch hop advances the epoch, so no same-epoch cycle can form.
         """
-        if not self.user_input.instance.switch_pipeline:
+        # Needed only when switches BOTH cut through and copy:
+        #  - without cut-through (switch_pipeline), a switch->switch hop advances the epoch,
+        #    so no same-epoch cycle can form at all;
+        #  - without copy, the switch egress is pure sum-conservation (Sum out <= Sum in,
+        #    like the LP): a same-epoch circulation cancels and CANNOT feed a delivery, so it
+        #    is a benign/removable waste loop that the backtracking extractor routes around
+        #    (and prunes) -- no constraint required.
+        # Only the copy (max-egress) case lets a circulation manufacture an ungrounded
+        # delivery, which is the physically-unrealizable phantom this constraint forbids.
+        if not (self.user_input.instance.switch_pipeline and self.user_input.instance.switch_copy):
             return
         switches = set(self.topology.switch_indices)
         ss_links = [(a, b) for a in switches for b in switches
