@@ -13,10 +13,18 @@ demands against hand-derived oracles. Covers:
      destinations, and none for the native identity.
   3. Zero-relay symmetric case: every GPU is a gateway (uplinks == GPUs) -> no egress_stage.
   4. AllToAll ingress target is a SINGLE GPU (vs all-of-cell for AllGather).
+  5. REPLAY: reconstruct the exact per_chunk_flow_paths from the real solved
+     Schedules/coarse_hetero_allgather_lp.json and run the resolver end-to-end (this is the input
+     that crashed with the single-sort bug; it exercises the C->T1 multi-GPU boundary and
+     two-switch relay paths that the synthetic fixtures only partially cover).
 
 Run from the repo root (in the teccl env):
     python -m teccl.examples.hierarchy_identity_resolution_test
 """
+import json
+import os
+import re
+from collections import defaultdict
 from types import SimpleNamespace
 
 import numpy as np
@@ -39,16 +47,18 @@ def _fake_solver(per_chunk_flow_paths, switch_indices):
 
 
 def _single_switch_path(cell_s, cell_d, switch, vol, epoch):
-    """A U -> switch -> V coarse path as the two 6-tuples (s, i, j, c, vol, k)."""
-    return [(cell_s, cell_s, switch, 0, vol, epoch),
-            (cell_s, switch, cell_d, 0, vol, epoch)]
+    """A U -> switch -> V coarse path as two 6-tuples (s, i, j, c, vol, k). Hops are listed
+    DEST-first, the way dig_to_source (which back-traces from the destination) emits them; the
+    resolver's sort->reverse->sort normalization flips them to source-first."""
+    return [(cell_s, switch, cell_d, 0, vol, epoch),
+            (cell_s, cell_s, switch, 0, vol, epoch)]
 
 
 def _two_switch_path(cell_s, cell_d, sw1, sw2, vol, epoch):
-    """A U -> sw1 -> sw2 -> V coarse path (single-homed relay across the top mesh)."""
-    return [(cell_s, cell_s, sw1, 0, vol, epoch),
+    """A U -> sw1 -> sw2 -> V coarse path (single-homed relay across the top mesh), DEST-first."""
+    return [(cell_s, sw2, cell_d, 0, vol, epoch),
             (cell_s, sw1, sw2, 0, vol, epoch),
-            (cell_s, sw2, cell_d, 0, vol, epoch)]
+            (cell_s, cell_s, sw1, 0, vol, epoch)]
 
 
 # ------------------------------------------------------------------------------------------
@@ -188,11 +198,78 @@ def test_alltoall_single_target():
     print("  [4] AllToAll single-GPU ingress target OK")
 
 
+_SEG_RE = re.compile(
+    r"(\d+)->(\d+) with volume ([\d.]+) in epoch (\d+)(?: via switches (.+))?$")
+
+
+def _replay_per_chunk_flow_paths(schedule_json: dict):
+    """Invert a solved schedule's '8-Chunk paths' back into the per_chunk_flow_paths structure
+    resolve_identities consumes. Each grouped segment 'U->V volume X epoch K via switches S1->S2'
+    expands to the raw hops U->S1, S1->S2, S2->V (emitted DEST-first, as dig_to_source does)."""
+    key_re = re.compile(r"Demand at (\d+) for chunk (\d+) from (\d+) met by epoch \d+")
+    pcp = defaultdict(list)
+    for key, paths in schedule_json["8-Chunk paths"].items():
+        km = key_re.match(key)
+        d, c, s = int(km.group(1)), int(km.group(2)), int(km.group(3))
+        for path in paths:                         # each path = list of [epoch, segment_str]
+            each_path = []
+            for _epoch, seg in path:
+                m = _SEG_RE.search(seg)
+                start, end = int(m.group(1)), int(m.group(2))
+                vol, ep = float(m.group(3)), int(m.group(4))
+                switches = [int(x) for x in m.group(5).split("->")] if m.group(5) else []
+                nodes = [start] + switches + [end]
+                hops = [(s, nodes[h], nodes[h + 1], c, vol, ep) for h in range(len(nodes) - 1)]
+                each_path.extend(reversed(hops))   # dest-first, matching dig_to_source
+            pcp[(s, d, c)].append(each_path)
+    return dict(pcp)
+
+
+def test_replay_real_allgather_json():
+    path = "Schedules/coarse_hetero_allgather_lp.json"
+    if not os.path.exists(path):
+        print(f"  [5] SKIP replay: {path} not found")
+        return
+    with open(path) as f:
+        schedule_json = json.load(f)
+
+    topo = HeteroTaperedCluster(TopologyParams(name="HeteroTaperedCluster", chunk_size=1))
+    coarse, m = abstract(topo)
+    B, C = 1, 2
+    fine_demand = build_demand(Collective.ALLGATHER, topo, num_chunks=1)
+
+    pcp = _replay_per_chunk_flow_paths(schedule_json)
+    solver = _fake_solver(pcp, switch_indices=list(coarse.switch_indices))
+    res = resolve_identities(solver, m, fine_demand, topo)   # must not raise (was the crash)
+
+    id_sets, _ = identity_sets(fine_demand, m)
+    # every demanded (U,V) delivers each identity exactly once
+    for (U, V), ids in id_sets.items():
+        per_id = defaultdict(float)
+        for p in res.pieces:
+            if (p.src_cell, p.dst_cell) == (U, V):
+                per_id[p.identity] += p.volume
+        assert set(per_id) == set(ids), (U, V, sorted(per_id), sorted(ids))
+        assert all(abs(v - 1.0) < 1e-5 for v in per_id.values()), (U, V, dict(per_id))
+
+    # single-homed Host B: identities native to g5,g6,g7 relay to its lone gateway g4.
+    b_relays = sorted((d.src_gpu, d.dst_gpus[0]) for d in res.intra_demands
+                      if d.kind == "egress_stage" and d.cell == B)
+    assert b_relays == [(5, 4), (6, 4), (7, 4)], b_relays
+
+    # Host C's multi-GPU boundary to T1 (g11, g13) is actually used on some egress piece.
+    c_egress_gpus = {p.egress_gpu for p in res.pieces if p.src_cell == C}
+    assert {11, 13} & c_egress_gpus, sorted(c_egress_gpus)
+    print(f"  [5] replay real allgather JSON OK: {len(res.pieces)} pieces, "
+          f"Host-B relays {b_relays}, C egress gpus {sorted(c_egress_gpus)}")
+
+
 def main() -> None:
     test_identity_sets_match_coarsify()
     test_hostB_forced_relay()
     test_zero_relay_symmetric()
     test_alltoall_single_target()
+    test_replay_real_allgather_json()
     print("identity resolution structural tests OK")
 
 

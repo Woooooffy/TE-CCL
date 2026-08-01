@@ -154,8 +154,13 @@ def _extract_pieces(coarse_solver, mapping: HierarchyMapping
             each_path = [x for x in each_path if len(x) != 0]
             if not each_path:
                 continue
-            # Order by epoch, drop zero-volume hops (same normalization as the string builder).
-            chunk_path = sorted(each_path, key=lambda x: x[-1])
+            # Reproduce chunk_flow_paths_to_string's exact normalization. dig_to_source appends
+            # hops DEST-first (it back-traces from the destination), so a single epoch sort would
+            # leave same-epoch hops in reverse-path order and the switch-run walk below would run
+            # off the end. sort -> reverse -> sort flips same-epoch hops into SOURCE-first
+            # (forward path) order so the walk goes source -> switch(es) -> dest.
+            chunk_path = sorted(each_path, key=lambda x: x[-1])[::-1]
+            chunk_path = sorted(chunk_path, key=lambda x: x[-1])
             chunk_path = [x for x in chunk_path if round(x[4], 6) > 0]
             if not chunk_path:
                 continue

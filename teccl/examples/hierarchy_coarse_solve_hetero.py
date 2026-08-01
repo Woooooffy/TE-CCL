@@ -19,6 +19,7 @@ Run from the repo root:
 import copy
 import json
 import sys
+import traceback
 
 from dataclasses import asdict
 
@@ -160,6 +161,7 @@ def main() -> None:
             _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag)
         except Exception as e:
             print(f"LP solve / identity resolution failed: {type(e).__name__}: {e}")
+            traceback.print_exc()
 
     for label, path in (("MILP", milp_out), ("LP", lp_out)):
         try:
