@@ -20,7 +20,10 @@ import copy
 import json
 import sys
 
+from dataclasses import asdict
+
 from teccl.hierarchy.abstract import abstract, coarsify_demand, lift_demand
+from teccl.hierarchy.reconstruct import resolve_identities
 from teccl.input_data import (
     Collective, EpochType, Formulation, InstanceParams, ObjectiveType,
     SolutionMethod, TopologyParams, UserInputParams,
@@ -31,14 +34,48 @@ from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
 from teccl.topologies.topology import Topology
 
 
-def _solve_on_topology(user_input: UserInputParams, topology: Topology) -> None:
+def _solve_on_topology(user_input: UserInputParams, topology: Topology) -> TECCLSolver:
     """Run TECCLSolver.solve() against an already-built Topology (bypassing get_topology, which
-    only knows the named built-ins, not CoarseTopology)."""
+    only knows the named built-ins, not CoarseTopology). Returns the TECCLSolver so the caller
+    can reach the solved formulation (teccl_solver.best_solver) for post-processing."""
     solver = TECCLSolver.__new__(TECCLSolver)
     solver.user_input = user_input
     solver.topology_obj = topology
     solver.solver = solver.get_solver(copy.deepcopy(user_input), topology)
     solver.solve()
+    return solver
+
+
+def _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag: str) -> None:
+    """Resolve the identity-free coarse LP solution into concrete fine identities + intra-cell
+    demands, print a summary, and serialize to Schedules/coarse_hetero_{tag}_identities.json."""
+    if not getattr(lp_solver, "best_solver", None):
+        print("no solved LP formulation to resolve (best_solver unset)")
+        return
+    res = resolve_identities(lp_solver.best_solver, mapping, fine_demand, fine)
+
+    egress = [d for d in res.intra_demands if d.kind == "egress_stage"]
+    ingress = [d for d in res.intra_demands if d.kind == "ingress_distribution"]
+    selfd = [d for d in res.intra_demands if d.kind == "self_distribution"]
+    print(f"\n--- identity resolution ({tag}) ---")
+    print(f"resolved inter-cell pieces: {len(res.pieces)}")
+    print(f"intra-cell demands: {len(egress)} egress_stage, {len(ingress)} ingress_distribution, "
+          f"{len(selfd)} self_distribution")
+    per_cell_relay = {}
+    for d in egress:
+        per_cell_relay.setdefault(d.cell, []).append((d.identity, d.src_gpu, d.dst_gpus[0]))
+    for cell in sorted(per_cell_relay):
+        print(f"  cell {cell} egress relays: "
+              f"{sorted((f'{s}->{g}') for (_id, s, g) in per_cell_relay[cell])}")
+
+    out = {
+        "pieces": [asdict(p) for p in res.pieces],
+        "intra_demands": [asdict(d) for d in res.intra_demands],
+    }
+    path = f"Schedules/coarse_hetero_{tag}_identities.json"
+    with open(path, "w") as f:
+        json.dump(out, f, indent=2, default=list)
+    print(f"identity resolution written to {path}")
 
 
 def _make_input(formulation: Formulation, collective: Collective, out_file: str) -> UserInputParams:
@@ -94,7 +131,8 @@ def main() -> None:
         fine_chunks = CHUNKS_PER_PAIR
     else:
         fine_chunks = CHUNKS_PER_PAIR * num_participating
-    coarse_demand = coarsify_demand(build_demand(collective, fine, fine_chunks), mapping)
+    fine_demand = build_demand(collective, fine, fine_chunks)
+    coarse_demand = coarsify_demand(fine_demand, mapping)
     coarse.demand_override = coarse_demand
 
     vols = {(u, v): coarse_demand[u][v][0]
@@ -118,9 +156,10 @@ def main() -> None:
     if which in ("both", "lp"):
         print("\n=== LP (switch_copy=False, unicast) ===")
         try:
-            _solve_on_topology(_make_input(Formulation.LP, collective, lp_out), coarse)
+            lp_solver = _solve_on_topology(_make_input(Formulation.LP, collective, lp_out), coarse)
+            _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag)
         except Exception as e:
-            print(f"LP solve failed: {type(e).__name__}: {e}")
+            print(f"LP solve / identity resolution failed: {type(e).__name__}: {e}")
 
     for label, path in (("MILP", milp_out), ("LP", lp_out)):
         try:

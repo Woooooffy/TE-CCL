@@ -266,6 +266,9 @@ class TECCLSolver(object):
             output_file = user_input.instance.schedule_output_file
             best_epochs = min(epoch_result_schedule_solver.keys())
             solver = epoch_result_schedule_solver[best_epochs]["solver"]
+            # Expose the solved formulation (per_chunk_flow_paths populated) for hierarchical
+            # post-processing, e.g. teccl.hierarchy.reconstruct.resolve_identities.
+            self.best_solver = solver
             if user_input.instance.schedule_output_file == "":
                 output_file = f'{user_input.topology.name}_{solver.num_nodes}-nodes_{solver.num_chunks}-chunks_{user_input.topology.chunk_size}-chunksize_{solver.solver_name}_{timestamp}.json'
             epoch_result_schedule_solver[best_epochs]["schedule"][1]["Solver_Time"] = time(
