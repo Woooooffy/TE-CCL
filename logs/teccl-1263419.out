@@ -24,7 +24,7 @@ Requirement already satisfied: six>=1.5 in /data/commit/graphit/wangyj05/minicon
 Building wheels for collected packages: teccl
   Building wheel for teccl (pyproject.toml): started
   Building wheel for teccl (pyproject.toml): finished with status 'done'
-  Created wheel for teccl: filename=teccl-1.0.0-py3-none-any.whl size=80691 sha256=eae479d784f23ab43ce4e6bcdbf4127d275f9d5e461b7f042b4edd1f632353cc
+  Created wheel for teccl: filename=teccl-1.0.0-py3-none-any.whl size=88292 sha256=c3465a408889ebd42506bbba5674fdcb09ecc5eb09630ea83a7be79e1debd291
   Stored in directory: /tmp/home/wangyj05/.cache/pip/wheels/2d/31/f1/88ef48e0a336b237a128de3fcf8e52662d1ed0bfbd5a678f6e
 Successfully built teccl
 Installing collected packages: teccl
@@ -370,5 +370,6 @@ RAW CONSUMED VARS  T_s_d_k = consumed_at_k[source s][dest d][epoch k]
 ==============================================================================
 
 Schedule written to Schedules/coarse_hetero_alltoall_lp.json
+LP solve / identity resolution failed: IndexError: list index out of range
 
-LP: epochs=40 finish=0.8 bw=3.75 solver_time=0.2651515007019043
+LP: epochs=40 finish=0.8 bw=3.75 solver_time=0.33501601219177246
