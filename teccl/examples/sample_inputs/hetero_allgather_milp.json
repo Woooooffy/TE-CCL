@@ -27,10 +27,10 @@
         "epoch_duration": -1,
         "num_epochs": -1,
         "alpha_threshold": 0.1,
-        "switch_copy": true,
+        "switch_copy": false,
         "symmetry": true,
         "objective_type": 2,
         "solution_method": 1,
-        "schedule_output_file": "Schedules/flat_hetero_allgather_milp.json"
+        "schedule_output_file": "Schedules/flat_hetero_allgather_milp_no_copy.json"
     }
 }
