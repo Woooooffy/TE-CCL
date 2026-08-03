@@ -25,6 +25,7 @@ from dataclasses import asdict
 
 from teccl.hierarchy.abstract import abstract, coarsify_demand, lift_demand
 from teccl.hierarchy.reconstruct import resolve_identities
+from teccl.hierarchy.intra_solve import schedule_cell
 from teccl.input_data import (
     Collective, EpochType, Formulation, InstanceParams, ObjectiveType,
     SolutionMethod, TopologyParams, UserInputParams,
@@ -47,12 +48,13 @@ def _solve_on_topology(user_input: UserInputParams, topology: Topology) -> TECCL
     return solver
 
 
-def _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag: str) -> None:
+def _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag: str):
     """Resolve the identity-free coarse LP solution into concrete fine identities + intra-cell
-    demands, print a summary, and serialize to Schedules/coarse_hetero_{tag}_identities.json."""
+    demands, print a summary, and serialize to Schedules/coarse_hetero_{tag}_identities.json.
+    Returns the IdentityResolution (for phase-3), or None if there was nothing to resolve."""
     if not getattr(lp_solver, "best_solver", None):
         print("no solved LP formulation to resolve (best_solver unset)")
-        return
+        return None
     res = resolve_identities(lp_solver.best_solver, mapping, fine_demand, fine)
 
     egress = [d for d in res.intra_demands if d.kind == "egress_stage"]
@@ -77,6 +79,38 @@ def _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag: str) ->
     with open(path, "w") as f:
         json.dump(out, f, indent=2, default=list)
     print(f"identity resolution written to {path}")
+    return res
+
+
+def _run_phase3_intra(res, mapping, tag: str) -> None:
+    """Phase-3: schedule every cell's intra-cell demands onto its NVSwitch (Gurobi-free, EDF
+    edge-coloring). Debug narration is on so the .out log shows the full per-step derivation --
+    fan-out density decisions, dedup, per-round matchings, and optimality vs the port-load bound.
+    Serializes the fine IntraFlows to Schedules/coarse_hetero_{tag}_intra.json."""
+    if res is None:
+        return
+    by_cell = {}
+    for d in res.intra_demands:
+        by_cell.setdefault(d.cell, []).append(d)
+
+    print(f"\n=== phase-3 intra-cell scheduling ({tag}) ===")
+    all_flows = []
+    for cid in sorted(mapping.coarse_cells):
+        cell = mapping.coarse_cells[cid]
+        demands = by_cell.get(cid, [])
+        if not demands:
+            continue
+        # switch_copy=False: the LP path is unicast, so the intra fabric is modeled unicast too.
+        flows = schedule_cell(cid, cell, demands, switch_copy=False, debug=True)
+        all_flows.extend(flows)
+
+    out = [dict(cell=f.cell, identity=list(f.identity), sender=f.sender, receiver=f.receiver,
+                via_switch=f.via_switch, volume=f.volume, gap=f.gap, local_round=f.local_round)
+           for f in all_flows]
+    path = f"Schedules/coarse_hetero_{tag}_intra.json"
+    with open(path, "w") as f:
+        json.dump(out, f, indent=2)
+    print(f"\nphase-3 intra schedule: {len(all_flows)} fine flows written to {path}")
 
 
 def _make_input(formulation: Formulation, collective: Collective, out_file: str) -> UserInputParams:
@@ -158,7 +192,8 @@ def main() -> None:
         print("\n=== LP (switch_copy=False, unicast) ===")
         try:
             lp_solver = _solve_on_topology(_make_input(Formulation.LP, collective, lp_out), coarse)
-            _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag)
+            res = _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag)
+            _run_phase3_intra(res, mapping, tag)
         except Exception as e:
             print(f"LP solve / identity resolution failed: {type(e).__name__}: {e}")
             traceback.print_exc()

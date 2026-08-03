@@ -394,9 +394,15 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
 
 
 def _coalesce_egress(result: IdentityResolution) -> None:
-    """A GPU node buffers (store-and-forward), so one relay native->gateway serves every later
+    """A GPU node buffers (store-and-forward), so ONE relay native->gateway serves every later
     epoch that gateway egresses the identity. Merge duplicate egress_stage demands by
-    (cell, identity, src_gpu, dst_gpu), summing volume and keeping the earliest deadline."""
+    (cell, identity, src_gpu, dst_gpu), keeping the earliest deadline. Volume is the MAX of the
+    merged pieces, not their sum: the gateway must hold the identity's data once and re-sends the
+    same buffered bytes to each network destination -- summing would re-count the same relay per
+    egress and defeat the point of coalescing. (Caveat: for a FRACTIONALLY split identity whose
+    pieces through this gateway cover DISJOINT byte ranges, max under-counts; the aggregate model
+    does not track byte ranges. For full-identity relays -- the integer allgather/alltoall case --
+    max is exact at the identity's chunk volume.)"""
     merged: Dict[Tuple, IntraCellDemand] = {}
     others: List[IntraCellDemand] = []
     for dem in result.intra_demands:
@@ -411,7 +417,7 @@ def _coalesce_egress(result: IdentityResolution) -> None:
             merged[key] = IntraCellDemand(
                 cell=dem.cell, kind="egress_stage", identity=dem.identity,
                 src_gpu=dem.src_gpu, dst_gpus=dem.dst_gpus,
-                volume=prev.volume + dem.volume,
+                volume=max(prev.volume, dem.volume),
                 deadline_epoch=min(prev.deadline_epoch, dem.deadline_epoch))
     result.intra_demands = list(merged.values()) + others
 
