@@ -2,45 +2,35 @@
 # Launch the full hierarchical pipeline for the HeteroTaperedCluster example on the remote
 # (lanka/SLURM): coarse LP solve (Gurobi) -> identity resolution -> phase-3 intra-cell schedule.
 #
-# Phase 3 runs with TECCL_INTRA_DEBUG so the .out log narrates every step (fan-out density
-# decisions, delivery dedup, per-round NVSwitch matchings, and optimality vs the max-port-load
-# bound). Outputs land in Schedules/coarse_hetero_<coll>_{lp,identities,intra}.json and the log
-# in logs/teccl-<jobid>.out|.err (git-synced back as usual).
+# Phase 3 narrates every step to the .out log (fan-out density decisions, delivery dedup, per-round
+# NVSwitch matchings, optimality vs the max-port-load bound). The driver forces that debug on, so no
+# env var is required. Outputs: Schedules/coarse_hetero_<coll>_{lp,identities,intra}.json and the
+# log in logs/teccl-<jobid>.out|.err.
 #
 # Usage (from repo root):
-#   sbatch scripts/run_hetero_phase3.sh                # allgather (default)
-#   sbatch scripts/run_hetero_phase3.sh alltoall       # alltoall
-#   COLL=alltoall sbatch scripts/run_hetero_phase3.sh  # same via env
+#   sbatch scripts/run_hetero_phase3.sh              # allgather (default)
+#   sbatch scripts/run_hetero_phase3.sh alltoall     # alltoall
 #
 # Run locally instead (needs a Gurobi license on this box):
-#   TECCL_INTRA_DEBUG=1 python -m teccl.examples.hierarchy_coarse_solve_hetero allgather lp
-#
-# NOTE: adjust the #SBATCH partition/time/account and CONDA_ROOT below to your cluster if needed.
-#SBATCH --job-name=teccl
+#   python -m teccl.examples.hierarchy_coarse_solve_hetero allgather lp
+#SBATCH --job-name=teccl-solve
 #SBATCH --output=logs/teccl-%j.out
 #SBATCH --error=logs/teccl-%j.err
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --time=01:00:00
-# #SBATCH --partition=<your-partition>     # uncomment + set if your cluster requires it
+#SBATCH --time=05:00:00
+#SBATCH --nodes=1 --ntasks=1 --cpus-per-task=16 --mem=100G
+#SBATCH --account=commit
+#SBATCH --qos=commit-main
+#SBATCH --partition=lanka-v3
+#SBATCH --exclusive
 
-set -euo pipefail
-
-# --- environment ------------------------------------------------------------
-CONDA_ROOT="${CONDA_ROOT:-/data/commit/graphit/wangyj05/miniconda3}"
-CONDA_ENV="${CONDA_ENV:-teccl}"
-# shellcheck disable=SC1091
-source "${CONDA_ROOT}/etc/profile.d/conda.sh"
-conda activate "${CONDA_ENV}"
-
-# --- run --------------------------------------------------------------------
-# Collective: first positional arg, or $COLL, default allgather. The coarse solve uses the LP arm
-# (the MILP is intractable / gives no allgather makespan benefit -- see the design notes).
-COLL="${1:-${COLL:-allgather}}"
-
+cd "$SLURM_SUBMIT_DIR"
 mkdir -p logs Schedules
-pip install ./. >/dev/null
 
+source /data/commit/graphit/wangyj05/workspace/setup.sh
+pip install .
+
+# Collective: first positional arg, default allgather. The coarse solve uses the LP arm (the MILP
+# is intractable / gives no allgather makespan benefit -- see the design notes).
+COLL="${1:-allgather}"
 echo "=== running hetero phase-3 pipeline: collective=${COLL}, LP arm, intra-debug on ==="
-TECCL_INTRA_DEBUG=1 python -m teccl.examples.hierarchy_coarse_solve_hetero "${COLL}" lp
+srun python -m teccl.examples.hierarchy_coarse_solve_hetero "${COLL}" lp

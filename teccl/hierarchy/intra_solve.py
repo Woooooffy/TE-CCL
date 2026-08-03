@@ -132,19 +132,25 @@ def _binomial_tree_edges(root: int, wanters: Sequence[int]
     return edges
 
 
-def _egress_load(gateway: int, demands: Sequence[IntraCellDemand]) -> float:
-    """Total volume gateway must SEND across all intra demands (for the fan-out density test)."""
+def _intra_send_load(gpu: int, demands: Sequence[IntraCellDemand]) -> float:
+    """Total volume `gpu` must push INTO THE NVSWITCH (its intra-cell send-link load) across all
+    intra demands. This is a CLOSED intra-cell quantity -- it counts only GPU->switch hops on this
+    cell's crossbar, never the network egress (gateway->leaf->other cell), which is a separate link
+    owned by the coarse solve. A GPU that plays a network-gateway role shows up here as a big intra
+    sender only because arrived/departing data generates intra fan-out and staging that funnel
+    through it -- the number measured is still purely NVSwitch send load."""
     tot = 0.0
     for d in demands:
-        if d.src_gpu == gateway:
+        if d.src_gpu == gpu:
             tot += d.volume * max(1, len(d.dst_gpus))
-        # egress_stage relays land ON the gateway (it later egresses them to the network), so they
-        # add to its send pressure inside the cell only indirectly; the dominant term is fan-out.
     return tot
 
 
-def _max_ingress_load(demands: Sequence[IntraCellDemand]) -> float:
-    """Max volume any single GPU must RECEIVE across all fan-out demands (the ingress bound)."""
+def _max_intra_recv_load(demands: Sequence[IntraCellDemand]) -> float:
+    """Max volume any single GPU must PULL OUT OF THE NVSWITCH (its intra-cell recv-link load).
+    Also a closed intra-cell quantity (switch->GPU hops only). On a non-blocking crossbar the
+    makespan floor is the busiest port, so this is the intra recv-bound lower bound the fan-out
+    density test measures a source's send load against."""
     recv: Dict[int, float] = defaultdict(float)
     for d in demands:
         for t in d.dst_gpus:
@@ -157,13 +163,16 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
     """Convert a cell's IntraCellDemand list into scheduler jobs.
 
     egress_stage        -> a HARD point-to-point delivery (native -> gateway), deadline = its epoch.
-    ingress_distribution / self_distribution -> a fan-out, lowered by a density test:
-        * ingress-bound (E_gateway <= I_max) or switch multicast -> N DIRECT edges (the dense
+    ingress_distribution / self_distribution -> a fan-out, lowered by a density test that compares
+    the source GPU's intra-cell SEND load to the cell's max intra-cell RECV load (both NVSwitch
+    port loads -- a closed intra-cell comparison, nothing to do with the network link):
+        * recv-bound (send_load <= max_recv) or switch multicast -> N DIRECT edges (the dense
           allgather/alltoall case; the scheduler edge-colors them into the ring). switch_copy keeps
           it a single logical send only when we later model multicast at emit time; for now the
           unicast direct edges are emitted and the ring absorbs them at no makespan cost.
-        * egress-bound isolated fan-out -> a binomial broadcast TREE (spreads the single-gateway
-          egress), edges carry precedence so a child forwards only after it received.
+        * send-bound isolated fan-out (source is an intra send hotspot) -> a binomial broadcast
+          TREE (spreads that source's send load), edges carry precedence so a child forwards only
+          after it received.
 
     DIRECT deliveries of the same (identity, src, dst) are DEDUPED: one physical transfer of an
     identity to a GPU satisfies every demand wanting it there (an egress_stage relay 5->4 and the
@@ -171,13 +180,13 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
     volume, the earliest release, and -- if any contributor is hard -- the tightest hard deadline.
     Tree-edge jobs are not deduped (they carry a precedence chain and only arise for isolated
     fan-outs where no overlapping direct delivery exists)."""
-    i_max = _max_ingress_load(demands)
+    max_recv = _max_intra_recv_load(demands)
     if debug:
         by_kind = defaultdict(int)
         for d in demands:
             by_kind[d.kind] += 1
         _p(debug, f"  [_to_jobs] {len(demands)} demands "
-                  f"({dict(by_kind)}), I_max ingress load = {i_max:g}")
+                  f"({dict(by_kind)}), max intra-recv load = {max_recv:g}")
     # merged direct deliveries keyed by (identity, src, dst)
     direct: Dict[Tuple[Identity, int, int], Dict] = {}
     tree_jobs: List[_Job] = []
@@ -211,10 +220,10 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
         # ingress demand may be promoted to hard by a caller (transit cell); default soft.
         hard = getattr(d, "hard", False)
 
-        e_gateway = _egress_load(d.src_gpu, demands)
-        dense = switch_copy or e_gateway <= i_max + EPS
+        send_load = _intra_send_load(d.src_gpu, demands)
+        dense = switch_copy or send_load <= max_recv + EPS
         if debug:
-            why = "switch_copy" if switch_copy else f"E_gw={e_gateway:g} {'<=' if dense else '>'} I_max={i_max:g}"
+            why = "switch_copy" if switch_copy else f"send={send_load:g} {'<=' if dense else '>'} max_recv={max_recv:g}"
             _p(debug, f"    fan-out id={d.identity} {d.kind} src={d.src_gpu} -> "
                       f"{len(wanters)} wanters: {'DIRECT/ring' if dense else 'binomial TREE'} ({why})")
         if dense:
