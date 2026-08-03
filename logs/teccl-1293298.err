@@ -1,0 +1,15 @@
+cpu-bind=MASK - lanka30, task  0  0 [3943022]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka30, task  0  0 [3943617]: mask 0xff0000ff set
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/bin/teccl", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/__main__.py", line 21, in main
+    if handler(args, args.command):
+       ~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/cli/solve.py", line 17, in handler
+    with open(input_path, 'r') as jf:
+         ~~~~^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'alltoall'
+srun: error: lanka30: task 0: Exited with exit code 1
+cpu-bind=MASK - lanka30, task  0  0 [3943850]: mask 0xff0000ff set
