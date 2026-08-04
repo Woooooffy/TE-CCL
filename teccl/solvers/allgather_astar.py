@@ -239,7 +239,13 @@ class AStarFormulation(AllGatherFormulation):
         flows_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
         flows_str_info["3-Epochs_Required"] = self.total_epochs
         flows_str_info["4-Collective_Finish_Time"] = flows_str_info["1-Epoch_Duration"] * flows_str_info["3-Epochs_Required"]
-        flows_str_info["5-Algo_Bandwidth"] = self.topology.node_per_chassis * self.topology.chunk_size * self.num_chunks * self.topology.chassis / flows_str_info["4-Collective_Finish_Time"]
+        # node_per_chassis * chassis assumes uniform GPUs-per-chassis, which is wrong on
+        # heterogeneous topologies (e.g. HeteroTaperedCluster). Count actual demand-bearing
+        # sources from self.demand instead -- self.sources is overridden to self.nodes for
+        # AStar (see initialize_variables), so it can't be used here without pulling in
+        # switches/passive nodes.
+        num_data_sources = sum(1 for s in self.nodes if self.demand[s].any())
+        flows_str_info["5-Algo_Bandwidth"] = num_data_sources * self.topology.chunk_size * self.num_chunks / flows_str_info["4-Collective_Finish_Time"]
         flows_str_info['7-Flows'] = [
             f"Chunk {c} from {s} traveled over {i}->{j} in epoch {k}" for s, i, j, c, k in flows]
         return flows, flows_str_info

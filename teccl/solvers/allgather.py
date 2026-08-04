@@ -690,7 +690,14 @@ class AllGatherFormulation(BaseFormulation):
             flows_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
             flows_str_info["3-Epochs_Required"] = self.find_demand_satisfied_k() + 1
             flows_str_info["4-Collective_Finish_Time"] = flows_str_info["1-Epoch_Duration"] * flows_str_info["3-Epochs_Required"]
-            flows_str_info["5-Algo_Bandwidth"] = self.topology.node_per_chassis * self.topology.chunk_size * self.num_chunks * self.topology.chassis / flows_str_info["4-Collective_Finish_Time"]
+            # node_per_chassis * chassis assumes every chassis contributes the same GPU
+            # count; on heterogeneous topologies (e.g. HeteroTaperedCluster) that undercounts
+            # the real number of demand-bearing sources. Count actual sources from self.demand
+            # instead -- correct for any topology, and unaffected by AStar's self.sources
+            # override (self.demand itself is never overridden), so it holds here even though
+            # this branch runs for AStarFormulation instances too.
+            num_data_sources = sum(1 for s in self.nodes if self.demand[s].any())
+            flows_str_info["5-Algo_Bandwidth"] = num_data_sources * self.topology.chunk_size * self.num_chunks / flows_str_info["4-Collective_Finish_Time"]
             flows_str_info['7-Flows'] = [
                 f"Chunk {c} from {s} traveled over {i}->{j} in epoch {k}" for s, i, j, c, k in flows]
             return flows, flows_str_info
@@ -770,7 +777,10 @@ class AllGatherFormulation(BaseFormulation):
         flows_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
         flows_str_info["3-Epochs_Required"] = self.find_demand_satisfied_k() + 1
         flows_str_info["4-Collective_Finish_Time"] = flows_str_info["1-Epoch_Duration"] * flows_str_info["3-Epochs_Required"]
-        flows_str_info["5-Algo_Bandwidth"] = self.topology.node_per_chassis * self.topology.chunk_size * self.num_chunks * self.topology.chassis / flows_str_info["4-Collective_Finish_Time"]
+        # See the astar branch above: node_per_chassis * chassis assumes uniform GPUs-per-
+        # chassis, which breaks on heterogeneous topologies. len(self.sources) is exactly the
+        # demand-bearing source count here (self.sources is not overridden on this path).
+        flows_str_info["5-Algo_Bandwidth"] = len(self.sources) * self.topology.chunk_size * self.num_chunks / flows_str_info["4-Collective_Finish_Time"]
         flows_str_info["6-Demand_Met"] = demand_met_str
         flows_str_info['7-Flows'] = [x[1] for x in required_flows_str]
         flows_str_info['8-Chunk paths'] = chunk_paths
