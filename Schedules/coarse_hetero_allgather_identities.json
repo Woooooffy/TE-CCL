@@ -526,7 +526,7 @@
       "dst_gpus": [
         0
       ],
-      "volume": 2.0,
+      "volume": 1.0,
       "deadline_epoch": 0
     },
     {
@@ -568,7 +568,7 @@
       "dst_gpus": [
         4
       ],
-      "volume": 2.0,
+      "volume": 1.0,
       "deadline_epoch": 2
     },
     {
@@ -582,7 +582,7 @@
       "dst_gpus": [
         4
       ],
-      "volume": 2.0,
+      "volume": 1.0,
       "deadline_epoch": 3
     },
     {
@@ -596,7 +596,7 @@
       "dst_gpus": [
         4
       ],
-      "volume": 2.0,
+      "volume": 1.0,
       "deadline_epoch": 5
     },
     {
@@ -610,7 +610,7 @@
       "dst_gpus": [
         8
       ],
-      "volume": 2.0,
+      "volume": 1.0,
       "deadline_epoch": 0
     },
     {
