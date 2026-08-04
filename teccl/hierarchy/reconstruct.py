@@ -137,14 +137,21 @@ def identity_sets(fine_demand, mapping: HierarchyMapping
 # --------------------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class _CoarsePiece:
-    src_cell: int
-    dst_cell: int
+    src_cell: int                         # PHYSICAL sender cell of this store-and-forward leg
+    dst_cell: int                         # PHYSICAL receiver cell of this leg
     egress_neighbor: int                  # coarse switch id of the first hop out of src_cell
     ingress_neighbor: int                 # coarse switch id of the last hop into dst_cell
     via_switches: Tuple[int, ...]         # FINE switch ids
     volume: float
     send_epoch: int
     arrival_epoch: int
+    # LOGICAL (source cell, dest cell) of the coarse flow this leg belongs to -- the (s, d) key of
+    # per_chunk_flow_paths. Equals (src_cell, dst_cell) for a normal single-hop inter-cell delivery,
+    # but DIFFERS when the coarse path store-and-forwards through an intermediate cell: a path
+    # A -> ... -> B -> ... -> C splits into a leg (src B, dst C) whose origin is still (A, C). The
+    # walk keys pieces by physical endpoints, so origin is what preserves the true source identity
+    # across the split (see _origin_diagnosis / the host-transit gap).
+    origin: Tuple[int, int] = (-1, -1)
 
 
 def _extract_pieces(coarse_solver, mapping: HierarchyMapping
@@ -192,9 +199,41 @@ def _extract_pieces(coarse_solver, mapping: HierarchyMapping
                         src_cell=start_node, dst_cell=end_node,
                         egress_neighbor=switches[0], ingress_neighbor=switches[-1],
                         via_switches=fine_switches, volume=volume,
-                        send_epoch=sending_epoch, arrival_epoch=arrival_epoch))
+                        send_epoch=sending_epoch, arrival_epoch=arrival_epoch,
+                        origin=(s, d)))
                 start = nxt = nxt + 1
     return pieces
+
+
+def _origin_diagnosis(pieces_by_pair: Dict[Tuple[int, int], List[_CoarsePiece]],
+                      U: int, V: int) -> str:
+    """Explain a mismatch between a demanded pair (U, V) and the extracted pieces by surfacing the
+    host-transit signature (see _extract_pieces / _CoarsePiece.origin). Returns "" when nothing
+    unusual is found, so the normal single-hop case adds no noise.
+
+    Two tells, both meaning the coarse path store-and-forwarded through an intermediate cell (which
+    identity resolution does not yet model):
+      * DISPLACED: legs whose logical origin is (U, V) were filed under other physical endpoints
+        (the (U, V) flow was split at a transit cell), so pieces_by_pair[(U, V)] is missing volume.
+      * FOREIGN:   legs filed under (U, V) actually originate from a different logical pair (they
+        are transit legs of someone else's flow passing through this boundary)."""
+    displaced = defaultdict(float)   # physical key -> volume of legs whose origin is (U, V)
+    foreign = defaultdict(float)     # foreign origin -> volume filed under (U, V)
+    for key, plist in pieces_by_pair.items():
+        for p in plist:
+            if p.origin == (U, V) and key != (U, V):
+                displaced[key] += p.volume
+            if key == (U, V) and p.origin != (U, V):
+                foreign[p.origin] += p.volume
+    msgs = []
+    if displaced:
+        legs = ", ".join(f"{k}:vol={v:g}" for k, v in sorted(displaced.items()))
+        msgs.append(f"the {(U, V)} flow was SPLIT across physical legs [{legs}] -- it transits an "
+                    f"intermediate cell (host store-and-forward), unmodeled by identity resolution")
+    if foreign:
+        legs = ", ".join(f"origin {o}:vol={v:g}" for o, v in sorted(foreign.items()))
+        msgs.append(f"pieces filed under {(U, V)} are TRANSIT legs of other flows [{legs}]")
+    return "; ".join(msgs)
 
 
 # --------------------------------------------------------------------------------------------
@@ -307,9 +346,13 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
     for (U, V), identities in id_sets.items():
         pieces = pieces_by_pair.get((U, V), [])
         if not pieces:
-            # Coarse solve delivered nothing for a demanded pair -> upstream inconsistency.
-            raise RuntimeError(f"no coarse pieces for demanded pair {(U, V)} "
-                               f"(|ID|={len(identities)})")
+            # Coarse solve delivered nothing filed under this demanded pair. Either the coarse
+            # solve genuinely dropped it, or (the common cause) the path store-and-forwarded
+            # through an intermediate cell and got split into legs filed elsewhere.
+            detail = _origin_diagnosis(pieces_by_pair, U, V)
+            raise RuntimeError(
+                f"no coarse pieces for demanded pair {(U, V)} (|ID|={len(identities)}): "
+                + (detail if detail else "coarse solve delivered nothing for this pair"))
 
         native = {d: d[0] for d in identities}       # native GPU of identity (s, ci) is s
         load, by_neighbor = _gateway_loads(pieces, mapping, fine_topology, coarse_solver)
@@ -318,7 +361,8 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
         # transportation stays feasible; a gross mismatch is an upstream bug.
         total_load = sum(load.values())
         assert abs(total_load - len(identities)) < 1e-3, (
-            f"pair {(U, V)}: egress volume {total_load} != identity count {len(identities)}")
+            f"pair {(U, V)}: egress volume {total_load} != identity count {len(identities)}. "
+            f"{_origin_diagnosis(pieces_by_pair, U, V) or 'coarse volume disagrees with demand count'}")
         scale = len(identities) / total_load if total_load else 1.0
         load = {g: v * scale for g, v in load.items()}
         gateways = list(load.keys())
