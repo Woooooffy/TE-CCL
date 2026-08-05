@@ -72,13 +72,18 @@ class ResolvedPiece:
     """One inter-cell egress piece with a concrete fine identity pinned onto real GPUs/links."""
     src_cell: int
     dst_cell: int
-    identity: Identity                    # (s, ci); -> ncclize global chunk id via identity_to_global_chunk
+    identity: Identity                    # (s, ci); serialized as "for chunk {ci} from {s}"
     egress_gpu: int                       # fine GPU in src_cell that physically sends (== s iff no relay)
     ingress_gpu: int                      # fine GPU in dst_cell that physically receives
     via_switches: Tuple[int, ...]         # FINE switch ids along the coarse path
     volume: float
     send_epoch: int                       # coarse epoch it leaves src_cell
     arrival_epoch: int                    # coarse epoch it is consumed at dst_cell
+    # Physical transmission rate in GB/s, or None for an unpaced flow. Set by THIS level
+    # (see _piece_rate): the level that scheduled a flow is the only one that knows the
+    # epoch it was paced against, so it computes the rate rather than leaving a consumer
+    # to re-derive one from a single global epoch duration.
+    rate: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -513,9 +518,59 @@ def _subdivision_factor(assignments: Sequence[_Assignment]) -> int:
     return q
 
 
+def _piece_rate(volume: float, scale: ChunkScale, coarse_epoch: float) -> float:
+    """This level's pacing rule: send a piece at exactly the rate that fills ONE COARSE
+    EPOCH with its volume.
+
+    Rate bookkeeping belongs to the level that produced the flow. This level solved on a
+    coarse epoch grid, so its flows are paced to that grid -- a consumer downstream sees a
+    fine epoch axis and could not reconstruct this number. (The level BELOW, the memoized
+    NVSwitch schedule, deliberately paces nothing: its flows carry ordering only, so they
+    get no rate at all.)
+
+    The rule is self-clocking (a send completes exactly at its epoch boundary, so a chain of
+    same-link sends stays on the grid) and heterogeneity-blind: it never reads a link
+    bandwidth, yet the coarse solve's own feasibility, sum(volume) <= bw * Delta / chunk,
+    gives sum(rate) <= bw -- with equality exactly where the solver saturated the link. That
+    implication is a statement about THIS level's capacity constraint, which is why this
+    level is also the one that asserts it (see _assert_rate_within_capacity).
+    """
+    return volume * scale.bytes_per_chunk / coarse_epoch
+
+
+def _assert_rate_within_capacity(result: IdentityResolution, fine_topology: Topology,
+                                 coarse_epoch: float) -> None:
+    """Per fine link per coarse epoch, the paced rates must fit the link bandwidth.
+
+    This is the capacity guarantee the coarse solve was entitled to assume, re-expressed in
+    rate units: it holds by construction if every gateway's share of each coarse link stayed
+    within its fine capacity (egress is split proportionally to fine capacity; ingress is
+    assigned under an explicit per-epoch ledger, see _pick_ingress). Checking it here is what
+    makes "the fine schedule implements the coarse solution" a verified property rather than
+    an assumed one.
+    """
+    egress: Dict[Tuple[int, int, int], float] = defaultdict(float)
+    ingress: Dict[Tuple[int, int, int], float] = defaultdict(float)
+    for p in result.pieces:
+        if p.rate is None:
+            continue
+        egress[(p.egress_gpu, p.via_switches[0], p.send_epoch)] += p.rate
+        ingress[(p.via_switches[-1], p.ingress_gpu, p.arrival_epoch)] += p.rate
+    over = []
+    for (a, b, k), rate in sorted(egress.items()) + sorted(ingress.items()):
+        bw = fine_topology.capacity[a][b]
+        if rate > bw + 1e-6:
+            over.append((a, b, k, round(rate, 4), round(bw, 4)))
+    if over:
+        raise AssertionError(
+            f"paced sends exceed fine link bandwidth on {len(over)} (link, coarse epoch) "
+            f"pairs [(src, dst, epoch, rate, bw)]: {over[:6]}. The coarse solve's capacity "
+            f"guarantee did not survive the split onto fine links.")
+
+
 def _emit_refined(assignments: Sequence[_Assignment],
                   targets: Dict[Tuple[Identity, int], Tuple[int, ...]],
-                  q: int) -> IdentityResolution:
+                  q: int, scale: ChunkScale, coarse_epoch: float) -> IdentityResolution:
     """Expand each assignment into `volume * q` whole sub-chunk pieces plus their intra demands.
 
     Sub-chunk indices are allocated per (identity, dst_cell): the assignments delivering one
@@ -545,7 +600,8 @@ def _emit_refined(assignments: Sequence[_Assignment],
                 result.pieces.append(ResolvedPiece(
                     src_cell=a.src_cell, dst_cell=V, identity=sub, egress_gpu=a.egress_gpu,
                     ingress_gpu=a.ingress_gpu, via_switches=a.piece.via_switches, volume=1.0,
-                    send_epoch=a.piece.send_epoch, arrival_epoch=a.piece.arrival_epoch))
+                    send_epoch=a.piece.send_epoch, arrival_epoch=a.piece.arrival_epoch,
+                    rate=_piece_rate(1.0, scale, coarse_epoch)))
                 if a.egress_gpu != native:
                     result.intra_demands.append(IntraCellDemand(
                         cell=a.src_cell, kind="egress_stage", identity=sub, src_gpu=native,
@@ -639,11 +695,12 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
     refined = root.refine(q)
     root.assert_conserves(refined)
 
-    result = _emit_refined(assignments, targets, q)
+    result = _emit_refined(assignments, targets, q, refined, epoch_duration)
     result.scale = refined
     result.subdivision = q
     _coalesce_egress(result)
     _emit_self_distribution(result, fine_demand, mapping, q)
+    _assert_rate_within_capacity(result, fine_topology, epoch_duration)
     return result
 
 

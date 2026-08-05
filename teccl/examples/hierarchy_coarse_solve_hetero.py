@@ -9,9 +9,11 @@ coarsify_demand (collective-agnostic) rather than a uniform num_chunks-per-sourc
 The coarse demand is injected via topology.demand_override, so the coarse solve satisfies the
 aggregated inter-cell volumes directly. AllToAll is also supported (coarse volume |U|*|V|).
 
-No stitching / phase-3 reconstruction yet -- this verifies that the coarse problem solves and
-that the flows honor the forced-relay structure (uplinks < GPUs on every cell). Requires
-Gurobi, so it runs on the remote solver host.
+Runs the FULL hierarchical pipeline: coarse solve -> identity resolution -> phase-3 intra-cell
+schedule -> phase-4 stitch, writing coarse_hetero_{tag}_{lp,identities,intra,flat}.json. The
+_flat.json is a normal flat schedule on the FINE topology and feeds teccl/ncclize/teccl_ncclize.py
+unchanged. Requires Gurobi for the coarse solve, so it runs on the remote solver host; everything
+below the coarse solve is Gurobi-free and is replayed locally by hierarchy_stitch_test.py.
 
 Run from the repo root:
     python -m teccl.examples.hierarchy_coarse_solve_hetero [allgather|alltoall] [lp|milp|both]
@@ -27,6 +29,7 @@ from dataclasses import asdict
 from teccl.hierarchy.abstract import abstract, coarsify_demand, lift_demand
 from teccl.hierarchy.reconstruct import resolve_identities
 from teccl.hierarchy.intra_solve import schedule_cell
+from teccl.hierarchy.stitch import NETWORK, stitch
 from teccl.input_data import (
     Collective, EpochType, Formulation, InstanceParams, ObjectiveType,
     SolutionMethod, TopologyParams, UserInputParams,
@@ -138,13 +141,14 @@ def _report_resolution_invariants(res, fine) -> None:
           f"(lexicographic tier 1 minimizes this; the ingress tier never trades against it)")
 
 
-def _run_phase3_intra(res, mapping, tag: str, fine=None) -> None:
+def _run_phase3_intra(res, mapping, tag: str, fine=None, coarse_epoch: float = None):
     """Phase-3: schedule every cell's intra-cell demands onto its NVSwitch (Gurobi-free, EDF
     edge-coloring). Debug narration is on so the .out log shows the full per-step derivation --
     fan-out density decisions, dedup, per-round matchings, and optimality vs the port-load bound.
-    Serializes the fine IntraFlows to Schedules/coarse_hetero_{tag}_intra.json."""
+    Serializes the fine IntraFlows to Schedules/coarse_hetero_{tag}_intra.json and RETURNS them,
+    since the stitch consumes them together with the resolution."""
     if res is None:
-        return
+        return []
     by_cell = {}
     for d in res.intra_demands:
         by_cell.setdefault(d.cell, []).append(d)
@@ -160,18 +164,22 @@ def _run_phase3_intra(res, mapping, tag: str, fine=None) -> None:
         flows = schedule_cell(cid, cell, demands, switch_copy=False, debug=True)
         all_flows.extend(flows)
 
+    # kind/hard are the job provenance the stitch places a flow by: `gap` alone is ambiguous
+    # (a self_distribution and an epoch-0 staging relay both land in gap 0).
     out = [dict(cell=f.cell, identity=list(f.identity), sender=f.sender, receiver=f.receiver,
-                via_switch=f.via_switch, volume=f.volume, gap=f.gap, local_round=f.local_round)
+                via_switch=f.via_switch, volume=f.volume, gap=f.gap, local_round=f.local_round,
+                kind=f.kind, hard=f.hard)
            for f in all_flows]
     path = f"Schedules/coarse_hetero_{tag}_intra.json"
     with open(path, "w") as f:
         json.dump(out, f, indent=2)
     print(f"\nphase-3 intra schedule: {len(all_flows)} fine flows written to {path}")
-    if fine is not None and res.scale is not None:
-        _report_intra_fits_epoch(all_flows, res, fine)
+    if fine is not None and res.scale is not None and coarse_epoch is not None:
+        _report_intra_fits_epoch(all_flows, res, fine, coarse_epoch)
+    return all_flows
 
 
-def _report_intra_fits_epoch(flows, res, fine, coarse_epoch: float = 0.02) -> None:
+def _report_intra_fits_epoch(flows, res, fine, coarse_epoch: float) -> None:
     """The phase-3 feasibility certificate: intra-cell work must fit inside a coarse epoch.
 
     A "round" is one chunk across one NVSwitch port, so a round lasts
@@ -194,6 +202,42 @@ def _report_intra_fits_epoch(flows, res, fine, coarse_epoch: float = 0.02) -> No
         f"intra-cell work does not fit a coarse epoch: {peak} rounds > m={m:.1f} at {hot}. The "
         f"inner fabric is not fast enough relative to the outer for per-gap-independent timing; "
         f"the windowed intra solver is the fallback.")
+
+
+def _run_stitch(res, intra_flows, fine, fine_demand, coarse_epoch: float, tag: str):
+    """Phase-4: merge the inter-cell pieces and the intra-cell flows into ONE flat schedule on the
+    fine topology, written to Schedules/coarse_hetero_{tag}_flat.json.
+
+    That file is an ordinary flat schedule -- ncclize consumes it with no hierarchy awareness:
+        python teccl/ncclize/teccl_ncclize.py --schedule Schedules/coarse_hetero_{tag}_flat.json \\
+               -o /tmp/{tag}.xml
+    which runs check_implements() and so independently validates that the stitched schedule really
+    implements the collective."""
+    if res is None or not intra_flows and not res.pieces:
+        return None
+    print(f"\n=== phase-4 stitch ({tag}) ===")
+    info, records = stitch(res, intra_flows, fine, fine_demand, coarse_epoch, tag)
+
+    path = f"Schedules/coarse_hetero_{tag}_flat.json"
+    with open(path, "w") as f:
+        json.dump(info, f, indent=2, sort_keys=True)
+
+    net = [r for r in records if r.phase == NETWORK]
+    by_phase = defaultdict(int)
+    for r in records:
+        by_phase[r.phase] += 1
+    print(f"  {len(records)} delivery records {dict(by_phase)}; "
+          f"{len(info['8-Chunk paths'])} demands traced (causality + coverage verified)")
+    print(f"  fine epoch delta={info['1-Epoch_Duration']:.4e}s x "
+          f"{info['3-Epochs_Required']} epochs = {info['4-Collective_Finish_Time']:.4f}s, "
+          f"algo bw={info['5-Algo_Bandwidth']:.2f}, chunk={info['9-Chunk_Size']}")
+    # Only the coarse level paces its flows; the intra level deliberately does not, so this ratio
+    # should be exactly the network/intra split above.
+    rates = sorted({r.rate for r in net})
+    print(f"  paced network sends: {len(net)} at rate(s) {rates} GB/s; "
+          f"{len(records) - len(net)} intra sends unpaced")
+    print(f"  flat schedule written to {path}")
+    return info
 
 
 def _make_input(formulation: Formulation, collective: Collective, out_file: str) -> UserInputParams:
@@ -275,10 +319,15 @@ def main() -> None:
         print("\n=== LP (switch_copy=False, unicast) ===")
         try:
             lp_solver = _solve_on_topology(_make_input(Formulation.LP, collective, lp_out), coarse)
+            # The coarse epoch is the coarse solve's own epoch duration -- every downstream
+            # quantity (m, the staging deadlines, the network pacing rate) is derived from it, so
+            # it must be read off the solved formulation rather than restated.
+            coarse_epoch = lp_solver.best_solver.epoch_duration
             res = _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag)
-            _run_phase3_intra(res, mapping, tag, fine)
+            intra_flows = _run_phase3_intra(res, mapping, tag, fine, coarse_epoch)
+            _run_stitch(res, intra_flows, fine, fine_demand, coarse_epoch, tag)
         except Exception as e:
-            print(f"LP solve / identity resolution failed: {type(e).__name__}: {e}")
+            print(f"LP solve / hierarchical reconstruction failed: {type(e).__name__}: {e}")
             traceback.print_exc()
 
     for label, path in (("MILP", milp_out), ("LP", lp_out)):

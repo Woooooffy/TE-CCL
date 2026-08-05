@@ -111,9 +111,15 @@ def test_hostB_forced_relay():
         for t in A_gpus + C_gpus + [g for g in B_gpus if g != s]:
             fine_demand[s][t][0] = 1
 
-    # coarse pieces: B->A via T0 (4 units); B->C via T0->T1 (4 units). All egress on g4's link.
+    # coarse pieces: B->A via T0 (4 units); B->C via T0->T1 (4 units). All egress on g4's link,
+    # so the 8 units must occupy 8 DISTINCT coarse epochs: B's single uplink carries one chunk
+    # per epoch, and identity resolution now paces each piece to fill one coarse epoch and
+    # asserts the result fits the fine link (_assert_rate_within_capacity). Overlapping B->A and
+    # B->C on epochs 0..3 would be an infeasible coarse solution -- 2 GB in 0.02 s out of a
+    # 50 GB/s link -- which no real coarse solve emits. The relay structure this test asserts is
+    # epoch-independent, so spreading them changes nothing it checks.
     pcp = {(B, A, 0): [_single_switch_path(B, A, T0, 1.0, k) for k in range(4)],
-           (B, C, 0): [_two_switch_path(B, C, T0, T1, 1.0, k) for k in range(4)]}
+           (B, C, 0): [_two_switch_path(B, C, T0, T1, 1.0, k) for k in range(4, 8)]}
     solver = _fake_solver(pcp, switch_indices=[T0, T1])
     res = resolve_identities(solver, m, fine_demand, topo)
 

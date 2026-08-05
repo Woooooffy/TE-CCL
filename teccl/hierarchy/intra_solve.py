@@ -57,11 +57,18 @@ def _p(debug: bool, msg: str = "") -> None:
 
 @dataclass(frozen=True)
 class IntraFlow:
-    """One lowered intra-cell hop, logical GPU->GPU (expanded to GPU->switch->GPU at stitch time).
+    """One lowered intra-cell hop, logical GPU->GPU (annotated with the switch at stitch time).
 
     gap / local_round are relative coordinates: `gap` is the coarse-epoch band this transfer was
     scheduled into and `local_round` is its round index within that band. Absolute fine-epoch
     numbering is a stitch concern, deliberately not decided here.
+
+    kind / hard are the job's provenance, and they are what the stitch needs to place a flow on
+    the absolute epoch axis: `gap` alone is ambiguous (a self_distribution and an egress_stage
+    feeding coarse epoch 0 both land in gap 0, but the first may sit in the prologue while the
+    second must complete before the first network send). For a DEDUPED delivery -- one physical
+    send satisfying several demands -- these describe the merged job, so `hard` carries the
+    tightest constraint of its contributors, which is exactly what the placement must respect.
     """
     cell: int
     identity: Identity
@@ -71,6 +78,8 @@ class IntraFlow:
     volume: float
     gap: int
     local_round: int
+    kind: str = ""              # egress_stage | ingress_distribution | self_distribution
+    hard: bool = False          # deadline-bearing (a network send waits on it)
 
 
 @dataclass
@@ -313,7 +322,8 @@ def _schedule_gap(jobs: List[_Job], gpus: Sequence[int], switch: int, gap: int,
             if a <= EPS:
                 continue
             flows.append(IntraFlow(cell=cell_id, identity=j.identity, sender=j.src, receiver=j.dst,
-                                   via_switch=switch, volume=a, gap=gap, local_round=r))
+                                   via_switch=switch, volume=a, gap=gap, local_round=r,
+                                   kind=j.kind, hard=j.hard))
             j.remaining -= a
             egress_free[j.src] -= a
             ingress_free[j.dst] -= a

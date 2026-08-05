@@ -34,6 +34,7 @@ FLOW_RE = re.compile(
     r'Chunk (\d+) from (\d+) traveled over (\d+)->(\d+)'
     r'(?:\s+with volume\s+(?P<volume>[\d.]+))?'
     r'\s+in epoch (?P<epoch>\d+)'
+    r'(?:\s+at rate\s+(?P<rate>[\d.eE+-]+))?'
     r'(?:\s+via switches\s+(?P<switches>[\d\s\->]+))?$'
 )
 
@@ -49,10 +50,17 @@ DEMAND_RE = re.compile(
 # FLOW_RE's suffix, minus the "Chunk C from O traveled over " prefix. The
 # "with volume V" token is optional so both the older allgather MILP format
 # (no volume) and the LP/alltoall format parse with one regex.
+#
+# "at rate R" (GB/s) is likewise optional. A rate is emitted by the solver level
+# that produced the flow -- it knows its own epoch duration and capacity model --
+# rather than being re-derived here from a single global epoch duration. A flow
+# without one is deliberately unpaced (e.g. the hierarchical solver's intra-cell
+# NVLink hops, which carry ordering but are not pinned to the epoch grid).
 PATH_SEGMENT_RE = re.compile(
     r'(\d+)->(\d+)'
     r'(?:\s+with volume\s+(?P<volume>[\d.]+))?'
     r'\s+in epoch (?P<epoch>\d+)'
+    r'(?:\s+at rate\s+(?P<rate>[\d.eE+-]+))?'
     r'(?:\s+via switches\s+(?P<switches>[\d\s\->]+))?$'
 )
 
@@ -263,15 +271,28 @@ def detect_collective(schedule):
 
 def is_lp_format(schedule):
     """Whether "8-Chunk paths" is in the LP (continuous-flow) format rather than
-    the allgather MILP format.
+    the MILP format.
 
-    This is orthogonal to the collective identity: the LP now solves several
-    collectives (alltoall/allgather/gather/broadcast), all sharing the same
+    The parser axis is the FORMULATION, not the collective: the LP emits a
     *nested* per-demand path structure (a list of paths, each a list of
-    [epoch, segment] pairs) and fractional volumes, while the allgather MILP
-    emits a *flat* list of segment strings. Parser choice keys on this; the
-    taccl collective that gets built keys on detect_collective().
+    [epoch, segment] pairs) with fractional volumes, while the MILP emits a
+    *flat* list of segment strings. Those two formats happened to correlate with
+    the collective only because scheduler._resolve_formulation defaults
+    ALLGATHER -> MILP and everything else -> LP; the hierarchical path breaks
+    that correlation by emitting an LP-format allgather.
+
+    So this reads the explicit "0-Formulation" field (Formulation.LP/MILP, see
+    teccl/input_data.py) and falls back to the structural nested-vs-flat sniff
+    only for schedules that predate the field. The taccl collective that gets
+    built is a separate axis and keys on detect_collective().
     """
+    explicit = schedule.get('0-Formulation')
+    if explicit:
+        name = str(explicit).rsplit('.', 1)[-1].upper()   # 'LP' | 'Formulation.LP'
+        if name not in ('LP', 'MILP'):
+            raise ValueError(
+                f"Unknown '0-Formulation' value {explicit!r}; expected 'LP' or 'MILP'.")
+        return name == 'LP'
     for paths in schedule['8-Chunk paths'].values():
         if not paths:
             continue
@@ -329,35 +350,40 @@ def parse_flows_lp(schedule, collective_name):
     per-collective base index (and how the chunk label c decodes into a
     sub-chunk) is:
 
-      - alltoall(N): base = dst_dense * N + src_dense, c = sc * N + dst_dense
-        (destination-major: precondition rank == index % N is the source,
+      - DST-MAJOR, alltoall(N): base = dst_dense * N + src_dense,
+        c = sc * N + dst_dense (precondition rank == index % N is the source,
         postcondition rank == index // N is the destination).
-      - gather(N, root): base = src_dense, c = sc (dest is always the root, so it
-        is not packed into the label; each chunk originates at its source and
-        ends at the root).
+      - SRC-MAJOR, allgather(N) / broadcast(N, root) / gather(N, root):
+        base = src_dense, c = sc. The destination is NOT packed into the label,
+        either because there is only one (gather's root) or because every GPU is
+        one (the replicating collectives).
 
-    Replicating collectives (broadcast, allgather via the LP) are not yet
-    supported here: multiple demands share the same underlying data, so the
-    "disjoint piece range per demand" assignment below does not apply.
+    The dst-major/src-major split is the collective's own chunk ADDRESSING, not
+    the schedule format (which keys on the formulation, see is_lp_format).
 
-    Returns the parse_flows() 8-tuple plus a trailing root_dense (the dense rank
-    of the root for rooted collectives, else None). The second element is the
-    chunk_up factor S * M.
+    Replicating collectives work because src-major labelling makes them work:
+    two demands whose paths share a physical hop compute the *same* chunk_id
+    there, so the hop is one send that both demands read, and ncclize's
+    grouped_sends (a set) dedupes the duplicate. That holds as long as each
+    demand's paths carry the whole chunk, which the hierarchical solver's
+    sub-chunk refinement guarantees (every volume is exactly 1.0). LABEL_RE-style
+    consistency is asserted below rather than assumed, so a fractional
+    replicating schedule fails loudly instead of emitting a wrong XML.
+
+    Returns the parse_flows() 8-tuple plus flow_rates and a trailing root_dense
+    (the dense rank of the root for rooted collectives, else None). The second
+    element is the chunk_up factor S * M.
     """
-    if collective_name in ('broadcast', 'allgather'):
-        raise NotImplementedError(
-            f"ncclize of an LP '{collective_name}' schedule is not supported yet: "
-            f"it replicates one source's data to many destinations, which the "
-            f"per-demand disjoint-piece decomposition here does not model. "
-            f"(alltoall and gather are supported.)")
-    if collective_name not in ('alltoall', 'gather'):
+    if collective_name not in ('alltoall', 'gather', 'allgather', 'broadcast'):
         raise ValueError(f"Unknown LP collective {collective_name!r}")
+    dst_major = collective_name == 'alltoall'
+    rooted = collective_name in ('gather', 'broadcast')
 
     root_raw = schedule.get('0-Root')
-    if collective_name == 'gather' and root_raw is None:
+    if rooted and root_raw is None:
         raise ValueError(
-            "gather schedule is missing the '0-Root' field needed to identify "
-            "the root GPU; re-run the solver to emit it.")
+            f"{collective_name} schedule is missing the '0-Root' field needed to "
+            f"identify the root GPU; re-run the solver to emit it.")
 
     M = _compute_subdivision(schedule)
 
@@ -374,7 +400,7 @@ def parse_flows_lp(schedule, collective_name):
 
         path_records = []
         for path in paths:
-            hops = []      # (hop_epoch, hop_src_raw, hop_dst_raw, path_key)
+            hops = []      # (hop_epoch, hop_src_raw, hop_dst_raw, path_key, rate)
             volumes = []
             for _epoch, segment in path:
                 sm = PATH_SEGMENT_RE.match(segment)
@@ -383,11 +409,13 @@ def parse_flows_lp(schedule, collective_name):
                 hop_src_raw, hop_dst_raw = int(sm.group(1)), int(sm.group(2))
                 hop_epoch = int(sm.group('epoch'))
                 path_key = _parse_switch_path(sm.group('switches'))
+                rate = sm.group('rate')
                 raw_ids.update((hop_src_raw, hop_dst_raw))
                 if path_key:
                     switch_raw_ids.update(path_key)
                 volumes.append(_segment_volume(sm))
-                hops.append((hop_epoch, hop_src_raw, hop_dst_raw, path_key))
+                hops.append((hop_epoch, hop_src_raw, hop_dst_raw, path_key,
+                             None if rate is None else float(rate)))
 
             # Flow is conserved along a route, so every hop of one path carries
             # the same volume; that shared value is the fraction of the chunk
@@ -408,30 +436,46 @@ def parse_flows_lp(schedule, collective_name):
     num_nodes = len(rank_map)
 
     root_dense = None
-    if collective_name == 'gather':
+    if rooted:
         if root_raw not in rank_map:
             raise ValueError(
-                f"gather root {root_raw} never appears as a flow endpoint in the "
-                f"schedule; cannot map it to a dense rank.")
+                f"{collective_name} root {root_raw} never appears as a flow endpoint "
+                f"in the schedule; cannot map it to a dense rank.")
         root_dense = rank_map[root_raw]
 
     # S = number of sub-chunks per demand, decoded from the chunk label:
-    #   alltoall packs it above the dense destination (c = subchunk * N + dest),
-    #   gather uses the label directly (dest is always the root) (c = subchunk).
+    #   dst-major packs it above the dense destination (c = subchunk * N + dest),
+    #   src-major uses the label directly (c = subchunk).
     # The chunk_up factor is S * M (S real sub-chunks x M volume pieces each).
-    if collective_name == 'alltoall':
+    if dst_major:
         num_subchunks = max(chunk for _, chunk, _, _, _ in demands) // num_nodes + 1
-    else:  # gather
+    else:
         num_subchunks = max(chunk for _, chunk, _, _, _ in demands) + 1
     factor = num_subchunks * M
 
     # Second pass: assign disjoint piece ranges per demand and emit sends.
-    by_epoch = defaultdict(list)   # epoch -> [(chunk_id, src_dense, dst_dense)]
-    raw_flows = []                 # (epoch, chunk_id, src, dst, path_key, completion_epoch)
+    # epoch -> {(chunk_id, src_dense, dst_dense): None}, a dict used as an
+    # insertion-ordered set. Dedupe is needed because src-major addressing makes N
+    # replicating demands label one shared hop identically (that is the point); it
+    # must preserve first-seen order so flow-id assignment, which walks these in
+    # order, is unchanged for schedules that have no duplicates to remove.
+    by_epoch = defaultdict(dict)
+    raw_flows = []                 # (epoch, chunk_id, src, dst, path_key, completion, rate)
+    # (epoch, src, dst, path_key, base) -> {demand_key: the piece ranges that demand
+    # puts on the hop}. The invariant is NOT "one label per hop": one hop legitimately
+    # carries many chunks (different `base`s) in an epoch, and one demand's several
+    # multipath routes may each cross the same hop with a different slice. What must
+    # hold is that two DIFFERENT demands for the SAME data (same base) crossing the
+    # same hop slice it identically -- otherwise the same bytes are labelled two ways.
+    # Under dst-major no two demands ever share a base, so this is vacuous; under
+    # src-major that sharing is the norm (see the docstring) and the dedupe below
+    # collapses it to a single send. With whole-chunk volumes every range is [0, 1),
+    # so this is the guard for a future fractional replicating schedule.
+    hop_pieces = defaultdict(lambda: defaultdict(set))
     for dst_raw, chunk, src_raw, met_epoch, path_records in demands:
         dst_dense = rank_map[dst_raw]
         src_dense = rank_map[src_raw]
-        if collective_name == 'alltoall':
+        if dst_major:
             subchunk = chunk // num_nodes
             # Chunk labels index the destination by its *dense* GPU rank (0..N-1),
             # which differs from the raw node id when switches occupy interior
@@ -442,13 +486,15 @@ def parse_flows_lp(schedule, collective_name):
                     f'{chunk % num_nodes} but demand is at raw {dst_raw} '
                     f'(dense {dst_dense}).')
             base = (dst_dense * num_nodes + src_dense) * factor + subchunk * M
-        else:  # gather: every demand ends at the root; base index is the source.
+        else:
+            # src-major: the base index is the source; the destination is not part
+            # of the label (there is only one, or every GPU is one).
             subchunk = chunk
-            if dst_dense != root_dense:
+            if rooted and dst_dense != root_dense:
                 raise ValueError(
-                    f'Gather demand is at dense rank {dst_dense} (raw {dst_raw}) '
-                    f'but the root is dense {root_dense} (raw {root_raw}); every '
-                    f'gather demand must terminate at the root.')
+                    f'{collective_name} demand is at dense rank {dst_dense} (raw '
+                    f'{dst_raw}) but the root is dense {root_dense} (raw {root_raw}); '
+                    f'every {collective_name} demand must terminate at the root.')
             base = src_dense * factor + subchunk * M
         cumulative = Fraction(0)
         for v_frac, hops in path_records:
@@ -461,7 +507,7 @@ def parse_flows_lp(schedule, collective_name):
                     f'dest {dst_raw} src {src_raw}; volume {v_frac} does not '
                     f'divide the subdivision.')
             lo, hi = int(lo), int(hi)
-            for h_idx, (hop_epoch, hsrc_raw, hdst_raw, path_key) in enumerate(hops):
+            for h_idx, (hop_epoch, hsrc_raw, hdst_raw, path_key, rate) in enumerate(hops):
                 hsrc, hdst = rank_map[hsrc_raw], rank_map[hdst_raw]
                 # A relay forwards only after it has received, so the next hop's
                 # start epoch is this hop's completion; the last hop completes
@@ -470,32 +516,57 @@ def parse_flows_lp(schedule, collective_name):
                     completion_epoch = hops[h_idx + 1][0]
                 else:
                     completion_epoch = met_epoch
+                hop_pieces[(hop_epoch, hsrc, hdst, path_key, base)][
+                    (dst_raw, chunk, src_raw)].add((lo, hi))
                 for p in range(lo, hi):
                     chunk_id = base + p
-                    by_epoch[hop_epoch].append((chunk_id, hsrc, hdst))
+                    by_epoch[hop_epoch][(chunk_id, hsrc, hdst)] = None
                     raw_flows.append(
-                        (hop_epoch, chunk_id, hsrc, hdst, path_key, completion_epoch))
+                        (hop_epoch, chunk_id, hsrc, hdst, path_key, completion_epoch, rate))
         if cumulative != 1:
             raise ValueError(
                 f'Paths for demand dest {dst_raw} src {src_raw} carry total '
                 f'volume {cumulative}, expected exactly 1.')
 
+    for (hop_epoch, hsrc, hdst, _pk, base), by_demand in sorted(hop_pieces.items()):
+        if len(by_demand) < 2:
+            continue
+        slices = {frozenset(v) for v in by_demand.values()}
+        if len(slices) > 1:
+            offenders = sorted(by_demand)[:2]
+            raise ValueError(
+                f'Hop {hsrc}->{hdst} (dense) in epoch {hop_epoch} carries different '
+                f'pieces of chunk base {base} for demands {offenders[0]} and '
+                f'{offenders[1]}: {sorted(by_demand[offenders[0]])} vs '
+                f'{sorted(by_demand[offenders[1]])}. The same bytes would be labelled '
+                f'two ways. (Only reachable for a replicating collective whose demands '
+                f'do not carry whole chunks -- refine the schedule so every volume '
+                f'is 1.0.)')
+
     sorted_epochs = sorted(by_epoch)
-    steps_in_order = [by_epoch[epoch] for epoch in sorted_epochs]
+    steps_in_order = [list(by_epoch[epoch]) for epoch in sorted_epochs]
     epoch_to_step_idx = {epoch: idx for idx, epoch in enumerate(sorted_epochs)}
 
     flow_path_keys = {}
     flow_completion_steps = {}
     flow_completion_epochs = {}
-    for hop_epoch, chunk_id, src, dst, path_key, completion_epoch in raw_flows:
+    flow_rates = {}
+    for hop_epoch, chunk_id, src, dst, path_key, completion_epoch, rate in raw_flows:
         step_idx = epoch_to_step_idx[hop_epoch]
         key = (step_idx, chunk_id, src, dst)
         flow_path_keys[key] = path_key
         flow_completion_steps[key] = bisect.bisect_left(sorted_epochs, completion_epoch)
         flow_completion_epochs[key] = completion_epoch
+        if rate is not None:
+            prev = flow_rates.setdefault(key, rate)
+            if abs(prev - rate) > 1e-9:
+                raise ValueError(
+                    f'Flow {src}->{dst} chunk {chunk_id} at step {step_idx} carries '
+                    f'two different rates ({prev} and {rate}).')
 
     return (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-            flow_completion_steps, sorted_epochs, flow_completion_epochs, root_dense)
+            flow_completion_steps, sorted_epochs, flow_completion_epochs,
+            flow_rates, root_dense)
 
 
 def build_switch_routes(flow_manifest, switch_rank_map):
@@ -580,9 +651,32 @@ class TeCCLTopology:
                     yield ([src], [dst], lk, f'{src}->{dst}')
 
 
+def _build_collective(collective_name, num_nodes, root_dense):
+    """The taccl collective for a schedule's collective identity.
+
+    Kept separate from the parser so both format branches dispatch the same way:
+    the format (LP vs MILP) and the collective identity are independent axes, and
+    the MILP branch's old hardcoded allgather() was an artifact of
+    scheduler._resolve_formulation defaulting ALLGATHER -> MILP.
+    """
+    from taccl_collectives import allgather, alltoall, broadcast, gather
+
+    if collective_name == 'alltoall':
+        return alltoall(num_nodes)
+    if collective_name == 'allgather':
+        return allgather(num_nodes)
+    if collective_name in ('gather', 'broadcast'):
+        if root_dense is None:
+            raise ValueError(
+                f"{collective_name} needs a root; the schedule has no '0-Root' field.")
+        ctor = gather if collective_name == 'gather' else broadcast
+        return ctor(num_nodes, root_dense)
+    raise NotImplementedError(
+        f"No taccl collective mapping for {collective_name!r}")
+
+
 def build_algorithm(schedule, name='teccl'):
     from taccl_algorithm import Algorithm, Step
-    from taccl_collectives import allgather, alltoall, gather
     from taccl_instance import Instance
     from helpers import build_gpu_epoch_view
 
@@ -596,22 +690,23 @@ def build_algorithm(schedule, name='teccl'):
     if lp_format:
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
          flow_completion_steps, sorted_epochs, flow_completion_epochs,
-         root_dense) = parse_flows_lp(schedule, collective_name)
-        if collective_name == 'alltoall':
-            collective = alltoall(num_nodes)
-        elif collective_name == 'gather':
-            collective = gather(num_nodes, root_dense)
-        else:
-            # parse_flows_lp already rejects the replicating collectives; this
-            # guards against a new collective slipping through.
-            raise NotImplementedError(
-                f"No taccl collective mapping for LP collective {collective_name!r}")
+         flow_rates, root_dense) = parse_flows_lp(schedule, collective_name)
+        collective = _build_collective(collective_name, num_nodes, root_dense)
     else:
+        # parse_flows labels chunks src-major (rank_map[origin] * S + subchunk), so
+        # it cannot express a collective whose chunk identity includes the
+        # destination. In practice the MILP only ever solves allgather; fail loudly
+        # rather than mislabel if that ever changes.
+        if collective_name == 'alltoall':
+            raise NotImplementedError(
+                "MILP-format schedules use src-major chunk labels, which cannot "
+                "represent alltoall's destination-major chunk identity.")
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
          flow_completion_steps, sorted_epochs, flow_completion_epochs) = \
             parse_flows(schedule)
-        # The MILP format is only ever emitted for allgather.
-        collective = allgather(num_nodes)
+        flow_rates = {}
+        collective = _build_collective(collective_name, num_nodes,
+                                       schedule.get('0-Root'))
 
     gpu_epoch_view = build_gpu_epoch_view(
         steps_in_order, sorted_epochs, num_nodes, flow_completion_epochs)
@@ -633,18 +728,31 @@ def build_algorithm(schedule, name='teccl'):
     algo = Algorithm.make_implementation(
         collective, topology, instance, steps, cont=False, suffix='-teccl')
 
-    # Physical send rate (GB/s) per unit piece sent, so a merged op of `cnt`
-    # pieces gets rate = cnt * piece_rate. Each schedule "chunk"/"sub-chunk" is
-    # one chunk_size; the LP converter split each into M volume pieces of
-    # chunk_size/M, so volume v -> round(v*M) pieces gives v*chunk_size/epoch
-    # back. In the allgather MILP format each "Chunk C from S" piece is already a
-    # full chunk_size (no extra 1/M division).
-    epoch_duration = schedule['1-Epoch_Duration']
-    chunk_size = schedule.get('9-Chunk_Size', 1.0)
-    if lp_format:
-        piece_rate = chunk_size / (_compute_subdivision(schedule) * epoch_duration)
+    # Physical send rate (GB/s) per unit piece sent, so a merged op of `cnt` pieces
+    # gets rate = cnt * piece_rate.
+    #
+    # PREFERRED: a per-flow rate carried in the schedule ("at rate R" on a segment).
+    # The level of the solve that produced a flow is the only place that knows its
+    # own epoch duration and capacity model, so it computes the rate and emits it;
+    # this function must not re-derive one. A hierarchical schedule mixes flows from
+    # several levels -- its epoch axis is the FINEST level's, so a single global
+    # rate derived from "1-Epoch_Duration" would be wrong for every other level --
+    # and flows a level chose not to pace carry no rate at all.
+    #
+    # LEGACY fallback, for flat single-level schedules with no per-flow rate: every
+    # "chunk"/"sub-chunk" is one chunk_size, and the LP converter split each into M
+    # volume pieces of chunk_size/M, so volume v -> round(v*M) pieces gives
+    # v*chunk_size/epoch back. In the allgather MILP format each "Chunk C from S"
+    # piece is already a full chunk_size (no extra 1/M division).
+    if flow_rates:
+        piece_rate = flow_rates
     else:
-        piece_rate = chunk_size / epoch_duration
+        epoch_duration = schedule['1-Epoch_Duration']
+        chunk_size = schedule.get('9-Chunk_Size', 1.0)
+        if lp_format:
+            piece_rate = chunk_size / (_compute_subdivision(schedule) * epoch_duration)
+        else:
+            piece_rate = chunk_size / epoch_duration
 
     return (algo, flow_path_keys, switch_rank_map, flow_completion_steps,
             gpu_epoch_view, piece_rate)

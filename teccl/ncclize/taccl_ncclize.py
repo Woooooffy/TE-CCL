@@ -62,6 +62,12 @@ class _Op:
     # can keep different physical paths on the same (src,dst) edge off of the same
     # channel -- see that function's docstring for why this matters.
     path_key: object = None
+    # Physical transmission rate (GB/s) for ONE piece of this op, so the emitted
+    # rate is cnt * piece_rate. None means "unpaced": either no rate information was
+    # supplied at all, or the level of the solve that produced this flow chose not
+    # to pace it (e.g. an intra-node NVLink hop that carries ordering but is not
+    # pinned to the epoch grid).
+    piece_rate: float = None
 
     def __eq__(self, other):
         return self is other
@@ -439,6 +445,13 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     max_channels caps how many channel ids a single edge's path_key partitioning may use under channel_policy=
     MatchTopology (default 32, matching NCCL/MSCCL's MAXCHANNELS hardware limit); see
     _allocate_channels_match_topology().
+
+    piece_rate is the physical transmission rate (GB/s) of ONE piece; an op of cnt pieces emits cnt * piece_rate.
+    It may be a scalar (pace every op identically -- the flat, single-level case) or a dict keyed like
+    flow_path_keys, (step_idx, addr, src, dst) -> rate, supplying a per-flow rate. The per-flow form exists because
+    a hierarchical schedule interleaves flows solved at different levels, each with its own epoch duration and
+    capacity model: the level that produced a flow computes its rate, and a flow it chose not to pace is simply
+    absent from the map and emits no rate attribute. None disables the attribute entirely.
     '''
 
     if algorithm.is_pipelined():
@@ -583,6 +596,8 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         # docstring above); only populated in the 3-tuple step.sends branch below, since
         # that's the only shape teccl_ncclize.py ever produces.
         group_completion_step = {}
+        # (src, dst, path_key) -> per-piece rate, when piece_rate is a per-flow map.
+        group_rate = {}
         if len(step.sends[0]) == 5:
             for addr, src, dst, t, l in step.sends:
                 if combine_contig:
@@ -607,6 +622,18 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                     # the op isn't truly ready until the last of its constituents arrives.
                     if vals:
                         group_completion_step[(src, dst, path_key)] = max(vals)
+            if isinstance(piece_rate, dict):
+                # A merged op emits ONE rate for all cnt of its pieces, so every piece
+                # merged into it must have been paced identically. Assert that rather
+                # than picking one: a level that paces its flows non-uniformly would
+                # otherwise have its schedule silently misrepresented here.
+                for (src, dst, path_key), addrs in grouped_sends.items():
+                    vals = {piece_rate.get((step_idx, addr, src, dst)) for addr in addrs}
+                    assert len(vals) == 1, (
+                        f"pieces merged into one op ({src}->{dst} at step {step_idx}, "
+                        f"path {path_key}) carry different rates {sorted(vals, key=str)}; "
+                        f"a merged op can only emit a single rate")
+                    group_rate[(src, dst, path_key)] = vals.pop()
 
         # Combine sends into intervals and create multiple instances if necessary
         sends = []
@@ -667,6 +694,15 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             # except teccl_ncclize.py's flow_path_keys on a switch-relayed hop.
             send_op.path_key = path_key
             recv_op.path_key = path_key
+
+            # Per-piece transmission rate. A scalar piece_rate paces every op the same
+            # (the flat single-level case); a dict is a per-flow rate supplied by the
+            # level of the solve that produced each flow, and a flow absent from it is
+            # deliberately unpaced.
+            rate = (group_rate.get((src, dst, path_key)) if isinstance(piece_rate, dict)
+                    else piece_rate)
+            send_op.piece_rate = rate
+            recv_op.piece_rate = rate
 
             # Correct the recv op's .step to when dst truly has the data, rather than
             # when the transfer started, for relayed transfers (see flow_completion_steps
@@ -975,11 +1011,12 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                     op_elem.set('hasdep', '0')
                 if op.mscclflowid is not None:
                     op_elem.set('mscclflowid', str(op.mscclflowid))
-                # Physical send rate (GB/s): op.cnt pieces at piece_rate each.
-                # Merges only combine chunks within a single step, so an op
-                # never spans epochs and its rate is well-defined.
-                if piece_rate is not None:
-                    op_elem.set('rate', str(op.cnt * piece_rate))
+                # Physical send rate (GB/s): op.cnt pieces at op.piece_rate each.
+                # Merges only combine chunks within a single step, so an op never
+                # spans epochs and its rate is well-defined. op.piece_rate is None
+                # for a deliberately unpaced flow, which emits no attribute at all.
+                if op.piece_rate is not None:
+                    op_elem.set('rate', str(op.cnt * op.piece_rate))
                 # Record each send op's epoch, keyed by its final XML location
                 # (gpu, tb, s). Epoch ordering can no longer read the epoch off
                 # the flow id (one route-based id spans epochs), so it uses this.
