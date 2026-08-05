@@ -106,7 +106,11 @@ def _check_delivery_coverage(res, flows) -> int:
                 required[(d.identity, t)] = max(required[(d.identity, t)], d.volume)
     delivered = collections.defaultdict(float)
     for f in flows:
-        delivered[(f.identity, f.receiver)] += f.volume
+        # A flow may carry several co-travelling sub-chunks as ONE transfer (intra_solve's
+        # _coalesce_subchunks), so credit each sub-chunk it moves -- `f.identity` is only the
+        # representative, and counting it alone would report the rest as never delivered.
+        for identity in f.identities:
+            delivered[(identity, f.receiver)] += f.volume / len(f.identities)
     short = {k: (round(v, 6), round(delivered.get(k, 0.0), 6))
              for k, v in required.items() if delivered.get(k, 0.0) < v - 1e-6}
     assert not short, (
@@ -121,7 +125,7 @@ def _check_intra_fits_epoch(res, flows, topo) -> tuple:
     m = COARSE_EPOCH / delta
     per_gap = collections.defaultdict(int)
     for f in flows:
-        per_gap[(f.cell, f.gap)] = max(per_gap[(f.cell, f.gap)], f.local_round + 1)
+        per_gap[(f.cell, f.band)] = max(per_gap[(f.cell, f.band)], f.local_round + f.span)
     peak = max(per_gap.values(), default=0)
     hot = max(per_gap, key=lambda k: per_gap[k]) if per_gap else None
     assert peak <= m + 1e-9, (
@@ -158,7 +162,8 @@ def replay(tag: str, collective: Collective) -> bool:
     for cid in sorted(mapping.coarse_cells):
         if by_cell.get(cid):
             flows += schedule_cell(cid, mapping.coarse_cells[cid], by_cell[cid],
-                                   switch_copy=False, debug=False)
+                                   switch_copy=False, debug=False,
+                                   subdivision=res.subdivision)
 
     n_required = _check_delivery_coverage(res, flows)
     peak, m, hot = _check_intra_fits_epoch(res, flows, topo)

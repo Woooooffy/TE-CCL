@@ -10,71 +10,60 @@ Output is the `flow_str_info` dict every solver emits, so `teccl/ncclize/teccl_n
 it unchanged and MSCCL XML comes out the far end.
 
 
-THE EPOCH AXIS IS A NUMBERING CONVENTION, NOT A SIMULATION
----------------------------------------------------------
+THE STITCH IS ONLY A FLATTENING
+------------------------------
+Each solver step owns its own fine schedule; the stitch translates those local schedules onto one
+absolute axis and does nothing else. There is no placement policy here, no dependency analysis, no
+re-derivation of an ordering some level already decided.
+
 delta = scale.bytes_per_chunk / (fastest fine link) and m = Delta/delta, so a coarse epoch is
-exactly m fine epochs. Band k -- the m fine epochs starting at `P + m*k` -- is CONCURRENT WITH
-coarse epoch k, not a seam between epochs: the uplink and the NVSwitch are different links, so
-intra-cell work hides under network time instead of serializing against it. (Measured on these
-schedules, charging intra work as a gap between coarse epochs costs 0.2306 s / 0.8311 s for
-allgather / alltoall versus 0.2022 / 0.8006 for the concurrent reading -- it turns a win into a
-loss against a 0.22 s flat baseline.)
+exactly m fine epochs. The intra level emits `(band, local_round)`, where band is the coarse epoch a
+transfer runs concurrently with and local_round is a fine-epoch offset -- the units already line up,
+because a round is "one chunk across one NVSwitch port" = bytes_per_chunk / nvlink_bw = delta. So
+the whole translation is:
 
-    band k == fine epochs [P + m*k, P + m*(k+1))
+    W = width of the prologue band (its round count; 0 if empty)
 
-    P + m*k                          coarse epoch k's network sends              (offset 0)
-    P + m*(k+1) + 1 + level          fan-out of pieces ARRIVING in epoch k        (low offsets)
-    P + m*k - 1 - (Lmax - level)     staging for sends leaving in epoch k         (top of band k-1)
-    [0, P), at fine epoch = level    epoch-0 staging + self_distribution          (prologue)
+    prologue (band -1)     fine epoch = local_round                 in [0, W)
+    band k >= 0            fine epoch = W + m*k + local_round
+    network send, epoch k  fine epoch = W + m*k                     (the band's leading edge)
+    piece held at dst      fine epoch = W + m*(arrival_epoch + 1)   (end of its arrival epoch)
 
-Two placements deserve their reasons written down:
+Band k is CONCURRENT WITH coarse epoch k, not a seam between epochs: the uplink and the NVSwitch are
+different links, so intra-cell work hides under network time instead of serializing against it.
+(Measured, charging intra work as a gap between coarse epochs costs 0.2306 s / 0.8311 s for
+allgather / alltoall versus ~0.20 / ~0.80 for the concurrent reading -- it turns a win into a loss
+against a 0.22 s flat baseline.)
 
-  * Staging for a send in coarse epoch k sits at the TOP OF BAND k-1, not in the prologue. It has
-    to precede the send it feeds, and putting it one band earlier keeps it in the band the phase-3
-    scheduler actually costed it in (`_group_by_gap` pins a hard job to its deadline gap, and the
-    `rounds <= m` certificate is computed on that placement). Collapsing every staging relay into
-    the prologue would emit a placement nothing ever checked, and would concentrate it in the one
-    band that has no network time to hide under. Only epoch-0 staging has no earlier band, so only
-    it is genuinely prologue work.
+Bands 0..K-1 are exactly m fine epochs wide because their leading edges are the network sends, which
+are Delta apart by construction. `rounds <= m` per (cell, band) is therefore a real feasibility
+certificate -- it says the intra work genuinely fits inside the coarse epoch it hides under -- and it
+is asserted, not assumed. The PROLOGUE and the EPILOGUE (band K, fanning out the final arrivals) have
+no network send to align to, so they are as wide as their own schedules need, and they are the only
+intra work charged directly to the makespan. That is the honest accounting: they are the two bands
+with no network time to hide under.
 
-  * Fan-out of a piece keys off `arrival_epoch + 1`, not `arrival_epoch`: `_extract_pieces` records
-    the arrival as the LAST HOP's epoch, so the data lands at the END of that coarse epoch and the
-    first band that can consume it is the next one.
-
-Because a precedence level is at most a small tree depth while m is tens of epochs, NO fine-grained
-tracking is needed here -- no per-fine-epoch capacity accounting, no spans, no packing or spill.
-The grid exists to give intra levels somewhere to sit between network epochs and to make
-`Epochs_Required * delta` land near the truth. Note m must NOT be shrunk to just fit the levels:
-that would compact the epoch count but charge each intra level a full Delta/m. Epoch count is
-nearly free (ncclize drops globally empty epochs); reported time is not.
-
-
-PRECEDENCE LEVEL, NOT ROUND
----------------------------
-`IntraFlow.local_round` is a TIME index; what the schedule needs is a DEPENDENCY level, and the two
-differ by 5-6x (depth 3 vs 17 rounds for allgather). Rounds beyond the depth carry information
-ncclize cannot use, because intra flows are not rate-limited. So the stitch discards `local_round`
-and keeps `level` = longest-path depth in the same-identity sender->receiver DAG within a phase.
-This is sound because the only same-buffer recv-then-send chains in the intra layer come from
-broadcast-tree edges (`_Job.predecessor` is set only there); direct and dedup-merged deliveries are
-terminal, and a cross-phase chain cannot exist while egress staging is native-only (asserted).
-`_schedule_gap` still runs -- it is demoted from "produces the schedule axis" to "produces the
-feasibility certificate", `rounds <= m`.
+Why the round index is used directly rather than collapsed to a precedence depth: `_schedule_band`
+already places a tree child in a strictly later round than its parent, so the round index ALREADY
+carries the dependency order. Re-deriving a "level" from the flows would recompute that, and would
+additionally discard the port-contention the scheduler resolved -- understating prologue and epilogue
+time by the ratio of rounds to depth (5-6x on these schedules).
 """
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from teccl.hierarchy.intra_solve import IntraFlow
+from teccl.hierarchy.intra_solve import PROLOGUE_BAND, IntraFlow
 from teccl.hierarchy.reconstruct import Identity, IdentityResolution
 from teccl.hierarchy.scale import ChunkScale
 from teccl.topologies.topology import Topology
 
-# Phases, in the order they occupy the axis within a band.
-PROLOGUE = "prologue"          # available from t=0: self_distribution + epoch-0 staging
-STAGE = "stage"                # native -> gateway, must precede the network send it feeds
+# Record phases. These are ANNOTATION only -- placement is decided by the level that produced the
+# flow, and the stitch reads (band, local_round). NETWORK is the one the code branches on, because
+# only inter-cell sends carry a rate and occupy a coarse-epoch-aligned link.
+PROLOGUE = "prologue"          # ran before coarse epoch 0's first network send
 NETWORK = "network"            # the inter-cell send itself
-INGRESS = "ingress"            # fan-out of an arrival, inside the destination cell
+INGRESS = "ingress"            # fallback label for an intra flow with no recorded kind
 
 
 @dataclass(frozen=True)
@@ -146,141 +135,77 @@ def assert_native_ownership(res: IdentityResolution) -> None:
 
 
 # ----------------------------------------------------------------------------------------------
-# S1. Phases and precedence levels
+# S1/S2/S3. Translate the levels' local schedules onto one absolute axis
 # ----------------------------------------------------------------------------------------------
-def flow_phase(flow: IntraFlow) -> Tuple[str, int]:
-    """(phase, coarse epoch it is anchored to) for one intra flow.
+def prologue_width(intra_flows: Sequence[IntraFlow]) -> int:
+    """How many fine epochs the pre-epoch-0 band needs.
 
-    `gap` alone cannot say this: _group_by_gap pins a HARD job to its deadline gap and a soft one
-    to its release gap, so a staging relay for coarse epoch 0, a self_distribution, and a fan-out
-    of an epoch-0 arrival all land in gap 0 while belonging to three different places on the axis.
-    The job's kind and hardness disambiguate them.
+    Cells schedule independently on their own NVSwitch, so the prologue is as long as the busiest
+    cell's prologue, not the sum. This is the one intra band whose length is charged directly to
+    the makespan (it has no network send to hide under), which is why it is measured in ROUNDS --
+    the schedule the level actually produced -- rather than estimated from a dependency depth.
     """
-    if flow.kind == "egress_stage" or flow.hard:
-        # gap == the send_epoch of the piece this relay feeds.
-        return (PROLOGUE, 0) if flow.gap == 0 else (STAGE, flow.gap)
-    if flow.kind == "ingress_distribution":
-        # gap == arrival_epoch; the data lands at the END of that coarse epoch.
-        return INGRESS, flow.gap
-    return PROLOGUE, 0
+    return max((f.local_round + f.span for f in intra_flows if f.band == PROLOGUE_BAND), default=0)
 
 
-def levels(flows: Sequence[IntraFlow]) -> Dict[int, int]:
-    """Longest-path depth of each flow in the same-identity sender->receiver DAG of its phase.
+def assert_bands_fit(intra_flows: Sequence[IntraFlow], m: int, num_coarse_epochs: int) -> None:
+    """The feasibility certificate: a band aligned to a coarse epoch must fit inside it.
 
-    Returns a map keyed by `id(flow)` (IntraFlow is frozen but not hashable-by-value in a way that
-    distinguishes two identical rounds of one transfer). Direct deliveries get 0; only broadcast
-    tree edges produce a positive depth, because they are the only place a receiver forwards what
-    it just received.
+    Bands 0..K-1 are pinned to the network sends at their leading edges, so their width is fixed at
+    m. If a cell needs more rounds than that, its intra work does NOT hide under network time and
+    the whole premise (inner fabric much faster than outer) fails for that band -- the windowed
+    intra solver would be the fallback. The prologue and epilogue are exempt: they have no send to
+    align to and are charged their true length instead.
     """
-    by_group: Dict[Tuple, List[IntraFlow]] = defaultdict(list)
-    for f in flows:
-        phase, anchor = flow_phase(f)
-        by_group[(f.cell, phase, anchor)].append(f)
-
-    out: Dict[int, int] = {}
-    for key, group in by_group.items():
-        # producers[(identity, gpu)] = flows that put `identity` on `gpu`
-        producers: Dict[Tuple[Identity, int], List[IntraFlow]] = defaultdict(list)
-        for f in group:
-            producers[(f.identity, f.receiver)].append(f)
-
-        memo: Dict[int, int] = {}
-        visiting: set = set()
-
-        def depth(f: IntraFlow) -> int:
-            fid = id(f)
-            if fid in memo:
-                return memo[fid]
-            if fid in visiting:
-                raise AssertionError(
-                    f"cycle in the intra-cell precedence DAG at {key}: identity {f.identity} "
-                    f"{f.sender}->{f.receiver}. A forwarding chain must be a tree.")
-            visiting.add(fid)
-            # The sender forwards only what someone delivered to it within this same phase; if
-            # nothing did, it owned the data already and this flow is at depth 0.
-            d = 0
-            for p in producers.get((f.identity, f.sender), ()):
-                d = max(d, depth(p) + 1)
-            visiting.discard(fid)
-            memo[fid] = d
-            return d
-
-        for f in group:
-            out[id(f)] = depth(f)
-    return out
+    used: Dict[Tuple[int, int], int] = defaultdict(int)
+    for f in intra_flows:
+        used[(f.cell, f.band)] = max(used[(f.cell, f.band)], f.local_round + f.span)
+    over = [(c, b, r) for (c, b), r in sorted(used.items())
+            if 0 <= b < num_coarse_epochs and r > m]
+    if over:
+        raise AssertionError(
+            f"intra-cell work does not fit the coarse epoch it runs under, on {len(over)} "
+            f"(cell, band) pairs [(cell, band, rounds)] with m={m}: {over[:6]}")
 
 
-# ----------------------------------------------------------------------------------------------
-# S2/S3. Absolute fine epochs -> delivery records
-# ----------------------------------------------------------------------------------------------
 def build_records(res: IdentityResolution, intra_flows: Sequence[IntraFlow],
                   m: int) -> Tuple[List[DeliveryRecord], int]:
     """Place every inter-cell piece and intra-cell flow on the absolute fine epoch axis.
 
-    Returns the records and P (the prologue width).
+    Pure translation -- see the module docstring for the four-line mapping. Returns the records and
+    the prologue width W.
     """
-    lvl = levels(intra_flows)
-
-    grouped: Dict[Tuple[str, int], List[IntraFlow]] = defaultdict(list)
-    for f in intra_flows:
-        grouped[flow_phase(f)].append(f)
-
-    # The prologue occupies fine epochs [0, P), one per precedence level, and the first network
-    # send sits at P. At least 1 so epoch 0 is never a network send with nothing before it.
-    prologue = grouped.get((PROLOGUE, 0), [])
-    P = max(1, max((lvl[id(f)] for f in prologue), default=-1) + 1)
+    W = prologue_width(intra_flows)
 
     records: List[DeliveryRecord] = []
-
-    def emit_intra(f: IntraFlow, epoch: int, phase: str) -> None:
-        records.append(DeliveryRecord(
-            identity=f.identity, sender=f.sender, receiver=f.receiver,
-            via_switches=(f.via_switch,), volume=f.volume, epoch=epoch,
-            # An intra hop is not paced, so it is modelled as occupying its epoch and being
-            # available at the next one -- which is exactly what makes a level-l flow able to feed
-            # a level-(l+1) flow placed one epoch later.
-            completion=epoch + 1, rate=None, phase=phase, cell=f.cell, level=lvl[id(f)]))
-
-    for f in prologue:
-        emit_intra(f, lvl[id(f)], PROLOGUE)
-
-    # Staging for coarse epoch k: the top of band k-1, deepest level last so it lands at
-    # P + m*k - 1, immediately before the send it feeds.
-    for (phase, k), group in sorted(grouped.items()):
-        if phase != STAGE:
-            continue
-        lmax = max(lvl[id(f)] for f in group)
-        if lmax + 1 > m:
-            raise AssertionError(
-                f"staging for coarse epoch {k} has precedence depth {lmax + 1} > m={m}; it cannot "
-                f"fit in the band before the send it feeds.")
-        for f in group:
-            emit_intra(f, P + m * k - 1 - (lmax - lvl[id(f)]), STAGE)
-
-    # Fan-out of the pieces that arrived in coarse epoch k: the low offsets of band k+1, after
-    # offset 0 which belongs to that band's own network sends.
-    for (phase, k), group in sorted(grouped.items()):
-        if phase != INGRESS:
-            continue
-        lmax = max(lvl[id(f)] for f in group)
-        if lmax + 2 > m:
-            raise AssertionError(
-                f"fan-out of coarse epoch {k}'s arrivals has depth {lmax + 1}, which does not fit "
-                f"in a band of m={m} fine epochs after the network send at offset 0.")
-        for f in group:
-            emit_intra(f, P + m * (k + 1) + 1 + lvl[id(f)], INGRESS)
+    for f in intra_flows:
+        epoch = f.local_round if f.band == PROLOGUE_BAND else W + m * f.band + f.local_round
+        # One record per sub-chunk the transfer carries, ALL AT THE SAME EPOCH. A coalesced flow is
+        # one physical transfer of contiguous bytes, so its sub-chunks have consecutive labels and
+        # ncclize merges them back into a single cnt=Q operation -- which it can only do for
+        # addresses that share a step.
+        for identity in f.identities:
+            records.append(DeliveryRecord(
+                identity=identity, sender=f.sender, receiver=f.receiver,
+                via_switches=(f.via_switch,), volume=f.volume / len(f.identities), epoch=epoch,
+                # The transfer occupies its whole span and the receiver holds it once it finishes,
+                # which is what lets a flow ending at round r feed one starting at r+1 -- the
+                # precedence _schedule_band already enforced.
+                completion=epoch + f.span, rate=None,
+                phase=PROLOGUE if f.band == PROLOGUE_BAND else (f.kind or INGRESS),
+                cell=f.cell, level=f.local_round))
 
     for p in res.pieces:
         records.append(DeliveryRecord(
             identity=p.identity, sender=p.egress_gpu, receiver=p.ingress_gpu,
-            via_switches=tuple(p.via_switches), volume=p.volume, epoch=P + m * p.send_epoch,
-            # The piece occupies coarse epoch(s) up to its arrival epoch and is held at the start
-            # of the next band -- the same convention the fan-out placement above reads.
-            completion=P + m * (p.arrival_epoch + 1), rate=p.rate, phase=NETWORK,
+            via_switches=tuple(p.via_switches), volume=p.volume,
+            epoch=W + m * p.send_epoch,
+            # The piece is held at the END of its arrival epoch, i.e. the leading edge of the next
+            # band -- which is where the fan-out that consumes it was scheduled.
+            completion=W + m * (p.arrival_epoch + 1), rate=p.rate, phase=NETWORK,
             cell=p.src_cell))
 
-    return records, P
+    return records, W
 
 
 # ----------------------------------------------------------------------------------------------
@@ -494,7 +419,11 @@ def stitch(res: IdentityResolution, intra_flows: Sequence[IntraFlow], fine_topol
     delta, m = derive_grid(res.scale, fine_topology, coarse_epoch)
     assert_native_ownership(res)
 
-    records, _P = build_records(res, intra_flows, m)
+    # Bands 0..K-1 are pinned to the network sends, so they must fit inside a coarse epoch.
+    num_coarse_epochs = max((p.send_epoch for p in res.pieces), default=-1) + 1
+    assert_bands_fit(intra_flows, m, num_coarse_epochs)
+
+    records, _W = build_records(res, intra_flows, m)
     assert_link_capacity(records, fine_topology, coarse_epoch, scale=res.scale)
     paths = back_trace(records, fine_demand, res.subdivision)
 

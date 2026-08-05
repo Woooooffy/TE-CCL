@@ -4,7 +4,7 @@ Gurobi-free structural tests for the phase-3 intra-cell scheduler (teccl.hierarc
 Steps 1-3 of the algorithm phase:
   [1] _to_jobs: IntraCellDemand -> scheduler jobs, incl. fan-out density test (direct vs binomial
       tree) and precedence links.
-  [2] _schedule_gap: EDF-weighted greedy b-matching -> ring recovery on symmetric input, relay
+  [2] _schedule_band: EDF-weighted greedy b-matching -> ring recovery on symmetric input, relay
       priority, fractional volumes, port safety.
   [3] schedule_cell: end-to-end on the real HeteroTaperedCluster Host-B resolution (relays +
       internal allgather together): deadlines met, ports never oversubscribed, demand satisfied.
@@ -20,7 +20,7 @@ from teccl.hierarchy.abstract import abstract
 from teccl.hierarchy.reconstruct import IntraCellDemand, resolve_identities
 from teccl.hierarchy import intra_solve
 from teccl.hierarchy.intra_solve import (
-    _Job, _to_jobs, _schedule_gap, _assert_ports, _assert_deadlines, schedule_cell)
+    _Job, _to_jobs, _schedule_band, _assert_ports, _assert_deadlines, schedule_cell)
 from teccl.input_data import Collective, TopologyParams
 from teccl.solvers.demand import build_demand
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
@@ -124,7 +124,7 @@ def test_ring_recovery():
     n = 8
     gpus = list(range(n))
     jobs = _symmetric_allgather_jobs(n)
-    flows = _schedule_gap(jobs, gpus, switch=n, gap=0)
+    flows = _schedule_band(jobs, gpus, switch=n, band=0)
     _assert_ports(flows)
     rounds = max(f.local_round for f in flows) + 1
     assert rounds == n - 1, rounds                         # max port load = n-1
@@ -149,7 +149,7 @@ def test_relay_priority():
     hard = _Job(identity=(99, 0), src=0, dst=7, volume=1.0, release_gap=0, deadline_gap=0,
                 hard=True, kind="egress_stage")
     jobs.append(hard)
-    _schedule_gap(jobs, gpus, switch=n, gap=0)
+    _schedule_band(jobs, gpus, switch=n, band=0)
     _assert_deadlines([hard])
     assert hard.completion_round == 0, hard.completion_round
     print("  [2b] relay priority: far-distance hard job pulled to round 0 OK")
@@ -163,7 +163,7 @@ def test_fractional_pack():
               hard=False, kind="self_distribution")
     j2 = _Job(identity=(0, 1), src=0, dst=1, volume=0.5, release_gap=0, deadline_gap=float("inf"),
               hard=False, kind="self_distribution")
-    flows = _schedule_gap([j1, j2], gpus, switch=3, gap=0)
+    flows = _schedule_band([j1, j2], gpus, switch=3, band=0)
     _assert_ports(flows)
     assert j1.completion_round == 0 and j2.completion_round == 0
     assert max(f.local_round for f in flows) == 0
@@ -179,7 +179,7 @@ def test_tree_precedence_schedule():
     dem = [IntraCellDemand(cell=0, kind="ingress_distribution", identity=(0, 0),
                            src_gpu=gw, dst_gpus=tuple(wanters), volume=1.0, deadline_epoch=0)]
     jobs = _to_jobs(dem, cell)
-    flows = _schedule_gap(jobs, cell.gpus, switch=8, gap=0)
+    flows = _schedule_band(jobs, cell.gpus, switch=8, band=0)
     _assert_ports(flows)
     # a GPU can only send after it holds the data: recv_round[child] < send_round for its children
     recv_round = {gw: -1}
@@ -222,7 +222,7 @@ def test_schedule_cell_hostB_combined():
     assert all(f.via_switch == 15 for f in flows_B)
     relay_flows = [f for f in flows_B if f.sender in (5, 6, 7) and f.receiver == 4]
     assert {f.identity for f in relay_flows} == {(5, 0), (6, 0), (7, 0)}, relay_flows
-    gaps_B = sorted({f.gap for f in flows_B})
+    bands_B = sorted({f.band for f in flows_B})
 
     # ---- cells A and C: isolated ingress fan-out from one gateway -> binomial trees ----
     flows_A = schedule_cell(A, m.coarse_cells[A], by_cell[A])
@@ -234,7 +234,7 @@ def test_schedule_cell_hostB_combined():
     a_senders = {f.sender for f in flows_A}
     assert a_senders - {0}, ("expected tree relaying in A", a_senders)
 
-    print(f"  [3] schedule_cell Host-B combined: B gaps {gaps_B}, "
+    print(f"  [3] schedule_cell Host-B combined: B gaps {bands_B}, "
           f"{len(flows_B)} B-flows / {len(flows_A)} A-flows / {len(flows_C)} C-flows, "
           f"relays land + fan-out delivered, ports & deadlines OK")
 

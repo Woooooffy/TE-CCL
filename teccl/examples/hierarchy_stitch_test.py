@@ -3,13 +3,15 @@ Gurobi-free tests for PHASE 4, the stitch (teccl.hierarchy.stitch).
 
 Two layers, deliberately separate:
 
-  UNIT, on hand-built input -- the epoch layout and the precedence-level projection, where an
-  oracle can be written down by hand:
-    1. levels(): a binomial tree has depth ceil(log2 n); a ring/direct fan-out is all zeros.
+  UNIT, on hand-built input -- band assignment and the flattening, where an oracle can be written
+  by hand:
+    1. _assign_bands(): a job goes to the band its data is READY in, and only work that must
+       precede coarse epoch 0's sends falls into the prologue. This is what makes the prologue
+       empty on a topology with no forced relay and non-empty on one that has them.
     2. Epoch layout monotonicity: every staging relay lands strictly before the network send it
-       feeds; every fan-out lands strictly after its piece arrives; the prologue precedes
-       everything. This is the property the whole "fine epochs are a numbering convention" design
-       rests on, and it is the one thing a wrong band offset breaks silently.
+       feeds; every fan-out lands at or after its piece is held; the prologue precedes everything.
+       This is the property the whole banding design rests on, and a wrong band offset breaks it
+       silently.
     3. Causality/coverage: back_trace() rejects a schedule where a relay sends data it does not
        hold yet, and rejects one where a demand is never delivered.
     4. Chunk labels follow the COLLECTIVE's addressing, not the refinement's: a dst-major
@@ -30,16 +32,18 @@ import json
 import os
 import sys
 
+from math import inf
+
 import numpy as np
 
 from teccl.hierarchy.abstract import abstract
-from teccl.hierarchy.intra_solve import IntraFlow, schedule_cell
+from teccl.hierarchy.intra_solve import (PROLOGUE_BAND, IntraFlow, _assign_bands, _Job,
+                                         schedule_cell)
 from teccl.hierarchy.reconstruct import (IdentityResolution, IntraCellDemand, ResolvedPiece,
                                          resolve_identities)
 from teccl.hierarchy.scale import ChunkScale
-from teccl.hierarchy.stitch import (INGRESS, NETWORK, PROLOGUE, STAGE, DeliveryRecord,
-                                    _chunk_label, back_trace, build_records, derive_grid, levels,
-                                    stitch)
+from teccl.hierarchy.stitch import (NETWORK, PROLOGUE, DeliveryRecord, _chunk_label,
+                                    back_trace, build_records, derive_grid, stitch)
 from teccl.input_data import Collective, TopologyParams
 from teccl.solvers.demand import build_demand
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
@@ -47,31 +51,44 @@ from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
 COARSE_EPOCH = 0.02
 
 
-def _flow(cell, identity, src, dst, gap, rnd, kind, hard=False, switch=99):
+def _flow(cell, identity, src, dst, band, rnd, kind, hard=False, switch=99):
     return IntraFlow(cell=cell, identity=identity, sender=src, receiver=dst, via_switch=switch,
-                     volume=1.0, gap=gap, local_round=rnd, kind=kind, hard=hard)
+                     volume=1.0, band=band, local_round=rnd, kind=kind, hard=hard)
+
+
+def _job(src, dst, release, deadline, hard, kind):
+    return _Job(identity=(src, 0), src=src, dst=dst, volume=1.0, release_gap=release,
+                deadline_gap=deadline, hard=hard, kind=kind)
 
 
 # ------------------------------------------------------------------------------------------
-def test_levels_tree_and_ring():
-    """A broadcast tree's depth is its forwarding depth; a direct fan-out has none."""
-    # binomial tree rooted at 0 over {1,2,3}: 0->1 (r0), 0->2 / 1->3 (r1)
-    tree = [_flow(0, (0, 0), 0, 1, 0, 0, "self_distribution"),
-            _flow(0, (0, 0), 0, 2, 0, 1, "self_distribution"),
-            _flow(0, (0, 0), 1, 3, 0, 1, "self_distribution")]
-    lv = levels(tree)
-    assert [lv[id(f)] for f in tree] == [0, 0, 1], [lv[id(f)] for f in tree]
+def test_band_assignment():
+    """A job runs in the band its data is ready; only work that must precede epoch 0 is prologue."""
+    # staging feeding a send in coarse epoch 3: native data, so ready at 0 -- it does NOT wait
+    # until band 2 just because its deadline allows it.
+    assert list(_assign_bands([_job(5, 4, PROLOGUE_BAND, 3, True, "egress_stage")])) == [0]
+    # staging feeding the FIRST send has nowhere to go inside band 0 (the send is its leading
+    # edge), so it is the prologue case.
+    assert list(_assign_bands([_job(5, 4, PROLOGUE_BAND, 0, True, "egress_stage")])) == [PROLOGUE_BAND]
+    # a fan-out of a piece arriving in epoch 4 is ready in band 5 (_to_jobs sets release=arrival+1)
+    assert list(_assign_bands([_job(4, 5, 5, inf, False, "ingress_distribution")])) == [5]
+    # native self-distribution is ready immediately
+    assert list(_assign_bands([_job(0, 1, PROLOGUE_BAND, inf, False, "self_distribution")])) == [0]
 
-    # direct fan-out: every edge leaves the source, nothing forwards
-    ring = [_flow(0, (0, 0), 0, d, 0, r, "self_distribution") for r, d in enumerate((1, 2, 3))]
-    assert set(levels(ring).values()) == {0}
+    # a cell with no forced relay has an EMPTY prologue -- the property that makes this cheap on
+    # rail-optimized topologies, where every gateway owns the data it sends.
+    no_relay = [_job(0, 1, PROLOGUE_BAND, inf, False, "self_distribution"),
+                _job(4, 5, 2, inf, False, "ingress_distribution")]
+    assert PROLOGUE_BAND not in _assign_bands(no_relay)
 
-    # a deeper chain 0->1->2->3 is depth 2
-    chain = [_flow(0, (0, 0), 0, 1, 0, 0, "self_distribution"),
-             _flow(0, (0, 0), 1, 2, 0, 1, "self_distribution"),
-             _flow(0, (0, 0), 2, 3, 0, 2, "self_distribution")]
-    assert sorted(levels(chain).values()) == [0, 1, 2]
-    print("  [1] levels(): binomial tree depth, ring all-zero, chain 0/1/2 OK")
+    # host transit -- data that arrives in band b and must be forwarded before band b -- has no
+    # band and must fail loud rather than be silently placed.
+    try:
+        _assign_bands([_job(4, 5, 3, 3, True, "egress_stage")])
+        raise SystemExit("_assign_bands accepted an unschedulable job")
+    except RuntimeError as e:
+        assert "no band it can run in" in str(e), e
+    print("  [1] _assign_bands: readiness placement, prologue only when forced, empty when not OK")
 
 
 # ------------------------------------------------------------------------------------------
@@ -84,30 +101,34 @@ def test_epoch_layout_monotonicity():
         src_cell=0, dst_cell=1, identity=(0, 0), egress_gpu=1, ingress_gpu=4,
         via_switches=(90,), volume=1.0, send_epoch=2, arrival_epoch=2, rate=50.0))
     flows = [
-        _flow(0, (0, 0), 0, 1, 2, 0, "egress_stage", hard=True),   # stages that send
-        _flow(0, (3, 0), 3, 2, 0, 0, "self_distribution"),          # prologue
-        _flow(1, (0, 0), 4, 5, 2, 0, "ingress_distribution"),       # fan-out of the arrival
-        _flow(1, (0, 0), 5, 6, 2, 1, "ingress_distribution"),       # ... one level deeper
+        # prologue: 2 rounds of work that must precede the first network send -> W = 2
+        _flow(0, (3, 0), 3, 2, PROLOGUE_BAND, 0, "egress_stage", hard=True),
+        _flow(0, (3, 0), 2, 1, PROLOGUE_BAND, 1, "egress_stage", hard=True),
+        # staging for the epoch-2 send, ready immediately -> band 0
+        _flow(0, (0, 0), 0, 1, 0, 0, "egress_stage", hard=True),
+        # fan-out of the arrival: ready in band 3, two rounds deep
+        _flow(1, (0, 0), 4, 5, 3, 0, "ingress_distribution"),
+        _flow(1, (0, 0), 5, 6, 3, 1, "ingress_distribution"),
     ]
     m = 8
-    records, = (build_records(res, flows, m),)
-    recs, P = records
-    by_phase = {r.phase: r for r in recs if r.phase != INGRESS}
-    ingress = sorted((r for r in recs if r.phase == INGRESS), key=lambda r: r.epoch)
-    net = by_phase[NETWORK]
+    recs, W = build_records(res, flows, m)
+    assert W == 2, W
+    net = next(r for r in recs if r.phase == NETWORK)
+    pro = sorted((r.epoch for r in recs if r.phase == PROLOGUE))
+    stage = next(r for r in recs if r.phase == "egress_stage")
+    fan = sorted(r.epoch for r in recs if r.phase == "ingress_distribution")
 
-    assert by_phase[PROLOGUE].epoch < P, (by_phase[PROLOGUE].epoch, P)
-    assert net.epoch == P + m * 2, (net.epoch, P, m)
-    # staging sits in the band BEFORE the send, immediately ahead of it
-    assert by_phase[STAGE].epoch == net.epoch - 1, (by_phase[STAGE].epoch, net.epoch)
-    assert P + m * 1 <= by_phase[STAGE].epoch < net.epoch
-    # fan-out sits in the band AFTER the arrival, and after the piece is held
-    assert net.completion == P + m * 3, (net.completion, P, m)
-    assert all(r.epoch > net.completion for r in ingress), (
-        [r.epoch for r in ingress], net.completion)
-    assert ingress[0].epoch < ingress[1].epoch, "a deeper level must sit later"
-    print(f"  [2] epoch layout: prologue < stage({by_phase[STAGE].epoch}) < "
-          f"send({net.epoch}) -> held({net.completion}) < fan-out{[r.epoch for r in ingress]} OK")
+    # the prologue is [0, W) and everything else is after it
+    assert pro == [0, 1], pro
+    assert net.epoch == W + m * 2, (net.epoch, W, m)
+    # staging sits in band 0, well before the send it feeds
+    assert stage.epoch == W and stage.epoch < net.epoch, (stage.epoch, net.epoch)
+    # the piece is held at the leading edge of the band after its arrival epoch, and its fan-out
+    # starts there -- at, not after, since "held at epoch E" means available from the start of E.
+    assert net.completion == W + m * 3, (net.completion, W, m)
+    assert fan == [net.completion, net.completion + 1], (fan, net.completion)
+    print(f"  [2] epoch layout: prologue{pro} < stage({stage.epoch}) < send({net.epoch}) "
+          f"-> held({net.completion}) <= fan-out{fan} OK")
 
 
 # ------------------------------------------------------------------------------------------
@@ -127,10 +148,10 @@ def test_back_trace_rejects_violations():
         assert "never delivered" in str(e), e
 
     # (b) delivered, but the relay sends before it holds the data. Note this cannot be built out
-    #     of IntraFlows: levels() gives 1->2 depth 1 precisely because 0->1 produced the data on
-    #     GPU 1, so build_records already separates them. The records are therefore constructed
-    #     directly -- back_trace has to stand on its own as the verifier, not lean on the layout
-    #     that feeds it, since a future placement policy could get this wrong.
+    #     of IntraFlows: _schedule_band gives 1->2 a strictly later round than 0->1 precisely
+    #     because it enforces the precedence, so build_records already separates them. The records
+    #     are therefore constructed directly -- back_trace has to stand on its own as the verifier,
+    #     not lean on the schedule that feeds it, since a future level could get this wrong.
     def _rec(src, dst, epoch):
         return DeliveryRecord(identity=(0, 0), sender=src, receiver=dst, via_switches=(99,),
                               volume=1.0, epoch=epoch, completion=epoch + 1, rate=None,
@@ -143,8 +164,8 @@ def test_back_trace_rejects_violations():
         assert "causality" in str(e), e
 
     # (c) the same two hops, correctly levelled, are accepted
-    good = [_flow(0, (0, 0), 0, 1, 0, 0, "self_distribution"),
-            _flow(0, (0, 0), 1, 2, 0, 1, "self_distribution")]
+    good = [_flow(0, (0, 0), 0, 1, PROLOGUE_BAND, 0, "self_distribution"),
+            _flow(0, (0, 0), 1, 2, PROLOGUE_BAND, 1, "self_distribution")]
     recs, _ = build_records(res, good, 8)
     paths = back_trace(recs, demand, 1)
     assert len(paths[(2, (0, 0))]) == 2, paths
@@ -199,7 +220,8 @@ def _replay_pipeline(tag, collective):
     flows = []
     for cid in sorted(mapping.coarse_cells):
         if by_cell.get(cid):
-            flows += schedule_cell(cid, mapping.coarse_cells[cid], by_cell[cid], debug=False)
+            flows += schedule_cell(cid, mapping.coarse_cells[cid], by_cell[cid], debug=False,
+                                   subdivision=res.subdivision)
 
     info, records = stitch(res, flows, topo, fine_demand, COARSE_EPOCH, tag)
     return topo, res, flows, info, records, fine_demand
@@ -244,7 +266,28 @@ def test_replay(tag, collective):
     assert all(r.rate is not None for r in net), "a network send must be paced to the coarse epoch"
     assert all(r.rate is None for r in intra), "intra flows are deliberately unpaced"
     assert len(net) == len(res.pieces), (len(net), len(res.pieces))
-    assert len(intra) == len(flows), (len(intra), len(flows))
+    # One record per sub-chunk, but a coalesced flow carries several of them -- so records track
+    # the sub-chunks moved, not the transfers, and the gap between the two is the merge that
+    # ncclize turns into cnt=Q ops.
+    assert len(intra) == sum(len(f.identities) for f in flows), (len(intra), len(flows))
+    # A coalesced transfer only pays off if ncclize can merge its sub-chunks, which needs BOTH
+    # conditions its make_intervals checks: consecutive chunk labels and a shared step. Assert both
+    # -- they are the entire point of the coalescing, and either one silently failing just returns
+    # the op count to where it was.
+    coalesced = [f for f in flows if len(f.identities) > 1]
+    # Records grouped the way ncclize groups sends: one bucket per (step, edge).
+    buckets = collections.defaultdict(set)
+    for r in intra:
+        buckets[(r.epoch, r.sender, r.receiver)].add(r.identity)
+    for f in coalesced:
+        labels = [ci for _s, ci in f.identities]
+        assert labels == list(range(labels[0], labels[0] + len(labels))), (
+            f"coalesced sub-chunk labels {labels} are not consecutive; ncclize cannot merge them")
+        # All of this transfer's sub-chunks must land in ONE bucket. (Scoped to the transfer, not
+        # to the edge: the same identity can also be delivered over the same edge by a separate
+        # flow -- see the tree/direct duplicate noted below -- and that is a different transfer.)
+        assert any(set(f.identities) <= ids for ids in buckets.values()), (
+            f"sub-chunks of one transfer {f.sender}->{f.receiver} did not share a step")
 
     # Every demanded (dest, sub-identity) has a path; back_trace already proved causality.
     n = len(fine_demand)
@@ -287,7 +330,7 @@ def test_replay(tag, collective):
 
 def main() -> None:
     print("stitch (phase 4) tests")
-    test_levels_tree_and_ring()
+    test_band_assignment()
     test_epoch_layout_monotonicity()
     test_back_trace_rejects_violations()
     test_chunk_label_addressing()

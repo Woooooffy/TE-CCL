@@ -161,13 +161,15 @@ def _run_phase3_intra(res, mapping, tag: str, fine=None, coarse_epoch: float = N
         if not demands:
             continue
         # switch_copy=False: the LP path is unicast, so the intra fabric is modeled unicast too.
-        flows = schedule_cell(cid, cell, demands, switch_copy=False, debug=True)
+        flows = schedule_cell(cid, cell, demands, switch_copy=False, debug=True,
+                              subdivision=res.subdivision)
         all_flows.extend(flows)
 
     # kind/hard are the job provenance the stitch places a flow by: `gap` alone is ambiguous
     # (a self_distribution and an epoch-0 staging relay both land in gap 0).
     out = [dict(cell=f.cell, identity=list(f.identity), sender=f.sender, receiver=f.receiver,
-                via_switch=f.via_switch, volume=f.volume, gap=f.gap, local_round=f.local_round,
+                via_switch=f.via_switch, volume=f.volume, band=f.band, local_round=f.local_round,
+                span=f.span, identities=[list(i) for i in f.identities],
                 kind=f.kind, hard=f.hard)
            for f in all_flows]
     path = f"Schedules/coarse_hetero_{tag}_intra.json"
@@ -193,7 +195,7 @@ def _report_intra_fits_epoch(flows, res, fine, coarse_epoch: float) -> None:
     m = coarse_epoch / delta
     per_gap = defaultdict(int)
     for f in flows:
-        per_gap[(f.cell, f.gap)] = max(per_gap[(f.cell, f.gap)], f.local_round + 1)
+        per_gap[(f.cell, f.band)] = max(per_gap[(f.cell, f.band)], f.local_round + f.span)
     peak = max(per_gap.values(), default=0)
     hot = max(per_gap, key=lambda k: per_gap[k]) if per_gap else None
     print(f"  intra fits coarse epoch: fine epoch delta={delta:.3e}s, m={m:.1f} rounds per coarse "

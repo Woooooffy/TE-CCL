@@ -26,10 +26,25 @@ The scheduler is EDF list-scheduling: at each round it runs a priority-weighted 
 (hard first, then earliest deadline, then a ring-distance tiebreak), which meets every hard deadline
 given the large NVLink:network slack and recovers the ring for the symmetric case.
 
-Timeline/banding (which absolute fine epoch a round becomes, band width, empty-epoch compaction) is
-NOT decided here -- the scheduler emits (gap, local_round) and the downstream stitch step maps that
-to absolute fine epochs. `_group_by_gap` is the single seam that encodes the (v1: per-gap) timeline
-policy; swapping it for a full-timeline policy later leaves the scheduler and its tests untouched.
+THIS MODULE OWNS ITS OWN FINE SCHEDULE, COMPLETELY. That is the recursion contract: a solver step
+is responsible for scheduling the flows it produces, and the stitch above it only flattens. Here the
+schedule is (band, local_round), where `band` is the coarse epoch a transfer runs concurrently with
+and `local_round` is its fine-epoch offset inside that band -- and no rescaling is needed between
+the two, because a round IS a fine epoch: a round is "one chunk across one NVSwitch port", which
+takes bytes_per_chunk / nvlink_bw, and that is precisely how delta is defined.
+
+Two pieces do all the placement work:
+  * `_assign_bands` picks the band from READINESS (as early as the data exists), with the prologue
+    band -1 as the escape for work that must precede coarse epoch 0's sends.
+  * `_schedule_band` orders the rounds inside a band, already respecting precedence and port
+    capacity -- so the round index carries the dependency order and nothing downstream has to
+    re-derive it.
+
+What the memoized NVSwitch case deliberately does NOT do is pin its transfers to a timeline: the
+inner fabric is far faster than the outer, so intra-cell work hides under network time and only DATA
+DEPENDENCIES matter. That is why this simple readiness+greedy-rounds scheme suffices. A future level
+with real ordering requirements would enforce them in its own solve, not by asking the stitch to
+reconstruct them.
 """
 import math
 import os
@@ -49,6 +64,11 @@ EPS = 1e-9
 # correctness against the max-port-load lower bound.
 _ENV_DEBUG = os.environ.get("TECCL_INTRA_DEBUG", "").lower() in ("1", "true", "yes", "on")
 
+# The band that runs BEFORE coarse epoch 0's network sends. Unlike bands 0..K-1 it is not
+# concurrent with any network traffic, so its width is whatever its own schedule needs rather than
+# a full coarse epoch -- and it is the one band whose length is charged directly to the makespan.
+PROLOGUE_BAND = -1
+
 
 def _p(debug: bool, msg: str = "") -> None:
     if debug:
@@ -59,16 +79,19 @@ def _p(debug: bool, msg: str = "") -> None:
 class IntraFlow:
     """One lowered intra-cell hop, logical GPU->GPU (annotated with the switch at stitch time).
 
-    gap / local_round are relative coordinates: `gap` is the coarse-epoch band this transfer was
-    scheduled into and `local_round` is its round index within that band. Absolute fine-epoch
-    numbering is a stitch concern, deliberately not decided here.
+    (band, local_round) IS this level's fine schedule, and it is complete: `band` is the coarse
+    epoch this transfer runs concurrently with, and `local_round` is its offset within that band.
+    One round is exactly one fine epoch -- a round is defined as "one chunk across one NVSwitch
+    port", which takes bytes_per_chunk / nvlink_bw, and that is the definition of delta. So the
+    stitch needs no rescaling: absolute fine epoch = (where band starts) + local_round.
 
-    kind / hard are the job's provenance, and they are what the stitch needs to place a flow on
-    the absolute epoch axis: `gap` alone is ambiguous (a self_distribution and an egress_stage
-    feeding coarse epoch 0 both land in gap 0, but the first may sit in the prologue while the
-    second must complete before the first network send). For a DEDUPED delivery -- one physical
-    send satisfying several demands -- these describe the merged job, so `hard` carries the
-    tightest constraint of its contributors, which is exactly what the placement must respect.
+    band == PROLOGUE_BAND (-1) is the work that must precede coarse epoch 0's network sends. It is
+    empty on a topology whose gateways own their own data (rail-optimized), and non-empty only
+    where the boundary forces a relay before the first send (the hetero cluster).
+    band == (number of coarse epochs) is the epilogue: redistributing the final arrivals.
+
+    kind is provenance for debugging and the serialized schedule; hard records that a network send
+    waited on this transfer. Neither is load-bearing downstream -- placement is fully decided here.
     """
     cell: int
     identity: Identity
@@ -76,10 +99,20 @@ class IntraFlow:
     receiver: int               # fine GPU id
     via_switch: int             # the cell's internal NVSwitch id
     volume: float
-    gap: int
-    local_round: int
+    band: int                   # coarse epoch this runs concurrently with (-1 == prologue)
+    local_round: int            # fine-epoch offset within the band (its START)
+    span: int = 1               # fine epochs it occupies: ceil(volume / port_cap)
     kind: str = ""              # egress_stage | ingress_distribution | self_distribution
-    hard: bool = False          # deadline-bearing (a network send waits on it)
+    hard: bool = False          # a network send waited on this transfer
+    # The sub-chunks this transfer carries, in label order. More than one when co-travelling
+    # sub-chunks of a refined chunk were coalesced: they are contiguous bytes over one edge, so
+    # they are one transfer and are emitted into one fine epoch, where ncclize can merge them into
+    # a single cnt=Q operation. Defaults to (identity,).
+    identities: Tuple[Identity, ...] = ()
+
+    def __post_init__(self):
+        if not self.identities:
+            object.__setattr__(self, "identities", (self.identity,))
 
 
 @dataclass
@@ -89,11 +122,16 @@ class _Job:
     remaining/ completion tracks mutate during scheduling. `predecessor` references another _Job
     that must complete in a strictly earlier round before this job becomes ready (used only by
     broadcast-tree lowering, where a child forwards only after it has received). Referencing the
-    parent job by object (not list index) keeps precedence intact when jobs are regrouped by gap."""
-    identity: Identity
+    parent job by object (not list index) keeps precedence intact when jobs are regrouped by band."""
+    identity: Identity           # representative; `identities` is the full set this job carries
     src: int
     dst: int
     volume: float
+    # The FIRST band this job could possibly run in. PROLOGUE_BAND (-1) means "the data exists
+    # before the collective starts" (anything sourced from a GPU's native chunks); a fan-out of a
+    # network arrival is arrival_epoch + 1, since a piece lands at the END of its arrival epoch.
+    # Note this is the earliest POSSIBLE band, not the preferred one -- _assign_bands will not use
+    # the prologue unless a deadline forces it.
     release_gap: int
     deadline_gap: float          # inf for soft
     hard: bool
@@ -101,10 +139,16 @@ class _Job:
     predecessor: "Optional[_Job]" = None
     remaining: float = field(default=None)   # type: ignore[assignment]
     completion_round: Optional[int] = None
+    # Every sub-chunk this job moves, in label order. Normally just (identity,); after
+    # _coalesce_subchunks it is the Q co-travelling sub-chunks of one refined chunk, which are one
+    # physical transfer and have to be emitted as one.
+    identities: Tuple[Identity, ...] = ()
 
     def __post_init__(self):
         if self.remaining is None:
             self.remaining = self.volume
+        if not self.identities:
+            self.identities = (self.identity,)
 
 
 # --------------------------------------------------------------------------------------------
@@ -167,8 +211,66 @@ def _max_intra_recv_load(demands: Sequence[IntraCellDemand]) -> float:
     return max(recv.values(), default=0.0)
 
 
+def _coalesce_subchunks(jobs: List[_Job], subdivision: int, debug: bool = False) -> List[_Job]:
+    """Merge the sub-chunks of one refined chunk that travel the same edge under the same
+    constraints into ONE job.
+
+    Sub-chunk refinement (reconstruct._emit_refined) splits chunk (s, ci) into Q commodities
+    (s, ci*Q+j) so that two shares taking DIFFERENT routes stay distinguishable. Where they take
+    the SAME route they are not two transfers -- they are contiguous bytes of one chunk moving
+    between one pair of GPUs -- and keeping them apart costs real work downstream: port_cap is one
+    sub-chunk per port per round, so the scheduler is forced to put them in consecutive rounds,
+    hence consecutive fine epochs, hence different ncclize steps, where `make_intervals` can no
+    longer merge them into a single cnt=Q operation. Measured on the hetero allgather that was
+    154/154 pairs split and roughly double the XML op count.
+
+    Merging is only sound when the two are indistinguishable to the scheduler, so the key includes
+    release, deadline and hardness: sub-chunks that stage for different network epochs, or arrive
+    in different epochs, stay separate and simply do not benefit. Tree jobs are excluded -- they
+    carry a precedence chain, and their labels are not contiguous in general.
+    """
+    if subdivision <= 1:
+        return jobs
+    # Precedence is held by OBJECT REFERENCE, so a job another job waits on must survive merging
+    # intact -- replacing it with a merged job would leave its children pointing at an object the
+    # scheduler never runs, and they would never become ready.
+    referenced = {id(j.predecessor) for j in jobs if j.predecessor is not None}
+    groups: Dict[Tuple, List[_Job]] = defaultdict(list)
+    passthrough: List[_Job] = []
+    for j in jobs:
+        if j.predecessor is not None or id(j) in referenced or len(j.identities) != 1:
+            passthrough.append(j)
+            continue
+        s, ci = j.identity
+        groups[(s, ci // subdivision, j.src, j.dst, j.release_gap, j.deadline_gap, j.hard)].append(j)
+
+    out: List[_Job] = list(passthrough)
+    merged = 0
+    for key, group in sorted(groups.items(), key=lambda kv: str(kv[0])):
+        if len(group) == 1:
+            out.append(group[0])
+            continue
+        group.sort(key=lambda j: j.identity[1])
+        first = group[0]
+        out.append(_Job(
+            identity=first.identity, src=first.src, dst=first.dst,
+            volume=sum(j.volume for j in group),
+            release_gap=first.release_gap, deadline_gap=first.deadline_gap, hard=first.hard,
+            kind=first.kind, predecessor=None,
+            identities=tuple(j.identity for j in group)))
+        merged += 1
+        _p(debug, f"      coalesce {first.src}->{first.dst} chunk {key[0]},{key[1]}: "
+                  f"{len(group)} sub-chunks {[j.identity[1] for j in group]} -> one transfer "
+                  f"of volume {out[-1].volume:g}")
+    if debug and merged:
+        _p(debug, f"  [_coalesce_subchunks] {merged} co-travelling sub-chunk group(s) merged; "
+                  f"{len(jobs)} -> {len(out)} jobs")
+    return out
+
+
 def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
-             switch_copy: bool = False, debug: bool = False) -> List[_Job]:
+             switch_copy: bool = False, debug: bool = False,
+             subdivision: int = 1) -> List[_Job]:
     """Convert a cell's IntraCellDemand list into scheduler jobs.
 
     egress_stage        -> a HARD point-to-point delivery (native -> gateway), deadline = its epoch.
@@ -218,14 +320,18 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
     for d in demands:
         if d.kind == "egress_stage":
             (gw,) = d.dst_gpus
-            _add_direct(d.identity, d.src_gpu, gw, d.volume, 0, d.deadline_epoch, True, d.kind)
+            _add_direct(d.identity, d.src_gpu, gw, d.volume, PROLOGUE_BAND, d.deadline_epoch,
+                        True, d.kind)
             continue
 
         # fan-out demand (ingress_distribution or self_distribution)
         wanters = [t for t in d.dst_gpus if t != d.src_gpu]
         if not wanters:
             continue
-        release = d.deadline_epoch if d.kind == "ingress_distribution" else 0
+        # A network piece lands at the END of its arrival epoch, so the first band that can fan it
+        # out is the next one. Anything sourced from native data exists before the collective even
+        # starts, which is what makes the prologue available to it.
+        release = d.deadline_epoch + 1 if d.kind == "ingress_distribution" else PROLOGUE_BAND
         # ingress demand may be promoted to hard by a caller (transit cell); default soft.
         hard = getattr(d, "hard", False)
 
@@ -259,15 +365,16 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
                  kind=e["kind"])
             for k, e in direct.items()]
     jobs += tree_jobs
+    jobs = _coalesce_subchunks(jobs, subdivision, debug=debug)
     if debug:
         nh = sum(1 for j in jobs if j.hard)
         _p(debug, f"  [_to_jobs] -> {len(jobs)} jobs ({nh} hard, {len(jobs) - nh} soft; "
-                  f"{len(direct)} direct, {len(tree_jobs)} tree)")
+                  f"{len(tree_jobs)} tree)")
     return jobs
 
 
 # --------------------------------------------------------------------------------------------
-# Step 2: the EDF-weighted greedy b-matching scheduler (one gap's worth of jobs)
+# Step 2: the EDF-weighted greedy b-matching scheduler (one band's worth of jobs)
 # --------------------------------------------------------------------------------------------
 def _max_port_load(jobs: Sequence[_Job]) -> float:
     """The Birkhoff-von Neumann / open-shop makespan lower bound: the busiest GPU egress or ingress
@@ -280,17 +387,24 @@ def _max_port_load(jobs: Sequence[_Job]) -> float:
     return max([*send.values(), *recv.values()], default=0.0)
 
 
-def _schedule_gap(jobs: List[_Job], gpus: Sequence[int], switch: int, gap: int,
-                  port_cap: float = 1.0, ring_hint: Optional[Callable] = None,
-                  max_rounds: int = 10_000, cell_id: Optional[int] = None,
-                  debug: bool = False) -> List[IntraFlow]:
-    """Schedule one gap's jobs into rounds on a non-blocking crossbar. Each round runs a
+def _schedule_band(jobs: List[_Job], gpus: Sequence[int], switch: int, band: int,
+                   port_cap: float = 1.0, ring_hint: Optional[Callable] = None,
+                   max_rounds: int = 10_000, cell_id: Optional[int] = None,
+                   debug: bool = False) -> List[IntraFlow]:
+    """Schedule one band's jobs into rounds on a non-blocking crossbar. Each round runs a
     priority-weighted greedy b-matching bounded by per-GPU egress/ingress capacity (`port_cap`,
     uniform on an NVSwitch). Priority key: hard first, then earliest deadline, then a ring-distance
     tiebreak (so a symmetric all-to-all edge-colors into the canonical ring), then (src, dst).
 
-    Mutates each job's `remaining` / `completion_round`. Returns the emitted IntraFlows (logical
-    GPU->GPU with the cell's switch recorded)."""
+    A job is scheduled ATOMICALLY: it starts at the first round where both its ports have room and
+    holds them for `span = ceil(volume / port_cap)` consecutive rounds. That matters for a
+    coalesced multi-sub-chunk transfer -- splitting it back across non-adjacent rounds would defeat
+    the coalescing, since the sub-chunks then land in different fine epochs again. Jobs smaller
+    than a port still share a round (two 0.5s pack together), so the packing behaviour is
+    unchanged for everything that is not a multi-round transfer.
+
+    Mutates each job's `completion_round`. Returns the emitted IntraFlows (logical GPU->GPU with
+    the cell's switch recorded), one per job."""
     if ring_hint is None:
         ring_hint = lambda s, d: _ring_distance(s, d, gpus)
 
@@ -300,64 +414,83 @@ def _schedule_gap(jobs: List[_Job], gpus: Sequence[int], switch: int, gap: int,
     lb = math.ceil(_max_port_load(jobs) / port_cap - EPS) if jobs else 0
     if debug:
         nh = sum(1 for j in jobs if j.hard)
-        _p(debug, f"    [gap {gap}] {len(jobs)} jobs ({nh} hard), "
+        _p(debug, f"    [band {band}] {len(jobs)} jobs ({nh} hard), "
                   f"max-port-load lower bound = {lb} round(s)")
 
+    def _span(volume: float) -> int:
+        return max(1, math.ceil(volume / port_cap - EPS))
+
+    def _needs(volume: float, span: int) -> List[float]:
+        """Port capacity this job consumes in each round of its span (full rounds, then the tail)."""
+        return [min(port_cap, volume - i * port_cap) for i in range(span)]
+
+    # (gpu, round) -> capacity already committed. Sparse: only touched rounds appear.
+    egress_used: Dict[Tuple[int, int], float] = defaultdict(float)
+    ingress_used: Dict[Tuple[int, int], float] = defaultdict(float)
+
     flows: List[IntraFlow] = []
+    pending = list(jobs)
     for r in range(max_rounds):
-        ready = [j for j in jobs
-                 if j.remaining > EPS
-                 and (j.predecessor is None
-                      or (j.predecessor.completion_round is not None
-                          and j.predecessor.completion_round < r))]
-        if not ready:
+        if not pending:
             break
+        ready = [j for j in pending
+                 if j.predecessor is None
+                 or (j.predecessor.completion_round is not None
+                     and j.predecessor.completion_round < r)]
+        if not ready:
+            # Every remaining job waits on a predecessor that will never complete -- only possible
+            # if a precedence chain is cyclic (never emitted here). Surface it loudly.
+            raise RuntimeError(
+                f"intra-cell schedule stalled at round {r}, band {band}: "
+                f"{[(j.src, j.dst, j.kind) for j in pending]}")
         ready.sort(key=_key)
-        egress_free: Dict[int, float] = {g: port_cap for g in gpus}
-        ingress_free: Dict[int, float] = {g: port_cap for g in gpus}
-        progressed = False
         matched: List[str] = []
         for j in ready:
-            a = min(j.remaining, egress_free[j.src], ingress_free[j.dst])
-            if a <= EPS:
-                continue
+            span, = (_span(j.volume),)
+            needs = _needs(j.volume, span)
+            if not all(egress_used[(j.src, r + i)] + needs[i] <= port_cap + EPS
+                       and ingress_used[(j.dst, r + i)] + needs[i] <= port_cap + EPS
+                       for i in range(span)):
+                continue      # a port is busy in one of the rounds this job would span
+            for i in range(span):
+                egress_used[(j.src, r + i)] += needs[i]
+                ingress_used[(j.dst, r + i)] += needs[i]
             flows.append(IntraFlow(cell=cell_id, identity=j.identity, sender=j.src, receiver=j.dst,
-                                   via_switch=switch, volume=a, gap=gap, local_round=r,
-                                   kind=j.kind, hard=j.hard))
-            j.remaining -= a
-            egress_free[j.src] -= a
-            ingress_free[j.dst] -= a
-            progressed = True
-            if j.remaining <= EPS:
-                j.completion_round = r
+                                   via_switch=switch, volume=j.volume, band=band, local_round=r,
+                                   span=span, kind=j.kind, hard=j.hard, identities=j.identities))
+            j.remaining = 0.0
+            j.completion_round = r + span - 1
+            pending.remove(j)
             if debug:
                 tag = "H" if j.hard else " "
-                done = "done" if j.remaining <= EPS else f"rem {j.remaining:g}"
-                matched.append(f"{j.src}->{j.dst}{tag}(id{j.identity[0]},{a:g},{done})")
+                label = (f"id{j.identity[0]}x{len(j.identities)}" if len(j.identities) > 1
+                         else f"id{j.identity[0]}")
+                matched.append(f"{j.src}->{j.dst}{tag}({label},{j.volume:g}"
+                               f"{f',{span}rnds' if span > 1 else ''})")
         if debug and matched:
             _p(debug, f"      round {r}: " + "  ".join(matched))
-        if not progressed:
-            # No ready job could claim any port -- only possible if a predecessor chain is
-            # unsatisfiable (a cyclic tree, never emitted here). Surface it loudly.
-            unresolved = [(j.src, j.dst, j.kind) for j in jobs if j.remaining > EPS]
-            raise RuntimeError(f"intra-cell schedule stalled at round {r}, gap {gap}: {unresolved}")
     else:
-        raise RuntimeError(f"intra-cell schedule exceeded {max_rounds} rounds in gap {gap}")
+        raise RuntimeError(f"intra-cell schedule exceeded {max_rounds} rounds in band {band}")
     if debug:
-        used = (max((f.local_round for f in flows), default=-1) + 1)
+        used = max((f.local_round + f.span for f in flows), default=0)
         verdict = "OPTIMAL (= port bound)" if used == lb else (
             f"above bound (tree/precedence depth)" if used > lb else "below bound?!")
-        _p(debug, f"    [gap {gap}] used {used} round(s) vs bound {lb} -> {verdict}")
+        _p(debug, f"    [band {band}] used {used} round(s) vs bound {lb} -> {verdict}")
     return flows
 
 
 def _assert_ports(flows: Sequence[IntraFlow], port_cap: float = 1.0) -> None:
-    """No GPU egress or ingress link carries more than port_cap in any (gap, round)."""
+    """No GPU egress or ingress link carries more than port_cap in any (band, round).
+
+    A flow occupies its ports for its whole span, so a multi-round transfer is charged to each
+    round it covers -- port_cap per full round and the remainder in the tail."""
     eg: Dict[Tuple[int, int, int], float] = defaultdict(float)
     ing: Dict[Tuple[int, int, int], float] = defaultdict(float)
     for f in flows:
-        eg[(f.gap, f.local_round, f.sender)] += f.volume
-        ing[(f.gap, f.local_round, f.receiver)] += f.volume
+        for i in range(f.span):
+            share = min(port_cap, f.volume - i * port_cap)
+            eg[(f.band, f.local_round + i, f.sender)] += share
+            ing[(f.band, f.local_round + i, f.receiver)] += share
     for k, v in eg.items():
         assert v <= port_cap + 1e-6, f"egress over-subscribed {k}: {v}"
     for k, v in ing.items():
@@ -366,7 +499,8 @@ def _assert_ports(flows: Sequence[IntraFlow], port_cap: float = 1.0) -> None:
 
 def _assert_deadlines(jobs: Sequence[_Job]) -> None:
     """Every hard job finished (and, once absolute epochs exist, before its deadline). At the
-    round level we can only check completion here; the gap-level deadline is enforced by grouping."""
+    round level we can only check completion here; the band-level deadline is enforced by
+    _assign_bands, which never places a job in a band at or after its deadline."""
     for j in jobs:
         if j.hard:
             assert j.completion_round is not None, f"hard job never completed: {j.src}->{j.dst}"
@@ -375,31 +509,55 @@ def _assert_deadlines(jobs: Sequence[_Job]) -> None:
 # --------------------------------------------------------------------------------------------
 # Step 3: per-cell orchestration
 # --------------------------------------------------------------------------------------------
-def _group_by_gap(jobs: Sequence[_Job]) -> Dict[int, List[_Job]]:
-    """v1 timeline policy (the deferred seam): pin each job to a SINGLE coarse-epoch gap -- hard
-    jobs to their deadline gap (they must complete before that egress), soft jobs to their release
-    gap. A full-timeline policy (spread a job's window across gaps) would replace only this
-    function; the scheduler and its tests are unaffected. A fan-out's tree jobs share a
-    release/deadline, so a precedence chain never straddles gaps."""
-    by_gap: Dict[int, List[_Job]] = defaultdict(list)
+def _assign_bands(jobs: Sequence[_Job]) -> Dict[int, List[_Job]]:
+    """Place each job in the coarse-epoch band where its data becomes READY -- as early as
+    possible, not as late as its deadline allows.
+
+    Readiness is the natural placement because it needs no lookahead: a job's inputs exist or they
+    do not. `release_gap` already carries it (0 for anything sourced from native data, arrival+1
+    for a fan-out of a network arrival, since a piece lands at the END of its arrival epoch).
+
+    The one exception is the PROLOGUE. A job that is ready in band b but must COMPLETE before band
+    b's network sends has nowhere to go inside b -- the sends sit at its leading edge -- so it moves
+    to b-1. For the only case that occurs today, egress staging that feeds coarse epoch 0, that is
+    band -1: work that happens before the collective's first network send. It is empty whenever
+    gateways own the data they send (rail-optimized) and non-empty exactly where the boundary
+    forces a relay first (the hetero cluster).
+
+    This replaces the earlier deadline-gap policy for hard jobs. Deadline-pinning made `band`
+    ambiguous downstream -- an epoch-0 staging relay and a self_distribution both landed in band 0
+    while belonging on opposite sides of the first network send -- and it delayed staging for no
+    gain, since the data was available all along.
+    """
+    by_band: Dict[int, List[_Job]] = defaultdict(list)
     for j in jobs:
-        if j.hard and j.deadline_gap != inf:
-            gap = int(j.deadline_gap)
-        else:
-            gap = int(j.release_gap)
-        by_gap[gap].append(j)
-    return dict(by_gap)
+        # As early as ready, but not into the prologue merely because the data was always there --
+        # the prologue is reserved for work a deadline actually forces before the collective's
+        # first network send, which is what keeps it empty on topologies with no forced relay.
+        band = max(int(j.release_gap), 0)
+        if j.hard and j.deadline_gap != inf and band >= j.deadline_gap:
+            band = int(j.deadline_gap) - 1
+            if band < j.release_gap:
+                raise RuntimeError(
+                    f"job {j.src}->{j.dst} ({j.kind}, identity {j.identity}) cannot run before "
+                    f"band {int(j.release_gap)} but must complete before band "
+                    f"{int(j.deadline_gap)}; there is no band it can run in. This is the "
+                    f"host-transit case (data that arrives and must be forwarded onward too soon "
+                    f"after), which is unmodelled.")
+        by_band[band].append(j)
+    return dict(by_band)
 
 
 def schedule_cell(cell_id: int, cell: Cell, demands: Sequence[IntraCellDemand],
                   switch_copy: bool = False, ring_hint: Optional[Callable] = None,
-                  port_cap: float = 1.0, debug: Optional[bool] = None) -> List[IntraFlow]:
+                  port_cap: float = 1.0, debug: Optional[bool] = None,
+                  subdivision: int = 1) -> List[IntraFlow]:
     """Schedule every intra-cell demand of one cell onto its internal NVSwitch and return the fine
     IntraFlows. The switch is the cell's single internal switch (the memoized full-mesh case).
 
     ring_hint(src, dst) -> comparable, optional override of the default ring-distance tiebreak (the
-    home for a phase-2-supplied ordering knob). Timeline/banding is deferred: flows carry
-    (gap, local_round), not absolute fine epochs.
+    home for a phase-2-supplied ordering knob). Flows carry (band, local_round) -- this level's
+    complete fine schedule, in units the stitch can place without rescaling.
 
     debug: None -> honor the TECCL_INTRA_DEBUG env var; True/False -> force. Debug narrates every
     step (job build, fan-out density, dedup, per-round matching, optimality-vs-bound)."""
@@ -410,17 +568,17 @@ def schedule_cell(cell_id: int, cell: Cell, demands: Sequence[IntraCellDemand],
     switch = cell.internal_switches[0]
     _p(debug, f"\n=== schedule_cell {cell_id}: gpus={list(cell.gpus)} nvswitch={switch}, "
               f"{len(demands)} intra demands ===")
-    jobs = _to_jobs(demands, cell, switch_copy, debug=debug)
+    jobs = _to_jobs(demands, cell, switch_copy, debug=debug, subdivision=subdivision)
     flows: List[IntraFlow] = []
-    for gap, gjobs in sorted(_group_by_gap(jobs).items()):
-        flows += _schedule_gap(gjobs, cell.gpus, switch, gap, port_cap=port_cap,
-                               ring_hint=ring_hint, cell_id=cell_id, debug=debug)
+    for band, bjobs in sorted(_assign_bands(jobs).items()):
+        flows += _schedule_band(bjobs, cell.gpus, switch, band, port_cap=port_cap,
+                                ring_hint=ring_hint, cell_id=cell_id, debug=debug)
     _assert_deadlines(jobs)
     _assert_ports(flows, port_cap=port_cap)
     if debug:
-        gaps = sorted({f.gap for f in flows})
-        peak = max((max((f.local_round for f in flows if f.gap == g), default=-1) + 1
-                    for g in gaps), default=0)
-        _p(debug, f"=== cell {cell_id}: {len(flows)} flows across {len(gaps)} gap(s), "
-                  f"peak {peak} rounds/gap; all hard deadlines met, ports within cap ===")
+        bands = sorted({f.band for f in flows})
+        peak = max((max((f.local_round + f.span for f in flows if f.band == b), default=0)
+                    for b in bands), default=0)
+        _p(debug, f"=== cell {cell_id}: {len(flows)} flows across bands {bands}, "
+                  f"peak {peak} rounds/band; all hard deadlines met, ports within cap ===")
     return flows
