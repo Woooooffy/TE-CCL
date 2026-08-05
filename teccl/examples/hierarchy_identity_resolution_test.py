@@ -17,10 +17,22 @@ demands against hand-derived oracles. Covers:
      Schedules/coarse_hetero_allgather_lp.json and run the resolver end-to-end (this is the input
      that crashed with the single-sort bug; it exercises the C->T1 multi-GPU boundary and
      two-switch relay paths that the synthetic fixtures only partially cover).
+  6. LEXICOGRAPHIC objective: when landing an identity on its target would cost a NATIVE egress,
+     the native egress wins. The two relays are not interchangeable (egress is hard and upstream of
+     the network hop, ingress is soft and downstream), so this ordering must be strict rather than
+     a weighted trade -- with equal weights the solver is indifferent and can silently regress.
+  7. Ingress gateway PREFERS a target when the choice is free, instead of always taking
+     boundary_gpu[...][0].
+  8. Ingress fine-downlink capacity is respected per epoch, on the real replay -- a coarse link's
+     capacity is the SUM of the fine downlinks behind it, so an unbounded choice can oversubscribe
+     one while a sibling idles.
+  9. Sub-chunk refinement: every emitted volume is exactly 1.0, the sub-chunks of one identity
+     partition it, and the ChunkScale conserves the per-GPU payload.
 
 Run from the repo root (in the teccl env):
     python -m teccl.examples.hierarchy_identity_resolution_test
 """
+import collections
 import json
 import os
 import re
@@ -37,12 +49,17 @@ from teccl.solvers.demand import build_demand
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
 
 
-def _fake_solver(per_chunk_flow_paths, switch_indices):
-    """Minimal stand-in for a solved LPFormulation: resolve_identities only reads
-    .per_chunk_flow_paths and .topology.switch_indices."""
+def _fake_solver(per_chunk_flow_paths, switch_indices, epoch_duration=0.02):
+    """Minimal stand-in for a solved LPFormulation: resolve_identities reads
+    .per_chunk_flow_paths, .topology.switch_indices and .epoch_duration.
+
+    epoch_duration is load-bearing, not decoration: it converts a fine link's bandwidth into the
+    volume that link can absorb in one coarse epoch, which is what bounds the ingress gateway
+    choice. 0.02 s matches the hetero coarse solve (1 GB chunk over its 50 GB/s slowest uplink)."""
     return SimpleNamespace(
         per_chunk_flow_paths=per_chunk_flow_paths,
         topology=SimpleNamespace(switch_indices=switch_indices),
+        epoch_duration=epoch_duration,
     )
 
 
@@ -150,7 +167,7 @@ def _symmetric_mapping():
     cap = [[0.0] * 5 for _ in range(5)]
     for g in (0, 1, 2, 3):
         cap[g][4] = cap[4][g] = 100.0
-    fine_topo = SimpleNamespace(capacity=cap, switch_indices=[4])
+    fine_topo = SimpleNamespace(capacity=cap, switch_indices=[4], chunk_size=1)
     return mapping, fine_topo
 
 
@@ -242,44 +259,158 @@ def test_replay_real_allgather_json():
     solver = _fake_solver(pcp, switch_indices=list(coarse.switch_indices))
     res = resolve_identities(solver, m, fine_demand, topo)   # must not raise (was the crash)
 
+    q = res.subdivision
+    assert q >= 1 and res.scale is not None, (q, res.scale)
+    # Sub-chunk refinement: nothing downstream should ever see a fractional volume, and the
+    # refinement must conserve the payload it re-denominates.
+    assert all(abs(p.volume - 1.0) < 1e-9 for p in res.pieces), \
+        sorted({p.volume for p in res.pieces})
+    assert all(abs(d.volume - 1.0) < 1e-9 for d in res.intra_demands), \
+        sorted({d.volume for d in res.intra_demands})
+    assert abs(res.scale.payload_per_gpu - topo.chunk_size * 1) < 1e-9, res.scale
+    assert res.scale.refinement_from_root == q, (res.scale, q)
+
     id_sets, _ = identity_sets(fine_demand, m)
-    # every demanded (U,V) delivers each identity exactly once
+    # Every demanded (U,V) delivers each identity exactly once. Identities are now sub-chunks
+    # (s, ci*q + j), so fold them back to the original (s, ci) and require exactly q sub-chunks --
+    # i.e. the pieces PARTITION each identity rather than merely summing to its volume.
     for (U, V), ids in id_sets.items():
-        per_id = defaultdict(float)
+        per_id = defaultdict(list)
         for p in res.pieces:
             if (p.src_cell, p.dst_cell) == (U, V):
-                per_id[p.identity] += p.volume
+                s, sub = p.identity
+                per_id[(s, sub // q)].append(sub % q)
         assert set(per_id) == set(ids), (U, V, sorted(per_id), sorted(ids))
-        assert all(abs(v - 1.0) < 1e-5 for v in per_id.values()), (U, V, dict(per_id))
+        for orig, subs in per_id.items():
+            assert sorted(subs) == list(range(q)), (U, V, orig, sorted(subs))
 
-    # single-homed Host B: identities native to g5,g6,g7 relay to its lone gateway g4.
-    b_relays = sorted((d.src_gpu, d.dst_gpus[0]) for d in res.intra_demands
-                      if d.kind == "egress_stage" and d.cell == B)
+    # single-homed Host B: identities native to g5,g6,g7 relay to its lone gateway g4. Each
+    # original identity is q sub-chunks now, and each sub-chunk is its own relay, so the distinct
+    # (src, gateway) pairs are unchanged and each occurs exactly q times.
+    b_counts = collections.Counter((d.src_gpu, d.dst_gpus[0]) for d in res.intra_demands
+                                   if d.kind == "egress_stage" and d.cell == B)
+    b_relays = sorted(b_counts)
     assert b_relays == [(5, 4), (6, 4), (7, 4)], b_relays
+    assert set(b_counts.values()) == {q}, dict(b_counts)
 
     # Host C's multi-GPU boundary to T1 (g11, g13) is actually used on some egress piece.
     c_egress_gpus = {p.egress_gpu for p in res.pieces if p.src_cell == C}
     assert {11, 13} & c_egress_gpus, sorted(c_egress_gpus)
 
-    # NATIVE-FIRST egress ordering, checked at the granularity it is enforced: per (src_cell,
-    # dst_cell, gateway). Within one demand pair on a gateway, a native identity never sits on a
-    # later epoch than a relayed one -- native_epoch <= every relayed epoch. (Equality is the
-    # forced case, e.g. g8 where the coarse LP packed two units into the same epoch.) NOTE the
-    # property is intentionally NOT asserted across different destinations sharing one physical
-    # uplink -- that cross-pair interleaving is set by the coarse LP's epoch assignment, not by
-    # this per-pair ordering.
-    by_gateway = defaultdict(list)   # (src_cell, dst_cell, egress_gpu) -> [(send_epoch, is_native)]
-    for p in res.pieces:
-        by_gateway[(p.src_cell, p.dst_cell, p.egress_gpu)].append(
-            (p.send_epoch, p.identity[0] == p.egress_gpu))
-    for (U, V, g), rows in by_gateway.items():
-        native_eps = [e for e, nat in rows if nat]
-        relay_eps = [e for e, nat in rows if not nat]
-        if native_eps and relay_eps:
-            assert max(native_eps) <= min(relay_eps), (U, V, g, sorted(rows))
+    # NATIVE-FIRST egress ordering. This used to be a hard post-hoc sort; it is now objective
+    # tier 3 (keep relayed identities off the earliest egress epochs), so it is a PREFERENCE that
+    # the two dominating tiers may override -- assert the aggregate, not a per-gateway inequality.
+    # Aggregate mean epoch of relayed egress >= that of native egress: relays drift late, which is
+    # what keeps them out of the pre-epoch-0 staging prologue.
+    native_eps = [p.send_epoch for p in res.pieces if p.identity[0] == p.egress_gpu]
+    relay_eps = [p.send_epoch for p in res.pieces if p.identity[0] != p.egress_gpu]
+    if native_eps and relay_eps:
+        assert (sum(relay_eps) / len(relay_eps)) >= (sum(native_eps) / len(native_eps)), \
+            (sorted(native_eps), sorted(relay_eps))
 
-    print(f"  [5] replay real allgather JSON OK: {len(res.pieces)} pieces, "
-          f"Host-B relays {b_relays}, C egress gpus {sorted(c_egress_gpus)}, native-first ordering holds")
+    # Ingress fine-downlink capacity, per (gpu, epoch), in absolute GB. Volumes are sub-chunks now,
+    # so scale by the refined chunk size rather than assuming 1 GB.
+    ep = 0.02
+    used = defaultdict(float)
+    for p in res.pieces:
+        used[(p.ingress_gpu, p.arrival_epoch)] += p.volume * res.scale.bytes_per_chunk
+    over = []
+    for (h, k), vol in sorted(used.items()):
+        cap = topo.capacity[18][h] if topo.capacity[18][h] else topo.capacity[17][h]
+        if vol > cap * ep + 1e-9:
+            over.append((h, k, vol, cap * ep))
+    assert not over, f"ingress downlink oversubscribed: {over}"
+
+    # Both GPUs of Host C's multi-GPU T1 boundary carry ingress traffic. Taking
+    # boundary_gpu[...][0] unconditionally left g13 completely idle on ingress while g11 ran at
+    # 150% of its downlink.
+    c_ingress = collections.Counter(p.ingress_gpu for p in res.pieces if p.dst_cell == C)
+    assert c_ingress[11] and c_ingress[13], dict(c_ingress)
+
+    print(f"  [5] replay real allgather JSON OK: {len(res.pieces)} pieces (Q={q}, "
+          f"{res.scale}), Host-B relays {b_relays}, C egress gpus {sorted(c_egress_gpus)}, "
+          f"C ingress {dict(c_ingress)}, ingress capacity respected")
+
+
+# ------------------------------------------------------------------------------------------
+def _two_path_mapping():
+    """Two cells, two switches, and a RAIL-LIKE constraint: each cell reaches switch A only via
+    its gpu0 and switch B only via its gpu1. So the egress gateway and the landing GPU are both
+    determined by which switch a piece crosses -- the setup where the egress and ingress
+    objectives can genuinely conflict.
+
+        cell0 gpus {0,1}   boundary {swA: [0], swB: [1]}
+        cell1 gpus {2,3}   boundary {swA: [2], swB: [3]}
+        fine swA = 4, swB = 5;  coarse cell0 = 0, cell1 = 1, swA = 2, swB = 3
+    """
+    mapping = HierarchyMapping(
+        fine_to_coarse={0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 3},
+        coarse_cells={0: Cell(members=[0, 1], gpus=[0, 1]),
+                      1: Cell(members=[2, 3], gpus=[2, 3])},
+        coarse_passthrough={2: 4, 3: 5},
+        boundary_gpu={(0, 2): [0], (0, 3): [1], (1, 2): [2], (1, 3): [3]},
+        num_coarse=4,
+    )
+    cap = [[0.0] * 6 for _ in range(6)]
+    for g, sw in ((0, 4), (1, 5), (2, 4), (3, 5)):
+        cap[g][sw] = cap[sw][g] = 100.0
+    return mapping, SimpleNamespace(capacity=cap, switch_indices=[4, 5], chunk_size=1)
+
+
+def test_lexicographic_egress_dominates():
+    """Landing on the target must NOT be bought with a native egress.
+
+    Identity (0,0) is native to gpu0 (which owns swA) but wanted by gpu3 (which owns swB);
+    identity (1,0) is native to gpu1 (swB) but wanted by gpu2 (swA). Both assignments are
+    available and each costs exactly one relay, so a SUMMED objective is indifferent:
+
+        native egress + ingress relay   vs   egress relay + landing on target
+
+    The lexicographic objective must take the first: an egress_stage relay is HARD (its deadline is
+    the network send epoch) and sits upstream of the network hop, while ingress distribution is
+    SOFT and downstream. Assert zero egress relays, i.e. both identities left on their native
+    gateway and paid the ingress hop instead."""
+    mapping, fine_topo = _two_path_mapping()
+    fine_demand = np.zeros((6, 6, 1), dtype=np.int32)
+    fine_demand[0][3][0] = 1          # native gpu0 (swA) -> wanted by gpu3 (swB)
+    fine_demand[1][2][0] = 1          # native gpu1 (swB) -> wanted by gpu2 (swA)
+    pcp = {(0, 1, 0): [_single_switch_path(0, 1, 2, 1.0, 0),      # via swA: gpu0 -> gpu2
+                       _single_switch_path(0, 1, 3, 1.0, 0)]}     # via swB: gpu1 -> gpu3
+    res = resolve_identities(_fake_solver(pcp, switch_indices=[2, 3]),
+                             mapping, fine_demand, fine_topo)
+    egress = [d for d in res.intra_demands if d.kind == "egress_stage"]
+    assert egress == [], f"native egress was sacrificed to save an ingress relay: {egress}"
+    landed = {(p.identity, p.egress_gpu, p.ingress_gpu) for p in res.pieces}
+    assert landed == {((0, 0), 0, 2), ((1, 0), 1, 3)}, sorted(landed)
+    # ...and the ingress relays it chose instead are emitted, one per identity, off-target.
+    relays = sorted((d.identity, d.src_gpu, d.dst_gpus) for d in res.intra_demands
+                    if d.kind == "ingress_distribution")
+    assert relays == [((0, 0), 2, (3,)), ((1, 0), 3, (2,))], relays
+    print("  [6] lexicographic objective: native egress beats landing on target OK")
+
+
+def test_ingress_prefers_target():
+    """When the ingress choice is FREE, prefer the GPU that actually wants the data.
+
+    _symmetric_mapping's cell1 boundary owns both gpu2 and gpu3, so a piece arriving there can land
+    on either. Identity (0,1) is wanted only by gpu3; the old code took boundary_gpu[...][0] == 2
+    unconditionally and paid a 2->3 relay. Nothing about the egress side differs between the two
+    choices here, so the ingress tier decides uncontested."""
+    mapping, fine_topo = _symmetric_mapping()
+    fine_demand = np.zeros((5, 5, 2), dtype=np.int32)
+    fine_demand[0][2][0] = 1          # (0,0) wanted by gpu2
+    fine_demand[0][3][1] = 1          # (0,1) wanted by gpu3
+    pcp = {(0, 1, 0): [_single_switch_path(0, 1, 2, 1.0, k) for k in range(2)]}
+    res = resolve_identities(_fake_solver(pcp, switch_indices=[2]),
+                             mapping, fine_demand, fine_topo)
+    landing = {p.identity: p.ingress_gpu for p in res.pieces}
+    for identity, h in landing.items():
+        want = 2 if identity[1] // res.subdivision == 0 else 3
+        assert h == want, (identity, h, want, landing)
+    assert not [d for d in res.intra_demands
+                if d.kind == "ingress_distribution" and d.src_gpu not in d.dst_gpus], \
+        "an identity landed off-target although a target gateway was available"
+    print("  [7] ingress gateway prefers a target when the choice is free OK")
 
 
 def main() -> None:
@@ -288,6 +419,8 @@ def main() -> None:
     test_zero_relay_symmetric()
     test_alltoall_single_target()
     test_replay_real_allgather_json()
+    test_lexicographic_egress_dominates()
+    test_ingress_prefers_target()
     print("identity resolution structural tests OK")
 
 

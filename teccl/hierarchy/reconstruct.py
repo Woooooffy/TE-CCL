@@ -10,35 +10,54 @@ unit of that aggregate carries. That is identity resolution, and it is driven en
 demand shape (both the fine demand array and the coarse demand built from it are in hand), so it
 works for ANY collective, not just AllGather.
 
-For each ordered cell pair (U, V) the problem is a min-cost transportation: assign U's identities
-(supply 1 each, since V must receive each exactly once) to the delivered egress volume so as to
-minimize forced intra-cell egress relay (an identity leaving via a gateway GPU that is not its
-native source GPU must first be relayed to that gateway inside U).
+For each ordered cell pair (U, V) this is a min-cost transportation problem: assign U's identities
+(supply 1 each, since V must receive each exactly once) to the delivered egress volume. The
+assignment is JOINT over both ends of the inter-cell hop and its objective is LEXICOGRAPHIC:
+
+  1. minimize forced EGRESS relay -- an identity leaving via a gateway GPU that is not its native
+     source GPU must first be relayed to that gateway inside U;
+  2. then minimize forced INGRESS relay -- an identity landing on a boundary GPU of V that does not
+     want it must be relayed onward inside V;
+  3. then keep relayed identities off the earliest egress epochs (a relay feeding a coarse-epoch-0
+     egress has to finish before ANY network send, which forces a staging prologue).
+
+The ordering is strict, not a weighted trade: egress relays are HARD (deadline = the network send
+epoch) while ingress relays are SOFT, and egress sits upstream of the network hop. Equal weights
+would let the solver swap a native egress for an ingress saving at no apparent cost. Tier 3
+replaces what used to be a hand-rolled post-hoc sort. See _solve_assignment.
+
+Which fine GPU a piece LANDS on is then chosen under a global per-epoch fine downlink budget
+(_pick_ingress), because a coarse link's capacity is the SUM of the fine downlinks behind it: left
+unbounded, one fine downlink can be oversubscribed while a sibling idles, making the fine schedule
+infeasible against the very coarse solution it implements.
+
+Finally the chunk is REFINED so that every emitted volume is a whole sub-chunk
+(_subdivision_factor / _emit_refined). Fractional volumes are intrinsic here -- they come from the
+coarse LP relaxation splitting a commodity across parallel paths, and from the abstraction summing
+several fine links into one coarse link -- and refining at this boundary is what keeps every
+downstream volume-merging step (this module's _coalesce_egress, intra_solve's _add_direct) from
+having to reason about disjoint byte ranges it cannot represent. The resulting granularity is
+reported on IdentityResolution.scale; see teccl/hierarchy/scale.py for why it must be threaded
+rather than read off the topology.
 
 Output (pure data, no Gurobi handles): resolved inter-cell pieces carrying a concrete fine chunk
 identity on real GPUs/links, plus intra-cell demand descriptors (egress staging, ingress
 distribution, self distribution) for the downstream phase-3 solve. This module STOPS before the
 phase-3 intra-cell solve and the final flat stitching.
 
-Egress epoch ordering (see back-distribution in resolve_identities): at each gateway GPU, NATIVE
-identities are pinned to the earliest egress epochs and RELAYED identities to the later ones, so
-an early slot is never spent on data not yet on the gateway and relays get maximal staging slack.
-The order AMONG relayed identities is left as identity index for now -- the runtime-optimal choice
-depends on when each relay actually completes, which is only known once phase-3 fixes the
-intra-cell (NVSwitch) schedule. That is the intended home for an intra-cell ordering-heuristic
-knob (earliest-relay-ready-first, longest-intra-path-first, deadline-driven, ...); revisit when
-phase-3 lands.
-
 See the design note hierarchical_lp_identity_resolution / hierarchical_phase3_forward_plan.
 """
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Dict, List, Sequence, Tuple
+from dataclasses import dataclass, field, replace
+from fractions import Fraction
+from math import gcd
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 from scipy.optimize import linprog
 
 from teccl.hierarchy.abstract import HierarchyMapping
+from teccl.hierarchy.scale import ChunkScale
 from teccl.topologies.topology import Topology
 
 # A fine data identity: (fine source GPU s, fine chunk index ci). This is already the global
@@ -88,6 +107,12 @@ class IntraCellDemand:
 class IdentityResolution:
     pieces: List[ResolvedPiece] = field(default_factory=list)
     intra_demands: List[IntraCellDemand] = field(default_factory=list)
+    # Granularity every volume above is expressed in, after sub-chunk refinement. Downstream
+    # quantities derived from chunk size (fine epoch duration, epochs per coarse epoch,
+    # "9-Chunk_Size", algorithmic bandwidth) must come from here, NOT from Topology.chunk_size,
+    # which stays the un-refined root value. See teccl/hierarchy/scale.py.
+    scale: Optional[ChunkScale] = None
+    subdivision: int = 1              # the Q that was applied (1 == no refinement)
 
 
 # --------------------------------------------------------------------------------------------
@@ -237,113 +262,344 @@ def _origin_diagnosis(pieces_by_pair: Dict[Tuple[int, int], List[_CoarsePiece]],
 
 
 # --------------------------------------------------------------------------------------------
-# Min-cost transportation (identities x egress gateway GPUs), solved exactly
+# Joint identity assignment (identities x (coarse piece, egress gateway) slots)
 # --------------------------------------------------------------------------------------------
-def _solve_transport(identities: Sequence[Identity],
-                     native_gpu: Dict[Identity, int],
-                     gateways: Sequence[int],
-                     load: Dict[int, float]) -> Dict[Tuple[Identity, int], float]:
-    """Exact min-cost transportation.
+@dataclass(frozen=True)
+class _Slot:
+    """One (coarse piece, egress gateway GPU) pair an identity can be assigned to.
 
-    rows d in identities  (supply 1 each: V receives each identity once)
-    cols g in gateways     (demand load[g]: fill each gateway's coarse-solved egress budget)
-    cost(d, g) = 0 if g == native_gpu[d] else 1     (1 = a forced intra-cell relay)
+    `capacity` is the piece's volume scaled by this gateway's share of the coarse egress link,
+    proportional to fine link capacity. Splitting EVERY piece proportionally (rather than only
+    matching aggregate budgets) is what makes the per-(U, V) decomposition sound: for any epoch k,
+    gateway g's egress is sum over that epoch's pieces of volume * cap_g/cap_sum, which coarse
+    feasibility bounds by cap_g * Delta -- so the per-fine-uplink per-epoch bound holds by
+    construction, globally, even though each demand pair is solved independently.
 
-    sum_g load[g] == len(identities) by construction (coarse volume == identity count), so the
-    problem is balanced and feasible. Returns x[(d, g)] for the positive entries.
+    `ingress_candidates` are the fine boundary GPUs of the DESTINATION cell that own the link from
+    this piece's ingress neighbor. Usually a single GPU (the choice is forced by the coarse path);
+    where there are several, _pick_ingress selects one.
+    """
+    piece: "_CoarsePiece"
+    egress_gpu: int
+    capacity: float
+    ingress_candidates: Tuple[int, ...]
+
+
+def _build_slots(pieces: Sequence["_CoarsePiece"], U: int, V: int,
+                 mapping: HierarchyMapping, fine_topology: Topology) -> List[_Slot]:
+    """Expand the coarse pieces of one (U, V) pair into per-(piece, egress gateway) slots."""
+    slots: List[_Slot] = []
+    for p in pieces:
+        egress_gws = mapping.boundary_gpu[(U, p.egress_neighbor)]
+        fine_egress_nb = mapping.coarse_passthrough[p.egress_neighbor]
+        caps = [fine_topology.capacity[g][fine_egress_nb] for g in egress_gws]
+        cap_sum = sum(caps) or 1.0
+        ingress_cands = tuple(mapping.boundary_gpu[(V, p.ingress_neighbor)])
+        for g, cap in zip(egress_gws, caps):
+            share = p.volume * cap / cap_sum
+            if share > EPS:
+                slots.append(_Slot(piece=p, egress_gpu=g, capacity=share,
+                                   ingress_candidates=ingress_cands))
+    return slots
+
+
+def _solve_assignment(identities: Sequence[Identity],
+                      native_gpu: Dict[Identity, int],
+                      target_gpus: Dict[Identity, Tuple[int, ...]],
+                      slots: Sequence[_Slot]) -> Dict[Tuple[Identity, int], float]:
+    """Assign identities to slots, minimizing intra-cell relay work at BOTH ends.
+
+    rows d in identities  (supply 1 each: the destination cell receives each identity once)
+    cols j in slots        (capacity slots[j].capacity)
+
+    The objective is LEXICOGRAPHIC, not a plain sum, and the ordering matters:
+
+        1. EGRESS relay        w = nD + 1     g != native_gpu[d]
+        2. INGRESS relay       w = 1          no ingress candidate of this slot wants d
+        3. epoch preference    w = tiny       a RELAYED identity taking an early epoch
+
+    Egress must dominate ingress rather than trade against it. The two relays are not
+    interchangeable: an `egress_stage` relay is HARD (its deadline is the network send epoch, and
+    missing it slips the internode schedule) while `ingress_distribution` is SOFT (no deadline,
+    absorbed by the intra-fabric slack) -- see intra_solve's hard/soft split. An egress relay also
+    sits UPSTREAM of the network hop and adds pressure to the pre-epoch-0 staging prologue, whereas
+    an ingress relay is downstream and off the network critical path. With equal weights the solver
+    would be indifferent between "relay at the source" and "relay at the destination" (both cost 1)
+    and could silently give up a native egress -- a regression against this function's original
+    goal. The big-M form is required rather than merely w_egress > w_ingress because the slot
+    capacities COUPLE identities: one identity's native claim can displace another's.
+
+    Tier 2 is measured against the slot's ingress CANDIDATES, not a chosen gateway: an identity can
+    be landed directly iff some boundary GPU owning this piece's ingress neighbor is one of its
+    targets. For AllGather every GPU of the cell is a target, so tier 2 is uniformly 0 and the
+    objective reduces to the original egress-only one. For AllToAll a target is a single GPU and the
+    tier bites. _pick_ingress then realizes the choice this tier priced.
+
+    Tier 3 preserves the old `_egress_order` heuristic's intent -- keep relayed identities off the
+    earliest egress epochs -- as an objective term instead of a post-hoc sort. It matters because a
+    relay feeding a coarse-epoch-0 egress must complete before ANY network send, which is what
+    forces a staging prologue and delays the whole timeline.
+
+    Returns x[(d, slot_index)] for the positive entries.
     """
     D = list(identities)
-    G = list(gateways)
-    nD, nG = len(D), len(G)
-    if nD == 0:
+    nD, nS = len(D), len(slots)
+    if nD == 0 or nS == 0:
         return {}
-    # flatten variable (d, g) -> index d*nG + g
-    cost = np.empty(nD * nG, dtype=float)
+
+    max_epoch = max(s.piece.send_epoch for s in slots)
+    K = max_epoch + 1
+    W_EGRESS = float(nD + 1)
+    W_INGRESS = 1.0
+    # Total tier-3 cost is < 0.5, strictly below one unit of tier 2; and W_EGRESS exceeds the
+    # largest possible tier-2 + tier-3 total (nD * 1 + 0.5), so the ordering is exactly
+    # lexicographic rather than a weighted compromise.
+    W_EPOCH = 1.0 / (2.0 * nD * K + 1.0)
+
+    cost = np.empty(nD * nS, dtype=float)
     for di, d in enumerate(D):
         nat = native_gpu[d]
-        for gi, g in enumerate(G):
-            cost[di * nG + gi] = 0.0 if g == nat else 1.0
+        wanted = set(target_gpus.get(d, ()))
+        for j, s in enumerate(slots):
+            relayed = s.egress_gpu != nat
+            c = W_EGRESS if relayed else 0.0
+            if not (wanted & set(s.ingress_candidates)):
+                c += W_INGRESS
+            if relayed:
+                c += W_EPOCH * (K - s.piece.send_epoch)
+            cost[di * nS + j] = c
 
-    # equality: each identity's row sums to 1
-    A_eq = []
-    b_eq = []
-    for di in range(nD):
-        row = np.zeros(nD * nG)
-        row[di * nG:(di + 1) * nG] = 1.0
+    A_eq, b_eq = [], []
+    for di in range(nD):                       # each identity delivered exactly once
+        row = np.zeros(nD * nS)
+        row[di * nS:(di + 1) * nS] = 1.0
         A_eq.append(row)
         b_eq.append(1.0)
-    # equality: each gateway column sums to its load
-    for gi, g in enumerate(G):
-        row = np.zeros(nD * nG)
+
+    A_ub, b_ub = [], []
+    for j, s in enumerate(slots):              # each slot bounded by its capacity share
+        row = np.zeros(nD * nS)
         for di in range(nD):
-            row[di * nG + gi] = 1.0
-        A_eq.append(row)
-        b_eq.append(load[g])
+            row[di * nS + j] = 1.0
+        A_ub.append(row)
+        b_ub.append(s.capacity)
 
     res = linprog(cost, A_eq=np.array(A_eq), b_eq=np.array(b_eq),
+                  A_ub=np.array(A_ub), b_ub=np.array(b_ub),
                   bounds=(0, None), method="highs")
     if not res.success:
-        raise RuntimeError(f"identity transportation infeasible: {res.message}")
+        raise RuntimeError(f"identity slot assignment infeasible: {res.message}")
     x: Dict[Tuple[Identity, int], float] = {}
     for di, d in enumerate(D):
-        for gi, g in enumerate(G):
-            v = res.x[di * nG + gi]
+        for j in range(nS):
+            v = res.x[di * nS + j]
             if v > EPS:
-                x[(d, g)] = float(v)
+                x[(d, j)] = float(v)
     return x
+
+
+def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
+                  target_gpus: Dict[Identity, Tuple[int, ...]],
+                  epoch_capacity: Dict[int, float],
+                  ledger: Dict[Tuple[int, int], float]) -> int:
+    """Choose the fine GPU a piece lands on, preferring a target and respecting fine downlink
+    capacity.
+
+    This replaces taking `boundary_gpu[...][0]` unconditionally, which had two defects. It ignored
+    capacity: a coarse link whose capacity is the SUM of several fine downlinks (abstract() sums
+    them) could have all of its per-epoch volume dumped on one fine link, oversubscribing it while
+    a sibling sat idle -- the fine schedule then being infeasible against the very coarse solution
+    it implements. And it ignored the destination, so an identity wanted by a boundary GPU would
+    land elsewhere and pay an avoidable intra-cell hop.
+
+    `ledger` is keyed (gpu, arrival_epoch) and spans the WHOLE resolution, not one demand pair,
+    because a destination cell's ingress link is shared by every source cell sending to it.
+    """
+    candidates = list(slot.ingress_candidates)
+    if not candidates:
+        raise RuntimeError(
+            f"no ingress boundary GPU for cell {slot.piece.dst_cell} from coarse neighbor "
+            f"{slot.piece.ingress_neighbor}")
+    epoch = slot.piece.arrival_epoch
+    wanted = set(target_gpus.get(identity, ()))
+
+    def room(h: int) -> float:
+        return epoch_capacity[h] - ledger.get((h, epoch), 0.0)
+
+    def commit(h: int) -> int:
+        ledger[(h, epoch)] = ledger.get((h, epoch), 0.0) + volume
+        return h
+
+    if len(candidates) == 1:
+        # Forced by the coarse path; capacity is still checked by the caller's assert.
+        return commit(candidates[0])
+
+    fits = [h for h in candidates if room(h) >= volume - EPS]
+    on_target = sorted(h for h in fits if h in wanted)
+    if on_target:
+        return commit(on_target[0])
+    if fits:
+        # Least loaded, deterministic tie-break, so a sibling downlink is used before overloading.
+        return commit(max(sorted(fits), key=lambda h: room(h)))
+    raise RuntimeError(
+        f"ingress capacity exhausted for cell {slot.piece.dst_cell} epoch {epoch}: "
+        f"identity {identity} needs {volume:g} but candidates "
+        f"{ {h: round(room(h), 6) for h in candidates} } have no room "
+        f"(per-epoch capacities { {h: round(epoch_capacity[h], 6) for h in candidates} }). The "
+        f"coarse solve routed more into this cell in one epoch than its fine downlinks can absorb.")
 
 
 # --------------------------------------------------------------------------------------------
 # Orchestration
 # --------------------------------------------------------------------------------------------
-def _gateway_loads(pieces: List[_CoarsePiece], mapping: HierarchyMapping,
-                   fine_topology: Topology, coarse_solver
-                   ) -> Tuple[Dict[int, float], Dict[int, List[_CoarsePiece]]]:
-    """Split each coarse egress link's total volume across the fine gateway GPUs that own it,
-    proportional to their fine link capacity (an even split for equal-capacity gateways). Returns
-    per-gateway egress budget `load[g]` and, for back-distribution, the pieces feeding each
-    coarse egress neighbor."""
-    src_cell = pieces[0].src_cell
-    by_neighbor: Dict[int, List[_CoarsePiece]] = defaultdict(list)
-    for p in pieces:
-        by_neighbor[p.egress_neighbor].append(p)
-
-    load: Dict[int, float] = defaultdict(float)
-    for neighbor, plist in by_neighbor.items():
-        total = sum(p.volume for p in plist)
-        gws = mapping.boundary_gpu[(src_cell, neighbor)]
-        fine_neighbor = mapping.coarse_passthrough[neighbor]
-        caps = [fine_topology.capacity[g][fine_neighbor] for g in gws]
-        cap_sum = sum(caps) or 1.0
-        for g, cap in zip(gws, caps):
-            load[g] += total * cap / cap_sum
-    return dict(load), by_neighbor
+# Mirrors ncclize's MAX_DENOM / MAX_M (teccl/ncclize/teccl_ncclize.py). Integerization now happens
+# HERE, at the recursion boundary, rather than at the ncclize boundary -- see _subdivision_factor.
+MAX_DENOM = 64
+MAX_SUBDIVISION = 128
 
 
-def _distribute_ingress_gpu(dst_cell: int, ingress_neighbor: int, mapping: HierarchyMapping) -> int:
-    """Pick the fine ingress gateway a piece lands on (identity-independent: the destination owns
-    none of the data). For a single-GPU boundary this is forced; for a multi-GPU boundary any
-    owner works -- take the first deterministically (capacity balancing across arrivals is a
-    later refinement)."""
-    return mapping.boundary_gpu[(dst_cell, ingress_neighbor)][0]
+@dataclass(frozen=True)
+class _Assignment:
+    """One resolved (identity -> coarse piece) decision, before sub-chunk refinement."""
+    src_cell: int
+    dst_cell: int
+    identity: Identity
+    piece: _CoarsePiece
+    egress_gpu: int
+    ingress_gpu: int
+    volume: float
+
+
+def _ingress_epoch_capacity(slot: _Slot, mapping: HierarchyMapping,
+                            fine_topology: Topology, epoch_duration: float) -> Dict[int, float]:
+    """Per-epoch volume each of a slot's candidate ingress GPUs can absorb, in chunk units.
+
+    Note the direction: the ingress leg is switch -> gpu, so this indexes
+    capacity[fine_neighbor][gpu], whereas the egress split in _build_slots uses
+    capacity[gpu][fine_neighbor]."""
+    fine_nb = mapping.coarse_passthrough[slot.piece.ingress_neighbor]
+    return {h: fine_topology.capacity[fine_nb][h] * epoch_duration
+            for h in slot.ingress_candidates}
+
+
+def _subdivision_factor(assignments: Sequence[_Assignment]) -> int:
+    """The refinement Q that makes every assigned volume an integer number of sub-chunks.
+
+    Fractional volumes reach here from two independent relaxations, and BOTH are intrinsic rather
+    than artifacts to be fixed upstream:
+      * the coarse LP splitting one commodity across parallel paths (the point of an LP relaxation
+        -- expected wherever the coarse graph has real multipath, e.g. leaf -> 4 spines);
+      * the ABSTRACTION summing several fine links into one coarse link, so that even a perfectly
+        integral coarse flow does not decompose into integral fine flows (a coarse link owned by
+        two equal gateways forces halves).
+
+    Refining here means nothing downstream ever holds a fractional volume. That is what protects
+    the volume-MERGING steps below (_coalesce_egress here, _add_direct in intra_solve): both merge
+    by max() over an (identity, src, dst) key, which is only correct when a merge cannot combine two
+    DISJOINT byte ranges of one identity. Sub-chunk identities make such a merge unrepresentable,
+    because the two ranges are distinct commodities with distinct keys. Integerizing at the ncclize
+    boundary instead -- where it used to happen -- is structurally too late for that.
+    """
+    q = 1
+    for a in assignments:
+        den = Fraction(a.volume).limit_denominator(MAX_DENOM).denominator
+        q = q * den // gcd(q, den)
+        if q > MAX_SUBDIVISION:
+            raise RuntimeError(
+                f"identity resolution needs a sub-chunk refinement of {q} > "
+                f"MAX_SUBDIVISION={MAX_SUBDIVISION} to integerize its volumes. The coarse solution "
+                f"is split too finely to lower onto whole chunks; regularize the coarse LP (or "
+                f"quantize its flow onto a declared 1/Q grid) before resolving identities.")
+    return q
+
+
+def _emit_refined(assignments: Sequence[_Assignment],
+                  targets: Dict[Tuple[Identity, int], Tuple[int, ...]],
+                  q: int) -> IdentityResolution:
+    """Expand each assignment into `volume * q` whole sub-chunk pieces plus their intra demands.
+
+    Sub-chunk indices are allocated per (identity, dst_cell): the assignments delivering one
+    identity to one cell PARTITION it (their volumes sum to exactly 1), so consecutive index ranges
+    over a deterministic ordering give every sub-chunk exactly one carrier. That the cursor lands
+    exactly on q is the partition check."""
+    result = IdentityResolution()
+    by_id_dst: Dict[Tuple[Identity, int], List[_Assignment]] = defaultdict(list)
+    for a in assignments:
+        by_id_dst[(a.identity, a.dst_cell)].append(a)
+
+    for (identity, V), group in sorted(by_id_dst.items()):
+        group.sort(key=lambda a: (a.piece.send_epoch, a.egress_gpu, a.ingress_gpu,
+                                  a.piece.via_switches, a.volume))
+        s, ci = identity
+        native = s
+        cursor = 0
+        for a in group:
+            count = int(round(a.volume * q))
+            if abs(a.volume * q - count) > 1e-6:
+                raise AssertionError(
+                    f"volume {a.volume} is not a whole number of 1/{q} sub-chunks "
+                    f"(identity {identity} -> cell {V})")
+            for _ in range(count):
+                sub: Identity = (s, ci * q + cursor)
+                cursor += 1
+                result.pieces.append(ResolvedPiece(
+                    src_cell=a.src_cell, dst_cell=V, identity=sub, egress_gpu=a.egress_gpu,
+                    ingress_gpu=a.ingress_gpu, via_switches=a.piece.via_switches, volume=1.0,
+                    send_epoch=a.piece.send_epoch, arrival_epoch=a.piece.arrival_epoch))
+                if a.egress_gpu != native:
+                    result.intra_demands.append(IntraCellDemand(
+                        cell=a.src_cell, kind="egress_stage", identity=sub, src_gpu=native,
+                        dst_gpus=(a.egress_gpu,), volume=1.0,
+                        deadline_epoch=a.piece.send_epoch))
+                result.intra_demands.append(IntraCellDemand(
+                    cell=V, kind="ingress_distribution", identity=sub, src_gpu=a.ingress_gpu,
+                    dst_gpus=targets[(identity, V)], volume=1.0,
+                    deadline_epoch=a.piece.arrival_epoch))
+        if cursor != q:
+            raise AssertionError(
+                f"identity {identity} -> cell {V}: assignments cover {cursor}/{q} sub-chunks; "
+                f"they must partition the identity exactly once")
+    return result
 
 
 def resolve_identities(coarse_solver, mapping: HierarchyMapping,
-                       fine_demand, fine_topology: Topology) -> IdentityResolution:
+                       fine_demand, fine_topology: Topology,
+                       scale: Optional[ChunkScale] = None) -> IdentityResolution:
     """Resolve the identity-free coarse LP solution into concrete fine identities and emit the
     intra-cell demands phase-3 must satisfy. Collective-agnostic: every input is read off
     `fine_demand` / the coarse solution, nothing branches on the collective name.
 
-    coarse_solver:  the solved LPFormulation (has .per_chunk_flow_paths and .topology).
+    Three steps: assign identities to (piece, egress gateway) slots by a joint lexicographic
+    min-cost program (_solve_assignment); choose each piece's landing GPU under a global fine
+    downlink budget (_pick_ingress); then refine the chunk so every emitted volume is a whole
+    sub-chunk (_subdivision_factor / _emit_refined). The refinement is reported on the returned
+    `scale`, and every downstream quantity derived from chunk size -- fine epoch duration, epochs
+    per coarse epoch, "9-Chunk_Size", algorithmic bandwidth -- must be taken from there.
+
+    coarse_solver:  the solved LPFormulation (needs .per_chunk_flow_paths, .topology,
+                    .epoch_duration).
     mapping:        HierarchyMapping from abstract().
     fine_demand:    the fine demand tensor build_demand produced (same one coarsify_demand used).
     fine_topology:  the fine Topology (for per-link capacities and switch ids).
+    scale:          granularity the coarse demand is expressed in; defaults to the root
+                    (fine_topology.chunk_size, one chunk per fine chunk index).
     """
     id_sets, targets = identity_sets(fine_demand, mapping)
     pieces_by_pair = _extract_pieces(coarse_solver, mapping)
-    result = IdentityResolution()
 
-    for (U, V), identities in id_sets.items():
+    epoch_duration = getattr(coarse_solver, "epoch_duration", None)
+    if epoch_duration is None:
+        raise RuntimeError(
+            "coarse_solver has no .epoch_duration; it is required to bound each fine ingress "
+            "downlink per epoch (a coarse link's capacity is the SUM of the fine downlinks behind "
+            "it, so without this the resolution can oversubscribe one of them).")
+
+    # Spans the whole resolution, not one demand pair: a destination cell's ingress link is shared
+    # by every source cell sending to it.
+    ingress_ledger: Dict[Tuple[int, int], float] = {}
+    assignments: List[_Assignment] = []
+
+    for (U, V), identities in sorted(id_sets.items()):
         pieces = pieces_by_pair.get((U, V), [])
         if not pieces:
             # Coarse solve delivered nothing filed under this demanded pair. Either the coarse
@@ -355,98 +611,62 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
                 + (detail if detail else "coarse solve delivered nothing for this pair"))
 
         native = {d: d[0] for d in identities}       # native GPU of identity (s, ci) is s
-        load, by_neighbor = _gateway_loads(pieces, mapping, fine_topology, coarse_solver)
-        # The coarse solve delivers exactly coarse[U][V] == |ID(U,V)| units to V, so the gateway
-        # loads must sum to the identity count. Rescale away float noise so the balanced
-        # transportation stays feasible; a gross mismatch is an upstream bug.
-        total_load = sum(load.values())
-        assert abs(total_load - len(identities)) < 1e-3, (
-            f"pair {(U, V)}: egress volume {total_load} != identity count {len(identities)}. "
+        slots = _build_slots(pieces, U, V, mapping, fine_topology)
+        # The coarse solve delivers exactly coarse[U][V] == |ID(U,V)| units to V, so the slot
+        # capacities must sum to the identity count. Rescale away float noise so the assignment
+        # stays feasible; a gross mismatch is an upstream bug.
+        total_cap = sum(s.capacity for s in slots)
+        assert abs(total_cap - len(identities)) < 1e-3, (
+            f"pair {(U, V)}: egress volume {total_cap} != identity count {len(identities)}. "
             f"{_origin_diagnosis(pieces_by_pair, U, V) or 'coarse volume disagrees with demand count'}")
-        scale = len(identities) / total_load if total_load else 1.0
-        load = {g: v * scale for g, v in load.items()}
-        gateways = list(load.keys())
-        x = _solve_transport(identities, native, gateways, load)
+        if total_cap:
+            f = len(identities) / total_cap
+            slots = [replace(s, capacity=s.capacity * f) for s in slots]
 
-        # Per-gateway queue of (piece, remaining volume), earliest send epoch first, for
-        # deterministic back-distribution of an identity's assigned volume onto concrete pieces.
-        gw_pieces: Dict[int, List[List]] = {}
-        for neighbor, plist in by_neighbor.items():
-            gws = mapping.boundary_gpu[(U, neighbor)]
-            fine_neighbor = mapping.coarse_passthrough[neighbor]
-            caps = [fine_topology.capacity[g][fine_neighbor] for g in gws]
-            cap_sum = sum(caps) or 1.0
-            ordered = sorted(plist, key=lambda p: p.send_epoch)
-            for g, cap in zip(gws, caps):
-                # extend (not overwrite): a gateway GPU homed to several neighbors accumulates
-                # its slot capacity across all of them.
-                gw_pieces.setdefault(g, []).extend(
-                    [[p, p.volume * cap / cap_sum] for p in ordered])
+        tgt = {d: targets[(d, V)] for d in identities}
+        x = _solve_assignment(identities, native, tgt, slots)
+        for (d, j), vol in sorted(x.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+            slot = slots[j]
+            cap = _ingress_epoch_capacity(slot, mapping, fine_topology, epoch_duration)
+            h = _pick_ingress(slot, d, vol, tgt, cap, ingress_ledger)
+            assignments.append(_Assignment(
+                src_cell=U, dst_cell=V, identity=d, piece=slot.piece,
+                egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=vol))
 
-        # Choose which epoch slot each identity takes on its gateway. Ordering rule per gateway g:
-        #   1. NATIVE identities first (g == native[d]): they already sit on g at t=0, so they
-        #      claim the EARLIEST egress epochs -- an early slot is never spent on data that is
-        #      not yet on the gateway.
-        #   2. RELAYED identities after: they take the later slots, which maximizes the staging
-        #      slack of their egress_stage relay (the relay only has to finish before the -- now
-        #      later -- epoch g actually sends them). This is the "own volume out first, relayed
-        #      volume in later epochs" ordering.
-        # The order AMONG relayed identities (and native ties) is left as identity index for now.
-        # That secondary order is a PLACEHOLDER: the runtime-optimal relayed-egress order depends
-        # on when each relay can actually complete, which is only known once phase-3 fixes the
-        # intra-cell (NVSwitch) schedule. That is the natural home for an intra-cell ordering
-        # heuristic knob (e.g. earliest-relay-ready-first, longest-intra-path-first, deadline
-        # driven) selecting among strategies; wire it here when phase-3 lands. See module docstring.
-        def _egress_order(kv):
-            (d, g), _vol = kv
-            return (g, 0 if g == native[d] else 1, d)   # per gateway: native (0) before relayed (1)
+    q = _subdivision_factor(assignments)
+    root = scale or ChunkScale(bytes_per_chunk=fine_topology.chunk_size,
+                               num_chunks=_num_fine_chunks(fine_demand))
+    refined = root.refine(q)
+    root.assert_conserves(refined)
 
-        for (d, g), vol in sorted(x.items(), key=_egress_order):
-            # Egress-stage relay demand if the gateway is not the identity's native GPU.
-            if g != native[d]:
-                # deadline = earliest send epoch of the pieces this identity will feed on g
-                deadline = min(p.send_epoch for p, rem in gw_pieces[g] if rem > EPS)
-                result.intra_demands.append(IntraCellDemand(
-                    cell=U, kind="egress_stage", identity=d, src_gpu=native[d],
-                    dst_gpus=(g,), volume=vol, deadline_epoch=deadline))
-            # Back-distribute `vol` onto concrete pieces on gateway g (earliest-first).
-            remaining = vol
-            for slot in gw_pieces[g]:
-                if remaining <= EPS:
-                    break
-                p, rem = slot
-                take = min(rem, remaining)
-                if take <= EPS:
-                    continue
-                slot[1] -= take
-                remaining -= take
-                ingress_gpu = _distribute_ingress_gpu(V, p.ingress_neighbor, mapping)
-                result.pieces.append(ResolvedPiece(
-                    src_cell=U, dst_cell=V, identity=d, egress_gpu=g,
-                    ingress_gpu=ingress_gpu, via_switches=p.via_switches, volume=take,
-                    send_epoch=p.send_epoch, arrival_epoch=p.arrival_epoch))
-                # Ingress-distribution demand: fan the identity from the ingress gateway to the
-                # fine GPUs of V that actually want it (all of V for allgather, one for alltoall).
-                tgt = targets[(d, V)]
-                result.intra_demands.append(IntraCellDemand(
-                    cell=V, kind="ingress_distribution", identity=d, src_gpu=ingress_gpu,
-                    dst_gpus=tgt, volume=take, deadline_epoch=p.arrival_epoch))
-
+    result = _emit_refined(assignments, targets, q)
+    result.scale = refined
+    result.subdivision = q
     _coalesce_egress(result)
-    _emit_self_distribution(result, fine_demand, mapping)
+    _emit_self_distribution(result, fine_demand, mapping, q)
     return result
+
+
+def _num_fine_chunks(fine_demand) -> int:
+    """Chunks per GPU in the fine demand array (its innermost dimension)."""
+    if len(fine_demand) == 0:
+        return 0
+    return len(fine_demand[0][0])
 
 
 def _coalesce_egress(result: IdentityResolution) -> None:
     """A GPU node buffers (store-and-forward), so ONE relay native->gateway serves every later
     epoch that gateway egresses the identity. Merge duplicate egress_stage demands by
-    (cell, identity, src_gpu, dst_gpu), keeping the earliest deadline. Volume is the MAX of the
-    merged pieces, not their sum: the gateway must hold the identity's data once and re-sends the
-    same buffered bytes to each network destination -- summing would re-count the same relay per
-    egress and defeat the point of coalescing. (Caveat: for a FRACTIONALLY split identity whose
-    pieces through this gateway cover DISJOINT byte ranges, max under-counts; the aggregate model
-    does not track byte ranges. For full-identity relays -- the integer allgather/alltoall case --
-    max is exact at the identity's chunk volume.)"""
+    (cell, identity, src_gpu, dst_gpu), keeping the earliest deadline.
+
+    Volume is the MAX of the merged demands, not their sum: the gateway holds the identity's data
+    once and re-sends the same buffered bytes to each network destination, so summing would
+    re-count one physical relay per egress. Since _emit_refined runs first, every demand reaching
+    here carries volume 1.0 of a whole SUB-CHUNK, which is what makes max exact -- two demands with
+    the same key are necessarily the same bytes. (Before sub-chunk refinement this was only true
+    for whole-identity relays: a fractionally split identity whose shares covered disjoint byte
+    ranges needed their union, and max under-counted it, because the aggregate model cannot track
+    ranges. Refinement replaces that union with distinct commodities.)"""
     merged: Dict[Tuple, IntraCellDemand] = {}
     others: List[IntraCellDemand] = []
     for dem in result.intra_demands:
@@ -467,10 +687,14 @@ def _coalesce_egress(result: IdentityResolution) -> None:
 
 
 def _emit_self_distribution(result: IdentityResolution, fine_demand,
-                            mapping: HierarchyMapping) -> None:
+                            mapping: HierarchyMapping, q: int = 1) -> None:
     """Emit the intra-cell demand coarsify_demand dropped: fine entries whose source and
     destination are both inside one cell. Structural (read straight off the fine array),
-    independent of identity resolution; deadline_epoch=0 (available from the start)."""
+    independent of identity resolution; deadline_epoch=0 (available from the start).
+
+    `q` is the sub-chunk refinement in force, so these demands are expressed in the same unit as
+    the resolved pieces: one fine identity becomes q whole sub-chunk demands. Self-distribution
+    never introduces fractions of its own -- the data is already local -- so it only follows."""
     f2c = _cell_of(mapping)
     n_fine = len(fine_demand)
     per_cell_targets: Dict[Tuple[int, Identity, int], List[int]] = defaultdict(list)
@@ -481,10 +705,12 @@ def _emit_self_distribution(result: IdentityResolution, fine_demand,
             for t in range(n_fine):
                 if fine_demand[s][t][ci] > 0 and f2c[t] == cs:
                     per_cell_targets[(cs, (s, ci), s)].append(t)
-    for (cell, identity, src), tgts in per_cell_targets.items():
-        result.intra_demands.append(IntraCellDemand(
-            cell=cell, kind="self_distribution", identity=identity, src_gpu=src,
-            dst_gpus=tuple(sorted(tgts)), volume=1.0, deadline_epoch=0))
+    for (cell, identity, src), tgts in sorted(per_cell_targets.items()):
+        s, ci = identity
+        for j in range(q):
+            result.intra_demands.append(IntraCellDemand(
+                cell=cell, kind="self_distribution", identity=(s, ci * q + j), src_gpu=src,
+                dst_gpus=tuple(sorted(tgts)), volume=1.0, deadline_epoch=0))
 
 
 # --------------------------------------------------------------------------------------------

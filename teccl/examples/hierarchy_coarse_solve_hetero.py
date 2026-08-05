@@ -18,6 +18,7 @@ Run from the repo root:
 """
 import copy
 import json
+from collections import defaultdict
 import sys
 import traceback
 
@@ -69,11 +70,15 @@ def _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag: str):
         per_cell_relay.setdefault(d.cell, []).append((d.identity, d.src_gpu, d.dst_gpus[0]))
     for cell in sorted(per_cell_relay):
         print(f"  cell {cell} egress relays: "
-              f"{sorted((f'{s}->{g}') for (_id, s, g) in per_cell_relay[cell])}")
+              f"{sorted(set(f'{s}->{g}' for (_id, s, g) in per_cell_relay[cell]))}")
+
+    _report_resolution_invariants(res, fine)
 
     out = {
         "pieces": [asdict(p) for p in res.pieces],
         "intra_demands": [asdict(d) for d in res.intra_demands],
+        "scale": asdict(res.scale) if res.scale else None,
+        "subdivision": res.subdivision,
     }
     path = f"Schedules/coarse_hetero_{tag}_identities.json"
     with open(path, "w") as f:
@@ -82,7 +87,58 @@ def _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag: str):
     return res
 
 
-def _run_phase3_intra(res, mapping, tag: str) -> None:
+def _report_resolution_invariants(res, fine) -> None:
+    """Narrate (and assert) the invariants the joint assignment + sub-chunk refinement establish.
+
+    These are the properties worth eyeballing in the remote .out log, because each replaced a
+    silent defect:
+      * every emitted volume is a whole sub-chunk, so no downstream merge can combine two disjoint
+        byte ranges of one identity;
+      * the ChunkScale conserves the per-GPU payload it re-denominates;
+      * no fine uplink OR downlink is oversubscribed in any coarse epoch -- the downlink half was
+        being violated by 150% because the ingress gateway was chosen without a capacity term;
+      * the fraction of arrivals landing directly on a GPU that wants the data (the ingress half of
+        the objective; 0 relays possible only where a target owns a boundary link).
+    """
+    scale, q = res.scale, res.subdivision
+    print(f"  chunk scale: {scale}  (subdivision Q={q})")
+    assert all(abs(p.volume - 1.0) < 1e-9 for p in res.pieces), "non-unit piece volume survived"
+    assert all(abs(d.volume - 1.0) < 1e-9 for d in res.intra_demands), "non-unit demand volume"
+
+    ep = 0.02 if not hasattr(fine, "epoch_duration") else fine.epoch_duration
+    eg = defaultdict(float)
+    ing = defaultdict(float)
+    for p in res.pieces:
+        gb = p.volume * scale.bytes_per_chunk
+        eg[(p.egress_gpu, p.via_switches[0], p.send_epoch)] += gb
+        ing[(p.ingress_gpu, p.via_switches[-1], p.arrival_epoch)] += gb
+    over = []
+    for (g, sw, k), vol in sorted(eg.items()):
+        cap = fine.capacity[g][sw] * ep
+        if vol > cap + 1e-9:
+            over.append(("egress", g, sw, k, round(vol, 4), round(cap, 4)))
+    for (h, sw, k), vol in sorted(ing.items()):
+        cap = fine.capacity[sw][h] * ep
+        if vol > cap + 1e-9:
+            over.append(("ingress", h, sw, k, round(vol, 4), round(cap, 4)))
+    worst_e = max((v / (fine.capacity[g][sw] * ep) for (g, sw, _), v in eg.items()), default=0)
+    worst_i = max((v / (fine.capacity[sw][h] * ep) for (h, sw, _), v in ing.items()), default=0)
+    print(f"  fine-link occupancy: egress peak {100 * worst_e:.0f}%, ingress peak "
+          f"{100 * worst_i:.0f}% of per-epoch capacity; violations: {len(over)}")
+    assert not over, f"fine link oversubscribed in some coarse epoch: {over[:6]}"
+
+    single = [d for d in res.intra_demands
+              if d.kind == "ingress_distribution" and len(d.dst_gpus) == 1]
+    if single:
+        landed = sum(1 for d in single if d.dst_gpus[0] == d.src_gpu)
+        print(f"  ingress landing: {landed}/{len(single)} single-target arrivals "
+              f"({100 * landed / len(single):.0f}%) landed directly on a GPU that wants them")
+    relayed = sum(1 for p in res.pieces if p.egress_gpu != p.identity[0])
+    print(f"  egress: {relayed}/{len(res.pieces)} pieces leave via a non-native gateway "
+          f"(lexicographic tier 1 minimizes this; the ingress tier never trades against it)")
+
+
+def _run_phase3_intra(res, mapping, tag: str, fine=None) -> None:
     """Phase-3: schedule every cell's intra-cell demands onto its NVSwitch (Gurobi-free, EDF
     edge-coloring). Debug narration is on so the .out log shows the full per-step derivation --
     fan-out density decisions, dedup, per-round matchings, and optimality vs the port-load bound.
@@ -111,6 +167,33 @@ def _run_phase3_intra(res, mapping, tag: str) -> None:
     with open(path, "w") as f:
         json.dump(out, f, indent=2)
     print(f"\nphase-3 intra schedule: {len(all_flows)} fine flows written to {path}")
+    if fine is not None and res.scale is not None:
+        _report_intra_fits_epoch(all_flows, res, fine)
+
+
+def _report_intra_fits_epoch(flows, res, fine, coarse_epoch: float = 0.02) -> None:
+    """The phase-3 feasibility certificate: intra-cell work must fit inside a coarse epoch.
+
+    A "round" is one chunk across one NVSwitch port, so a round lasts
+    scale.bytes_per_chunk / nvlink_bw and m = coarse_epoch / that is how many rounds a coarse epoch
+    can hold. `port_cap = 1.0` is scale-invariant (it DEFINES the round), so refinement changes a
+    round's duration, not its capacity -- both the round count and m scale with Q, and the margin
+    is preserved. Asserting `peak rounds <= m` is what certifies the whole "the inner fabric is
+    much faster than the outer" premise the per-gap-independent timing rests on."""
+    nvlink_bw = max(max(row) for row in fine.capacity)
+    delta = res.scale.epoch_duration(nvlink_bw)
+    m = coarse_epoch / delta
+    per_gap = defaultdict(int)
+    for f in flows:
+        per_gap[(f.cell, f.gap)] = max(per_gap[(f.cell, f.gap)], f.local_round + 1)
+    peak = max(per_gap.values(), default=0)
+    hot = max(per_gap, key=lambda k: per_gap[k]) if per_gap else None
+    print(f"  intra fits coarse epoch: fine epoch delta={delta:.3e}s, m={m:.1f} rounds per coarse "
+          f"epoch; peak {peak} rounds at cell/gap {hot} -> {100 * peak / m:.1f}% of the budget")
+    assert peak <= m + 1e-9, (
+        f"intra-cell work does not fit a coarse epoch: {peak} rounds > m={m:.1f} at {hot}. The "
+        f"inner fabric is not fast enough relative to the outer for per-gap-independent timing; "
+        f"the windowed intra solver is the fallback.")
 
 
 def _make_input(formulation: Formulation, collective: Collective, out_file: str) -> UserInputParams:
@@ -193,7 +276,7 @@ def main() -> None:
         try:
             lp_solver = _solve_on_topology(_make_input(Formulation.LP, collective, lp_out), coarse)
             res = _run_identity_resolution(lp_solver, mapping, fine_demand, fine, tag)
-            _run_phase3_intra(res, mapping, tag)
+            _run_phase3_intra(res, mapping, tag, fine)
         except Exception as e:
             print(f"LP solve / identity resolution failed: {type(e).__name__}: {e}")
             traceback.print_exc()
