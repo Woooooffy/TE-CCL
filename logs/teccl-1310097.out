@@ -1,0 +1,756 @@
+Processing ./.
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: dataclasses in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from teccl==1.0.0) (0.6)
+Requirement already satisfied: argcomplete in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from teccl==1.0.0) (3.6.3)
+Requirement already satisfied: gurobipy in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from teccl==1.0.0) (13.0.2)
+Requirement already satisfied: numpy in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from teccl==1.0.0) (2.4.6)
+Requirement already satisfied: seaborn in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from teccl==1.0.0) (0.13.2)
+Requirement already satisfied: pandas>=1.2 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from seaborn->teccl==1.0.0) (3.0.3)
+Requirement already satisfied: matplotlib!=3.6.1,>=3.4 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from seaborn->teccl==1.0.0) (3.11.0)
+Requirement already satisfied: contourpy>=1.0.1 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (1.3.3)
+Requirement already satisfied: cycler>=0.10 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (0.12.1)
+Requirement already satisfied: fonttools>=4.22.0 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (4.63.0)
+Requirement already satisfied: kiwisolver>=1.3.1 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (1.5.0)
+Requirement already satisfied: packaging>=20.0 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (26.2)
+Requirement already satisfied: pillow>=9 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (12.2.0)
+Requirement already satisfied: pyparsing>=3 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (3.3.2)
+Requirement already satisfied: python-dateutil>=2.7 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (2.9.0.post0)
+Requirement already satisfied: six>=1.5 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from python-dateutil>=2.7->matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (1.17.0)
+Building wheels for collected packages: teccl
+  Building wheel for teccl (pyproject.toml): started
+  Building wheel for teccl (pyproject.toml): finished with status 'done'
+  Created wheel for teccl: filename=teccl-1.0.0-py3-none-any.whl size=115467 sha256=bfebe9f3d1b41dc9c4bb7f1ab5db008ca3b77e3f96c5952e71275fbd02a2ce09
+  Stored in directory: /tmp/home/wangyj05/.cache/pip/wheels/2d/31/f1/88ef48e0a336b237a128de3fcf8e52662d1ed0bfbd5a678f6e
+Successfully built teccl
+Installing collected packages: teccl
+  Attempting uninstall: teccl
+    Found existing installation: teccl 1.0.0
+    Uninstalling teccl-1.0.0:
+      Successfully uninstalled teccl-1.0.0
+Successfully installed teccl-1.0.0
+=== [1/5] Gurobi-free structural tests ===
+  [1] identity_sets counts == coarsify_demand (AllGather + AllToAll) OK
+  [2] Host B forced-relay oracle (3 coalesced egress relays, native exempt) OK
+  [3] symmetric case: zero egress relay OK
+  [4] AllToAll single-GPU ingress target OK
+  [5] replay real allgather JSON OK: 56 pieces (Q=2, ChunkScale(bytes=0.5, chunks=2, refined x2)), Host-B relays [(5, 4), (6, 4), (7, 4)], C egress gpus [8, 11, 13], C ingress {8: 10, 11: 4, 13: 2}, ingress capacity respected
+  [6] lexicographic objective: native egress beats landing on target OK
+  [7] ingress gateway prefers a target when the choice is free OK
+identity resolution structural tests OK
+  [1a] Host-B _to_jobs: 3 hard relays (redundant self-twins deduped) + 9 soft OK
+  [1b] isolated fan-out -> binomial tree (7 edges, depth 3, precedence) OK
+  [2a] ring recovery: 7 rounds, each a distance-(r+1) permutation OK
+  [2b] relay priority: far-distance hard job pulled to round 0 OK
+  [2c] fractional 0.5+0.5 packs into one round, ports safe OK
+  [2d] tree fan-out respects precedence, 3 rounds (log2 depth) OK
+  [3] schedule_cell Host-B combined: B gaps [0, 1, 2, 3], 12 B-flows / 12 A-flows / 20 C-flows, relays land + fan-out delivered, ports & deadlines OK
+intra-solve step-1/2/3 tests OK
+=== [2/5] hetero coarse solve -> identity resolution -> phase-3 -> phase-4 stitch: collective=allgather, LP arm ===
+coarse topology: 5 nodes (3 cells + 2 switches), collective=allgather, which=lp
+coarse demand volumes (U->V): {(0, 1): 4, (0, 2): 4, (1, 0): 4, (1, 2): 4, (2, 0): 6, (2, 1): 6}
+
+=== LP (switch_copy=False, unicast) ===
+Set parameter WLSAccessID
+Set parameter WLSSecret
+Set parameter LicenseID to value 2766017
+Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
+Set parameter LogFile to value "Logs/ALLGATHER_LP_HeteroTaperedCluster_coarse_5-nodes_1-chunks_40-epochs_2.5000875000000002-epoch_duration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+Set parameter LogFile to value "Logs/ALLGATHER_LP_HeteroTaperedCluster_coarse_5-nodes_1-chunks_11-epochs_0.02-epoch_duration_ObjectiveType.PAPER.log"
+Set parameter LogToConsole to value 0
+
+==============================================================================
+RAW LP FLOW VARS  f_s_i_j_k = flow[source s][link i->j][epoch k]
+(continuous volume, summed over all of source s's chunks; not yet per-chunk)
+==============================================================================
+
+-- source 0 --
+   epoch 0:   0(gpu) ->  3(SW)   volume = 2.0
+   epoch 0:   0(gpu) ->  4(SW)   volume = 2.0
+   epoch 0:   3(SW) ->  2(gpu)   volume = 1.0
+   epoch 0:   3(SW) ->  4(SW)   volume = 1.0
+   epoch 0:   4(SW) ->  2(gpu)   volume = 3.0
+   epoch 4:   0(gpu) ->  3(SW)   volume = 1.0
+   epoch 4:   3(SW) ->  1(gpu)   volume = 1.0
+   epoch 6:   0(gpu) ->  3(SW)   volume = 1.0
+   epoch 6:   3(SW) ->  1(gpu)   volume = 1.0
+   epoch 8:   0(gpu) ->  3(SW)   volume = 1.0
+   epoch 8:   3(SW) ->  1(gpu)   volume = 1.0
+   epoch 9:   0(gpu) ->  3(SW)   volume = 1.0
+   epoch 9:   3(SW) ->  1(gpu)   volume = 1.0
+
+-- source 1 --
+   epoch 0:   1(gpu) ->  3(SW)   volume = 1.0
+   epoch 0:   3(SW) ->  2(gpu)   volume = 1.0
+   epoch 1:   1(gpu) ->  3(SW)   volume = 1.0
+   epoch 1:   3(SW) ->  0(gpu)   volume = 1.0
+   epoch 2:   1(gpu) ->  3(SW)   volume = 1.0
+   epoch 2:   3(SW) ->  0(gpu)   volume = 1.0
+   epoch 3:   1(gpu) ->  3(SW)   volume = 1.0
+   epoch 3:   3(SW) ->  0(gpu)   volume = 1.0
+   epoch 4:   1(gpu) ->  3(SW)   volume = 1.0
+   epoch 4:   3(SW) ->  2(gpu)   volume = 1.0
+   epoch 5:   1(gpu) ->  3(SW)   volume = 1.0
+   epoch 5:   3(SW) ->  0(gpu)   volume = 1.0
+   epoch 6:   1(gpu) ->  3(SW)   volume = 1.0
+   epoch 6:   3(SW) ->  2(gpu)   volume = 1.0
+   epoch 7:   1(gpu) ->  3(SW)   volume = 1.0
+   epoch 7:   3(SW) ->  2(gpu)   volume = 1.0
+
+-- source 2 --
+   epoch 0:   2(gpu) ->  3(SW)   volume = 2.0
+   epoch 0:   2(gpu) ->  4(SW)   volume = 3.0
+   epoch 0:   3(SW) ->  0(gpu)   volume = 2.0
+   epoch 0:   3(SW) ->  1(gpu)   volume = 1.0
+   epoch 0:   4(SW) ->  0(gpu)   volume = 2.0
+   epoch 0:   4(SW) ->  3(SW)   volume = 1.0
+   epoch 1:   2(gpu) ->  3(SW)   volume = 1.0
+   epoch 1:   2(gpu) ->  4(SW)   volume = 2.0
+   epoch 1:   3(SW) ->  1(gpu)   volume = 1.0
+   epoch 1:   4(SW) ->  0(gpu)   volume = 2.0
+   epoch 2:   2(gpu) ->  3(SW)   volume = 1.0
+   epoch 2:   3(SW) ->  1(gpu)   volume = 1.0
+   epoch 3:   2(gpu) ->  3(SW)   volume = 1.0
+   epoch 3:   3(SW) ->  1(gpu)   volume = 1.0
+   epoch 5:   2(gpu) ->  3(SW)   volume = 1.0
+   epoch 5:   3(SW) ->  1(gpu)   volume = 1.0
+   epoch 7:   2(gpu) ->  3(SW)   volume = 1.0
+   epoch 7:   3(SW) ->  1(gpu)   volume = 1.0
+
+------------------------------------------------------------------------------
+RAW CONSUMED VARS  T_s_d_k = consumed_at_k[source s][dest d][epoch k]
+(volume of source s's demand absorbed AT destination d during epoch k)
+------------------------------------------------------------------------------
+   dest  0:  from source  1  epoch 1  consumed = 1.0
+   dest  0:  from source  1  epoch 2  consumed = 1.0
+   dest  0:  from source  1  epoch 3  consumed = 1.0
+   dest  0:  from source  1  epoch 5  consumed = 1.0
+   dest  0:  from source  2  epoch 0  consumed = 4.0
+   dest  0:  from source  2  epoch 1  consumed = 2.0
+   dest  1:  from source  0  epoch 4  consumed = 1.0
+   dest  1:  from source  0  epoch 6  consumed = 1.0
+   dest  1:  from source  0  epoch 8  consumed = 1.0
+   dest  1:  from source  0  epoch 9  consumed = 1.0
+   dest  1:  from source  2  epoch 0  consumed = 1.0
+   dest  1:  from source  2  epoch 1  consumed = 1.0
+   dest  1:  from source  2  epoch 2  consumed = 1.0
+   dest  1:  from source  2  epoch 3  consumed = 1.0
+   dest  1:  from source  2  epoch 5  consumed = 1.0
+   dest  1:  from source  2  epoch 7  consumed = 1.0
+   dest  2:  from source  0  epoch 0  consumed = 4.0
+   dest  2:  from source  1  epoch 0  consumed = 1.0
+   dest  2:  from source  1  epoch 4  consumed = 1.0
+   dest  2:  from source  1  epoch 6  consumed = 1.0
+   dest  2:  from source  1  epoch 7  consumed = 1.0
+==============================================================================
+
+Schedule written to Schedules/coarse_hetero_allgather_lp.json
+
+--- identity resolution (allgather) ---
+resolved inter-cell pieces: 56
+intra-cell demands: 26 egress_stage, 56 ingress_distribution, 28 self_distribution
+  cell 0 egress relays: ['1->0', '2->0', '2->1', '3->0']
+  cell 1 egress relays: ['5->4', '6->4', '7->4']
+  cell 2 egress relays: ['10->11', '10->8', '11->8', '12->13', '12->8', '13->8', '9->8']
+  chunk scale: ChunkScale(bytes=0.5, chunks=2, refined x2)  (subdivision Q=2)
+  fine-link occupancy: egress peak 100%, ingress peak 100% of per-epoch capacity; violations: 0
+  egress: 36/56 pieces leave via a non-native gateway (lexicographic tier 1 minimizes this; the ingress tier never trades against it)
+identity resolution written to Schedules/coarse_hetero_allgather_identities.json
+
+=== phase-3 intra-cell scheduling (allgather) ===
+
+=== schedule_cell 0: gpus=[0, 1, 2, 3] nvswitch=14, 36 intra demands ===
+  [_to_jobs] 36 demands ({'egress_stage': 8, 'ingress_distribution': 20, 'self_distribution': 8}), max intra-recv load = 32
+    fan-out id=(4, 0) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(4, 1) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(5, 0) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(5, 1) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(6, 0) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(6, 1) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(7, 0) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(7, 1) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(8, 0) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(8, 1) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(9, 0) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(9, 1) ingress_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(10, 0) ingress_distribution src=1 -> 3 wanters: binomial TREE (send=40 > max_recv=32)
+        tree edge r0: 1->0
+        tree edge r1: 1->2
+        tree edge r1: 0->3 (after 0 receives)
+    fan-out id=(10, 1) ingress_distribution src=1 -> 3 wanters: binomial TREE (send=40 > max_recv=32)
+        tree edge r0: 1->0
+        tree edge r1: 1->2
+        tree edge r1: 0->3 (after 0 receives)
+    fan-out id=(11, 0) ingress_distribution src=1 -> 3 wanters: binomial TREE (send=40 > max_recv=32)
+        tree edge r0: 1->0
+        tree edge r1: 1->2
+        tree edge r1: 0->3 (after 0 receives)
+    fan-out id=(11, 1) ingress_distribution src=1 -> 3 wanters: binomial TREE (send=40 > max_recv=32)
+        tree edge r0: 1->0
+        tree edge r1: 1->2
+        tree edge r1: 0->3 (after 0 receives)
+    fan-out id=(12, 0) ingress_distribution src=1 -> 3 wanters: binomial TREE (send=40 > max_recv=32)
+        tree edge r0: 1->0
+        tree edge r1: 1->2
+        tree edge r1: 0->3 (after 0 receives)
+    fan-out id=(12, 1) ingress_distribution src=1 -> 3 wanters: binomial TREE (send=40 > max_recv=32)
+        tree edge r0: 1->0
+        tree edge r1: 1->2
+        tree edge r1: 0->3 (after 0 receives)
+    fan-out id=(13, 0) ingress_distribution src=1 -> 3 wanters: binomial TREE (send=40 > max_recv=32)
+        tree edge r0: 1->0
+        tree edge r1: 1->2
+        tree edge r1: 0->3 (after 0 receives)
+    fan-out id=(13, 1) ingress_distribution src=1 -> 3 wanters: binomial TREE (send=40 > max_recv=32)
+        tree edge r0: 1->0
+        tree edge r1: 1->2
+        tree edge r1: 0->3 (after 0 receives)
+    fan-out id=(0, 0) self_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(0, 1) self_distribution src=0 -> 3 wanters: binomial TREE (send=54 > max_recv=32)
+        tree edge r0: 0->1
+        tree edge r1: 0->2
+        tree edge r1: 1->3 (after 1 receives)
+    fan-out id=(1, 0) self_distribution src=1 -> 3 wanters: binomial TREE (send=40 > max_recv=32)
+        tree edge r0: 1->0
+        tree edge r1: 1->2
+        tree edge r1: 0->3 (after 0 receives)
+    fan-out id=(1, 1) self_distribution src=1 -> 3 wanters: binomial TREE (send=40 > max_recv=32)
+        tree edge r0: 1->0
+        tree edge r1: 1->2
+        tree edge r1: 0->3 (after 0 receives)
+    fan-out id=(2, 0) self_distribution src=2 -> 3 wanters: DIRECT/ring (send=10 <= max_recv=32)
+      dedup delivery 2->0 id=(2, 0): egress_stage + self_distribution (one send satisfies both)
+      dedup delivery 2->1 id=(2, 0): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(2, 1) self_distribution src=2 -> 3 wanters: DIRECT/ring (send=10 <= max_recv=32)
+      dedup delivery 2->0 id=(2, 1): egress_stage + self_distribution (one send satisfies both)
+      dedup delivery 2->1 id=(2, 1): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(3, 0) self_distribution src=3 -> 3 wanters: DIRECT/ring (send=8 <= max_recv=32)
+      dedup delivery 3->0 id=(3, 0): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(3, 1) self_distribution src=3 -> 3 wanters: DIRECT/ring (send=8 <= max_recv=32)
+      dedup delivery 3->0 id=(3, 1): egress_stage + self_distribution (one send satisfies both)
+  [_to_jobs] -> 86 jobs (8 hard, 78 soft; 14 direct, 72 tree)
+    [gap 0] 46 jobs (4 hard), max-port-load lower bound = 18 round(s)
+      round 0: 3->0H(id3,1,done)  2->1H(id2,1,done)  1->2 (id11,1,done)
+      round 1: 3->0H(id3,1,done)  2->1H(id2,1,done)  1->2 (id11,1,done)
+      round 2: 0->1 (id8,1,done)  1->2 (id13,1,done)  2->3 (id2,1,done)
+      round 3: 0->1 (id8,1,done)  1->2 (id13,1,done)  2->3 (id2,1,done)
+      round 4: 0->1 (id9,1,done)  1->2 (id1,1,done)
+      round 5: 0->1 (id9,1,done)  1->2 (id1,1,done)
+      round 6: 0->1 (id0,1,done)  1->3 (id8,1,done)  3->2 (id3,1,done)
+      round 7: 0->1 (id0,1,done)  1->3 (id8,1,done)  3->2 (id3,1,done)
+      round 8: 0->2 (id8,1,done)  1->3 (id9,1,done)  3->1 (id3,1,done)
+      round 9: 0->2 (id8,1,done)  1->3 (id9,1,done)  3->1 (id3,1,done)
+      round 10: 0->2 (id9,1,done)  1->3 (id0,1,done)
+      round 11: 0->2 (id9,1,done)  1->3 (id0,1,done)
+      round 12: 0->2 (id0,1,done)  1->0 (id11,1,done)
+      round 13: 0->2 (id0,1,done)  1->0 (id11,1,done)
+      round 14: 0->3 (id11,1,done)  1->0 (id13,1,done)
+      round 15: 0->3 (id11,1,done)  1->0 (id13,1,done)
+      round 16: 0->3 (id13,1,done)  1->0 (id1,1,done)
+      round 17: 0->3 (id13,1,done)  1->0 (id1,1,done)
+      round 18: 0->3 (id1,1,done)
+      round 19: 0->3 (id1,1,done)
+    [gap 0] used 20 round(s) vs bound 18 -> above bound (tree/precedence depth)
+    [gap 1] 18 jobs (0 hard), max-port-load lower bound = 10 round(s)
+      round 0: 0->1 (id4,1,done)  1->2 (id10,1,done)
+      round 1: 0->1 (id4,1,done)  1->2 (id10,1,done)
+      round 2: 1->2 (id12,1,done)
+      round 3: 1->2 (id12,1,done)
+      round 4: 0->2 (id4,1,done)  1->3 (id4,1,done)
+      round 5: 0->2 (id4,1,done)  1->3 (id4,1,done)
+      round 6: 1->0 (id10,1,done)
+      round 7: 0->3 (id10,1,done)  1->0 (id10,1,done)
+      round 8: 0->3 (id10,1,done)  1->0 (id12,1,done)
+      round 9: 0->3 (id12,1,done)  1->0 (id12,1,done)
+      round 10: 0->3 (id12,1,done)
+    [gap 1] used 11 round(s) vs bound 10 -> above bound (tree/precedence depth)
+    [gap 2] 6 jobs (0 hard), max-port-load lower bound = 4 round(s)
+      round 0: 0->1 (id6,1,done)
+      round 1: 0->1 (id6,1,done)  1->3 (id6,1,done)
+      round 2: 0->2 (id6,1,done)  1->3 (id6,1,done)
+      round 3: 0->2 (id6,1,done)
+    [gap 2] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+    [gap 3] 6 jobs (0 hard), max-port-load lower bound = 4 round(s)
+      round 0: 0->1 (id7,1,done)
+      round 1: 0->1 (id7,1,done)  1->3 (id7,1,done)
+      round 2: 0->2 (id7,1,done)  1->3 (id7,1,done)
+      round 3: 0->2 (id7,1,done)
+    [gap 3] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+    [gap 5] 6 jobs (0 hard), max-port-load lower bound = 4 round(s)
+      round 0: 0->1 (id5,1,done)
+      round 1: 0->1 (id5,1,done)  1->3 (id5,1,done)
+      round 2: 0->2 (id5,1,done)  1->3 (id5,1,done)
+      round 3: 0->2 (id5,1,done)
+    [gap 5] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+    [gap 6] 2 jobs (2 hard), max-port-load lower bound = 2 round(s)
+      round 0: 2->0H(id2,1,done)
+      round 1: 2->0H(id2,1,done)
+    [gap 6] used 2 round(s) vs bound 2 -> OPTIMAL (= port bound)
+    [gap 9] 2 jobs (2 hard), max-port-load lower bound = 2 round(s)
+      round 0: 1->0H(id1,1,done)
+      round 1: 1->0H(id1,1,done)
+    [gap 9] used 2 round(s) vs bound 2 -> OPTIMAL (= port bound)
+=== cell 0: 86 flows across 7 gap(s), peak 20 rounds/gap; all hard deadlines met, ports within cap ===
+
+=== schedule_cell 1: gpus=[4, 5, 6, 7] nvswitch=15, 34 intra demands ===
+  [_to_jobs] 34 demands ({'egress_stage': 6, 'ingress_distribution': 20, 'self_distribution': 8}), max intra-recv load = 32
+    fan-out id=(0, 0) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(0, 1) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(1, 0) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(1, 1) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(2, 0) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(2, 1) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(3, 0) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(3, 1) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(8, 0) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(8, 1) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(9, 0) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(9, 1) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(10, 0) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(10, 1) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(11, 0) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(11, 1) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(12, 0) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(12, 1) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(13, 0) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(13, 1) ingress_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(4, 0) self_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(4, 1) self_distribution src=4 -> 3 wanters: binomial TREE (send=86 > max_recv=32)
+        tree edge r0: 4->5
+        tree edge r1: 4->6
+        tree edge r1: 5->7 (after 5 receives)
+    fan-out id=(5, 0) self_distribution src=5 -> 3 wanters: DIRECT/ring (send=8 <= max_recv=32)
+      dedup delivery 5->4 id=(5, 0): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(5, 1) self_distribution src=5 -> 3 wanters: DIRECT/ring (send=8 <= max_recv=32)
+      dedup delivery 5->4 id=(5, 1): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(6, 0) self_distribution src=6 -> 3 wanters: DIRECT/ring (send=8 <= max_recv=32)
+      dedup delivery 6->4 id=(6, 0): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(6, 1) self_distribution src=6 -> 3 wanters: DIRECT/ring (send=8 <= max_recv=32)
+      dedup delivery 6->4 id=(6, 1): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(7, 0) self_distribution src=7 -> 3 wanters: DIRECT/ring (send=8 <= max_recv=32)
+      dedup delivery 7->4 id=(7, 0): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(7, 1) self_distribution src=7 -> 3 wanters: DIRECT/ring (send=8 <= max_recv=32)
+      dedup delivery 7->4 id=(7, 1): egress_stage + self_distribution (one send satisfies both)
+  [_to_jobs] -> 84 jobs (6 hard, 78 soft; 18 direct, 66 tree)
+    [gap 0] 24 jobs (0 hard), max-port-load lower bound = 8 round(s)
+      round 0: 4->5 (id11,1,done)  5->6 (id5,1,done)  6->7 (id6,1,done)
+      round 1: 4->5 (id13,1,done)  5->6 (id5,1,done)  6->7 (id6,1,done)
+      round 2: 4->5 (id4,1,done)  5->7 (id5,1,done)  7->6 (id7,1,done)
+      round 3: 4->5 (id4,1,done)  5->7 (id5,1,done)  7->6 (id7,1,done)
+      round 4: 4->6 (id11,1,done)  5->7 (id11,1,done)  7->5 (id7,1,done)
+      round 5: 4->6 (id13,1,done)  5->7 (id13,1,done)  7->5 (id7,1,done)
+      round 6: 4->6 (id4,1,done)  5->7 (id4,1,done)  6->5 (id6,1,done)
+      round 7: 4->6 (id4,1,done)  5->7 (id4,1,done)  6->5 (id6,1,done)
+    [gap 0] used 8 round(s) vs bound 8 -> OPTIMAL (= port bound)
+    [gap 1] 6 jobs (0 hard), max-port-load lower bound = 4 round(s)
+      round 0: 4->5 (id8,1,done)
+      round 1: 4->5 (id8,1,done)  5->7 (id8,1,done)
+      round 2: 4->6 (id8,1,done)  5->7 (id8,1,done)
+      round 3: 4->6 (id8,1,done)
+    [gap 1] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+    [gap 2] 8 jobs (2 hard), max-port-load lower bound = 4 round(s)
+      round 0: 6->4H(id6,1,done)  4->5 (id12,1,done)
+      round 1: 6->4H(id6,1,done)  4->5 (id12,1,done)  5->7 (id12,1,done)
+      round 2: 4->6 (id12,1,done)  5->7 (id12,1,done)
+      round 3: 4->6 (id12,1,done)
+    [gap 2] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+    [gap 3] 8 jobs (2 hard), max-port-load lower bound = 4 round(s)
+      round 0: 7->4H(id7,1,done)  4->5 (id11,1,done)
+      round 1: 7->4H(id7,1,done)  4->5 (id13,1,done)  5->7 (id11,1,done)
+      round 2: 4->6 (id11,1,done)  5->7 (id13,1,done)
+      round 3: 4->6 (id13,1,done)
+    [gap 3] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+    [gap 4] 6 jobs (0 hard), max-port-load lower bound = 4 round(s)
+      round 0: 4->5 (id0,1,done)
+      round 1: 4->5 (id0,1,done)  5->7 (id0,1,done)
+      round 2: 4->6 (id0,1,done)  5->7 (id0,1,done)
+      round 3: 4->6 (id0,1,done)
+    [gap 4] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+    [gap 5] 8 jobs (2 hard), max-port-load lower bound = 4 round(s)
+      round 0: 5->4H(id5,1,done)  4->5 (id9,1,done)
+      round 1: 5->4H(id5,1,done)  4->5 (id9,1,done)
+      round 2: 4->6 (id9,1,done)  5->7 (id9,1,done)
+      round 3: 4->6 (id9,1,done)  5->7 (id9,1,done)
+    [gap 5] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+    [gap 6] 6 jobs (0 hard), max-port-load lower bound = 4 round(s)
+      round 0: 4->5 (id2,1,done)
+      round 1: 4->5 (id2,1,done)  5->7 (id2,1,done)
+      round 2: 4->6 (id2,1,done)  5->7 (id2,1,done)
+      round 3: 4->6 (id2,1,done)
+    [gap 6] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+    [gap 7] 6 jobs (0 hard), max-port-load lower bound = 4 round(s)
+      round 0: 4->5 (id10,1,done)
+      round 1: 4->5 (id10,1,done)  5->7 (id10,1,done)
+      round 2: 4->6 (id10,1,done)  5->7 (id10,1,done)
+      round 3: 4->6 (id10,1,done)
+    [gap 7] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+    [gap 8] 6 jobs (0 hard), max-port-load lower bound = 4 round(s)
+      round 0: 4->5 (id3,1,done)
+      round 1: 4->5 (id3,1,done)  5->7 (id3,1,done)
+      round 2: 4->6 (id3,1,done)  5->7 (id3,1,done)
+      round 3: 4->6 (id3,1,done)
+    [gap 8] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+    [gap 9] 6 jobs (0 hard), max-port-load lower bound = 4 round(s)
+      round 0: 4->5 (id1,1,done)
+      round 1: 4->5 (id1,1,done)  5->7 (id1,1,done)
+      round 2: 4->6 (id1,1,done)  5->7 (id1,1,done)
+      round 3: 4->6 (id1,1,done)
+    [gap 9] used 4 round(s) vs bound 4 -> OPTIMAL (= port bound)
+=== cell 1: 84 flows across 10 gap(s), peak 8 rounds/gap; all hard deadlines met, ports within cap ===
+
+=== schedule_cell 2: gpus=[8, 9, 10, 11, 12, 13] nvswitch=16, 40 intra demands ===
+  [_to_jobs] 40 demands ({'egress_stage': 12, 'ingress_distribution': 16, 'self_distribution': 12}), max intra-recv load = 34
+    fan-out id=(0, 0) ingress_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(0, 1) ingress_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(1, 0) ingress_distribution src=11 -> 5 wanters: binomial TREE (send=35 > max_recv=34)
+        tree edge r0: 11->8
+        tree edge r1: 11->9
+        tree edge r1: 8->10 (after 8 receives)
+        tree edge r2: 11->12
+        tree edge r2: 8->13 (after 8 receives)
+    fan-out id=(1, 1) ingress_distribution src=11 -> 5 wanters: binomial TREE (send=35 > max_recv=34)
+        tree edge r0: 11->8
+        tree edge r1: 11->9
+        tree edge r1: 8->10 (after 8 receives)
+        tree edge r2: 11->12
+        tree edge r2: 8->13 (after 8 receives)
+    fan-out id=(2, 0) ingress_distribution src=11 -> 5 wanters: binomial TREE (send=35 > max_recv=34)
+        tree edge r0: 11->8
+        tree edge r1: 11->9
+        tree edge r1: 8->10 (after 8 receives)
+        tree edge r2: 11->12
+        tree edge r2: 8->13 (after 8 receives)
+    fan-out id=(2, 1) ingress_distribution src=11 -> 5 wanters: binomial TREE (send=35 > max_recv=34)
+        tree edge r0: 11->8
+        tree edge r1: 11->9
+        tree edge r1: 8->10 (after 8 receives)
+        tree edge r2: 11->12
+        tree edge r2: 8->13 (after 8 receives)
+    fan-out id=(3, 0) ingress_distribution src=13 -> 5 wanters: DIRECT/ring (send=23 <= max_recv=34)
+    fan-out id=(3, 1) ingress_distribution src=13 -> 5 wanters: DIRECT/ring (send=23 <= max_recv=34)
+    fan-out id=(4, 0) ingress_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(4, 1) ingress_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(5, 0) ingress_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(5, 1) ingress_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(6, 0) ingress_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(6, 1) ingress_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(7, 0) ingress_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(7, 1) ingress_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(8, 0) self_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(8, 1) self_distribution src=8 -> 5 wanters: binomial TREE (send=70 > max_recv=34)
+        tree edge r0: 8->9
+        tree edge r1: 8->10
+        tree edge r1: 9->11 (after 9 receives)
+        tree edge r2: 8->12
+        tree edge r2: 9->13 (after 9 receives)
+    fan-out id=(9, 0) self_distribution src=9 -> 5 wanters: DIRECT/ring (send=12 <= max_recv=34)
+      dedup delivery 9->8 id=(9, 0): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(9, 1) self_distribution src=9 -> 5 wanters: DIRECT/ring (send=12 <= max_recv=34)
+      dedup delivery 9->8 id=(9, 1): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(10, 0) self_distribution src=10 -> 5 wanters: DIRECT/ring (send=14 <= max_recv=34)
+      dedup delivery 10->8 id=(10, 0): egress_stage + self_distribution (one send satisfies both)
+      dedup delivery 10->11 id=(10, 0): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(10, 1) self_distribution src=10 -> 5 wanters: DIRECT/ring (send=14 <= max_recv=34)
+      dedup delivery 10->8 id=(10, 1): egress_stage + self_distribution (one send satisfies both)
+      dedup delivery 10->11 id=(10, 1): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(11, 0) self_distribution src=11 -> 5 wanters: binomial TREE (send=35 > max_recv=34)
+        tree edge r0: 11->8
+        tree edge r1: 11->9
+        tree edge r1: 8->10 (after 8 receives)
+        tree edge r2: 11->12
+        tree edge r2: 8->13 (after 8 receives)
+    fan-out id=(11, 1) self_distribution src=11 -> 5 wanters: binomial TREE (send=35 > max_recv=34)
+        tree edge r0: 11->8
+        tree edge r1: 11->9
+        tree edge r1: 8->10 (after 8 receives)
+        tree edge r2: 11->12
+        tree edge r2: 8->13 (after 8 receives)
+    fan-out id=(12, 0) self_distribution src=12 -> 5 wanters: DIRECT/ring (send=14 <= max_recv=34)
+      dedup delivery 12->8 id=(12, 0): egress_stage + self_distribution (one send satisfies both)
+      dedup delivery 12->13 id=(12, 0): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(12, 1) self_distribution src=12 -> 5 wanters: DIRECT/ring (send=14 <= max_recv=34)
+      dedup delivery 12->8 id=(12, 1): egress_stage + self_distribution (one send satisfies both)
+      dedup delivery 12->13 id=(12, 1): egress_stage + self_distribution (one send satisfies both)
+    fan-out id=(13, 0) self_distribution src=13 -> 5 wanters: DIRECT/ring (send=23 <= max_recv=34)
+    fan-out id=(13, 1) self_distribution src=13 -> 5 wanters: DIRECT/ring (send=23 <= max_recv=34)
+      dedup delivery 13->8 id=(13, 1): egress_stage + self_distribution (one send satisfies both)
+  [_to_jobs] -> 141 jobs (12 hard, 129 soft; 51 direct, 90 tree)
+    [gap 0] 101 jobs (2 hard), max-port-load lower bound = 30 round(s)
+      round 0: 9->8H(id9,1,done)  8->9 (id0,1,done)  11->12 (id1,1,done)  10->13 (id10,1,done)  13->10 (id3,1,done)  12->11 (id12,1,done)
+      round 1: 9->8H(id9,1,done)  8->9 (id0,1,done)  11->12 (id1,1,done)  10->13 (id10,1,done)  13->10 (id3,1,done)  12->11 (id12,1,done)
+      round 2: 8->9 (id4,1,done)  9->10 (id9,1,done)  11->12 (id2,1,done)  13->8 (id3,1,done)
+      round 3: 8->9 (id4,1,done)  9->10 (id9,1,done)  11->12 (id2,1,done)  13->8 (id3,1,done)
+      round 4: 8->9 (id8,1,done)  11->12 (id11,1,done)  13->8 (id13,1,done)  9->11 (id9,1,done)  12->10 (id12,1,done)
+      round 5: 8->9 (id8,1,done)  11->12 (id11,1,done)  9->11 (id9,1,done)  13->10 (id13,1,done)
+      round 6: 8->10 (id0,1,done)  9->11 (id0,1,done)  10->12 (id10,1,done)  13->9 (id3,1,done)  11->8 (id1,1,done)
+      round 7: 8->10 (id0,1,done)  9->11 (id0,1,done)  10->12 (id10,1,done)  13->9 (id3,1,done)  11->8 (id1,1,done)
+      round 8: 8->10 (id1,1,done)  9->11 (id4,1,done)  13->9 (id13,1,done)  11->8 (id2,1,done)
+      round 9: 8->10 (id1,1,done)  9->11 (id4,1,done)  13->9 (id13,1,done)  11->8 (id2,1,done)
+      round 10: 8->10 (id2,1,done)  9->11 (id8,1,done)  11->8 (id11,1,done)  12->9 (id12,1,done)  13->12 (id3,1,done)
+      round 11: 8->10 (id2,1,done)  9->11 (id8,1,done)  11->8 (id11,1,done)  12->9 (id12,1,done)  13->12 (id3,1,done)
+      round 12: 8->10 (id4,1,done)  9->12 (id9,1,done)  11->9 (id1,1,done)  13->11 (id3,1,done)
+      round 13: 8->10 (id4,1,done)  9->12 (id9,1,done)  11->9 (id1,1,done)  13->11 (id3,1,done)
+      round 14: 8->10 (id8,1,done)  9->13 (id9,1,done)  11->9 (id2,1,done)  13->11 (id13,1,done)
+      round 15: 8->10 (id8,1,done)  9->13 (id9,1,done)  11->9 (id2,1,done)  13->11 (id13,1,done)
+      round 16: 8->10 (id11,1,done)  9->13 (id0,1,done)  11->9 (id11,1,done)  13->12 (id13,1,done)
+      round 17: 8->10 (id11,1,done)  9->13 (id0,1,done)  11->9 (id11,1,done)  13->12 (id13,1,done)
+      round 18: 13->10 (id13,1,done)  8->12 (id0,1,done)  9->13 (id4,1,done)  10->9 (id10,1,done)
+      round 19: 8->12 (id0,1,done)  9->13 (id4,1,done)  12->10 (id12,1,done)  10->9 (id10,1,done)
+      round 20: 8->12 (id4,1,done)  9->13 (id8,1,done)
+      round 21: 8->12 (id4,1,done)  9->13 (id8,1,done)
+      round 22: 8->12 (id8,1,done)
+      round 23: 8->12 (id8,1,done)
+      round 24: 8->13 (id1,1,done)
+      round 25: 8->13 (id1,1,done)
+      round 26: 8->13 (id2,1,done)
+      round 27: 8->13 (id2,1,done)
+      round 28: 8->13 (id11,1,done)
+      round 29: 8->13 (id11,1,done)
+    [gap 0] used 30 round(s) vs bound 30 -> OPTIMAL (= port bound)
+    [gap 1] 4 jobs (4 hard), max-port-load lower bound = 2 round(s)
+      round 0: 10->11H(id10,1,done)  12->13H(id12,1,done)
+      round 1: 10->11H(id10,1,done)  12->13H(id12,1,done)
+    [gap 1] used 2 round(s) vs bound 2 -> OPTIMAL (= port bound)
+    [gap 2] 2 jobs (2 hard), max-port-load lower bound = 2 round(s)
+      round 0: 12->8H(id12,1,done)
+      round 1: 12->8H(id12,1,done)
+    [gap 2] used 2 round(s) vs bound 2 -> OPTIMAL (= port bound)
+    [gap 3] 2 jobs (2 hard), max-port-load lower bound = 2 round(s)
+      round 0: 13->8H(id13,1,done)
+      round 1: 11->8H(id11,1,done)
+    [gap 3] used 2 round(s) vs bound 2 -> OPTIMAL (= port bound)
+    [gap 4] 10 jobs (0 hard), max-port-load lower bound = 6 round(s)
+      round 0: 8->9 (id6,1,done)
+      round 1: 8->9 (id6,1,done)  9->11 (id6,1,done)
+      round 2: 8->10 (id6,1,done)  9->11 (id6,1,done)
+      round 3: 8->10 (id6,1,done)  9->13 (id6,1,done)
+      round 4: 8->12 (id6,1,done)  9->13 (id6,1,done)
+      round 5: 8->12 (id6,1,done)
+    [gap 4] used 6 round(s) vs bound 6 -> OPTIMAL (= port bound)
+    [gap 6] 10 jobs (0 hard), max-port-load lower bound = 6 round(s)
+      round 0: 8->9 (id7,1,done)
+      round 1: 8->9 (id7,1,done)  9->11 (id7,1,done)
+      round 2: 8->10 (id7,1,done)  9->11 (id7,1,done)
+      round 3: 8->10 (id7,1,done)  9->13 (id7,1,done)
+      round 4: 8->12 (id7,1,done)  9->13 (id7,1,done)
+      round 5: 8->12 (id7,1,done)
+    [gap 6] used 6 round(s) vs bound 6 -> OPTIMAL (= port bound)
+    [gap 7] 12 jobs (2 hard), max-port-load lower bound = 6 round(s)
+      round 0: 10->8H(id10,1,done)  8->9 (id5,1,done)
+      round 1: 10->8H(id10,1,done)  8->9 (id5,1,done)  9->11 (id5,1,done)
+      round 2: 8->10 (id5,1,done)  9->11 (id5,1,done)
+      round 3: 8->10 (id5,1,done)  9->13 (id5,1,done)
+      round 4: 8->12 (id5,1,done)  9->13 (id5,1,done)
+      round 5: 8->12 (id5,1,done)
+    [gap 7] used 6 round(s) vs bound 6 -> OPTIMAL (= port bound)
+=== cell 2: 141 flows across 7 gap(s), peak 30 rounds/gap; all hard deadlines met, ports within cap ===
+
+phase-3 intra schedule: 311 fine flows written to Schedules/coarse_hetero_allgather_intra.json
+  intra fits coarse epoch: fine epoch delta=2.778e-04s, m=72.0 rounds per coarse epoch; peak 30 rounds at cell/gap (2, 0) -> 41.7% of the budget
+
+=== phase-4 stitch (allgather) ===
+  367 delivery records {'prologue': 91, 'stage': 20, 'ingress': 200, 'network': 56}; 364 demands traced (causality + coverage verified)
+  fine epoch delta=2.7778e-04s x 726 epochs = 0.2017s, algo bw=69.42, chunk=0.5
+  paced network sends: 56 at rate(s) [25.0] GB/s; 311 intra sends unpaced
+  flat schedule written to Schedules/coarse_hetero_allgather_flat.json
+
+LP: epochs=10 finish=0.2 bw=15.0 solver_time=0.4054994583129883
+=== [3/5] pipeline replay invariants (resolution + phase-3) ===
+hierarchical pipeline replay (identity resolution + phase-3, Gurobi-free)
+  allgather: Q=2 ChunkScale(bytes=0.5, chunks=2, refined x2)
+    56 pieces, 110 intra demands, 311 fine intra flows
+    fine-link peak occupancy: egress 100%, ingress 100%  (no violations)
+    ingress gateways used: {0: 12, 1: 8, 4: 20, 8: 10, 11: 4, 13: 2}
+    delivery coverage: all 308 (identity, gpu) pairs satisfied
+    intra fits epoch: peak 30 rounds vs m=72 (42% of budget) at cell/gap (2, 0)
+    non-native egress: 36/56 pieces
+  alltoall: Q=2 ChunkScale(bytes=0.5, chunks=28, refined x2)
+    256 pieces, 524 intra demands, 442 fine intra flows
+    fine-link peak occupancy: egress 100%, ingress 100%  (no violations)
+    ingress gateways used: {0: 56, 1: 24, 4: 80, 8: 60, 11: 18, 13: 18}
+    delivery coverage: all 442 (identity, gpu) pairs satisfied
+    intra fits epoch: peak 14 rounds vs m=72 (19% of budget) at cell/gap (2, 0)
+    ingress landing on target: 82/256 (32%)
+    non-native egress: 160/256 pieces
+pipeline replay OK
+=== [4/5] stitch replay + epoch-layout oracles ===
+stitch (phase 4) tests
+  [1] levels(): binomial tree depth, ring all-zero, chain 0/1/2 OK
+  [2] epoch layout: prologue < stage(16) < send(17) -> held(25) < fan-out[26, 27] OK
+  [3] back_trace rejects undelivered + send-before-hold, accepts the relay chain OK
+  [4] chunk labels: src-major passthrough, dst-major keeps the destination OK
+  --- end-to-end replay on the real coarse schedules ---
+  allgather: Q=2, delta=2.778e-04s, m=72, 726 epochs -> 0.2017s, bw=69.4
+    scale-invariant: finish at m x1/x2/x4 = 0.2017/0.2008/0.2004s -> residual halves (8.33e-04 then 4.17e-04), converging to the coarse-grid time
+    56 network + 311 intra records, 364 demands traced, chunk=0.5
+    ncclize: check_implements OK, 38 steps, 56 paced flows (0 unpaced)
+  alltoall: Q=2, delta=2.778e-04s, m=72, 2884 epochs -> 0.8011s, bw=244.7
+    scale-invariant: finish at m x1/x2/x4 = 0.8011/0.8006/0.8003s -> residual halves (5.56e-04 then 2.78e-04), converging to the coarse-grid time
+    256 network + 442 intra records, 364 demands traced, chunk=0.5
+    ncclize: check_implements OK, 111 steps, 256 paced flows (0 unpaced)
+stitch tests OK
+=== [5/5] ncclize round trip: flat schedule -> MSCCL XML (runs check_implements) ===
+Wrote xml/hetero_allgather.xml
+Wrote logs/hetero_allgather_epochs.txt
