@@ -318,30 +318,19 @@ def _allocate_channels_match_topology(op_sets, topology, instances, scale_remote
     earlier one (different switch paths, different congestion/hop-count), and this
     topology/ncclize layer has no reliable way to know the true relative completion order
     of two flows sharing one channel (TeCCLTopology never models switches at all -- see
-    its own docstring -- and even where true completion times are available via
-    flow_completion_steps, they're only precise up to the send-epoch dense scale, a
-    deliberate, separately-documented tradeoff). Rather than reorder ops on a shared
-    channel using that imprecise data, this function avoids the problem structurally: two
-    flows that took different paths are *never* placed on the same channel, so there is no
-    intra-channel relative order to get right in the first place. This is sufficient (not
-    just a heuristic) because flows sharing one path_key inherently can't be reordered
-    relative to each other -- same physical route means departure order == completion
-    order -- so keeping same-path flows on shared channels (round-robinned across replicas
-    exactly as before) remains correct.
+    its own docstring). Rather than try to reorder ops on a shared channel, this function
+    avoids the problem structurally: two flows that took different paths are *never* placed
+    on the same channel, so there is no intra-channel relative order to get right in the
+    first place. This is sufficient (not just a heuristic) because flows sharing one
+    path_key inherently can't be reordered relative to each other -- same physical route
+    means departure order == completion order -- so keeping same-path flows on shared
+    channels (round-robinned across replicas exactly as before) remains correct.
 
-    Note this only fixes *intra-channel* wire order (which recv/send ends up in which
-    array slot within one threadblock's own (gpu,peer,chan) group). It does NOT replace
-    flow_completion_steps, which fixes a different hazard: TACCL's threadblock-packing
-    reuses one TB across *different* peers when their .step values don't collide (see the
-    eligibility check in ncclize(), a few hundred lines below), and once two peers'
-    ops share a TB, ALL of that TB's ops -- regardless of peer -- get serialized together
-    by .step. If a switch-relayed recv's .step were left at its (too-early) send-start
-    epoch instead of its corrected true-completion epoch, an unrelated send to a
-    completely different peer could get sorted after it and stall behind a relay it has no
-    real data dependency on. That cross-peer TB-packing hazard is orthogonal to path
-    diversity on a single edge (it's about threadblock-count minimization across peers,
-    not about multipath at all), so flow_completion_steps's correction stays necessary
-    here regardless of the path-aware channel assignment below.
+    This handles WHICH CHANNEL a flow lands on. The complementary question -- that the two
+    ends of one (peer, channel) agree on the ORDER of the operations they exchange, since
+    the connection is a FIFO -- is handled by giving each (gpu, direction, peer, channel)
+    its own threadblock and keeping send and recv at the same .step; see the threadblock
+    construction in ncclize() below.
 
     max_channels caps the channel ids used per edge (num_distinct_path_keys * link); this
     is a real hardware/runtime limit (MAXCHANNELS in NCCL/MSCCL, 32 as of the vendored
@@ -411,7 +400,7 @@ class ChannelPolicy(Enum):
     def __str__(self):
         return self.value
 
-def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, flow_completion_steps=None, piece_rate=None, send_epoch_manifest=None, max_channels=32):
+def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, piece_rate=None, send_epoch_manifest=None, max_channels=32):
     '''
     Generate the XML format used by the NCCL SCCL backend.
 
@@ -432,15 +421,6 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     see _allocate_channels_match_topology()'s docstring for why that's the correct fix for multipath ordering
     (as opposed to reordering ops on a shared channel). None preserves prior behavior (no disambiguation).
 
-    flow_completion_steps, if given, maps (step_idx, addr, src, dst) -> a dense step-domain value, comparable to
-    step_idx, representing the epoch by which dst truly has the data (as opposed to step_idx, which is only the
-    epoch the transfer started). Used to correct the .step of the corresponding recv op in place, so that
-    threadblock-internal step ordering and threadblock-reuse eligibility reflect true data availability rather than
-    merely transfer start time -- relevant when a transfer is relayed (e.g. through switches) and so completes
-    later than it started. None preserves prior behavior (recv ops keep their send-side step_idx). This remains
-    necessary alongside flow_path_keys/path-aware channels above -- it fixes a different hazard (an unrelated op
-    sharing a threadblock, across peers, with a switch-relayed recv), not the intra-channel multipath ordering
-    that path-aware channel assignment fixes structurally.
 
     max_channels caps how many channel ids a single edge's path_key partitioning may use under channel_policy=
     MatchTopology (default 32, matching NCCL/MSCCL's MAXCHANNELS hardware limit); see
@@ -592,10 +572,6 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
 
         # Group sent addresses by edge
         grouped_sends = defaultdict(set)
-        # Maps (src, dst, path_key) -> corrected recv .step (see flow_completion_steps
-        # docstring above); only populated in the 3-tuple step.sends branch below, since
-        # that's the only shape teccl_ncclize.py ever produces.
-        group_completion_step = {}
         # (src, dst, path_key) -> per-piece rate, when piece_rate is a per-flow map.
         group_rate = {}
         if len(step.sends[0]) == 5:
@@ -614,14 +590,6 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for addr, src, dst in step.sends:
                 path_key = flow_path_keys.get((step_idx, addr, src, dst)) if flow_path_keys else None
                 grouped_sends[(src, dst, path_key)].add(addr)
-            if flow_completion_steps:
-                for (src, dst, path_key), addrs in grouped_sends.items():
-                    vals = [flow_completion_steps.get((step_idx, addr, src, dst)) for addr in addrs]
-                    vals = [v for v in vals if v is not None]
-                    # max(): if merge_contiguous combined several chunk-ids into one op,
-                    # the op isn't truly ready until the last of its constituents arrives.
-                    if vals:
-                        group_completion_step[(src, dst, path_key)] = max(vals)
             if isinstance(piece_rate, dict):
                 # A merged op emits ONE rate for all cnt of its pieces, so every piece
                 # merged into it must have been paced identically. Assert that rather
@@ -704,11 +672,18 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             send_op.piece_rate = rate
             recv_op.piece_rate = rate
 
-            # Correct the recv op's .step to when dst truly has the data, rather than
-            # when the transfer started, for relayed transfers (see flow_completion_steps
-            # docstring above). send_op.step is left as the true start epoch, which is
-            # already correct for a send.
-            recv_op.step = group_completion_step.get((src, dst, path_key), recv_op.step)
+            # send_op.step and recv_op.step are DELIBERATELY EQUAL (both step_idx). Threadblocks
+            # are one per (gpu, direction, peer, channel) and their ops are sorted by .step, so
+            # equal steps make the two ends of a connection order their operations identically:
+            # ops_by_channel receives [send_op, recv_op] together per op_set, so the sender's and
+            # the receiver's threadblocks see the same op_sets in the same sequence, and a stable
+            # sort on equal keys preserves it -- ties included. That is the invariant the runtime
+            # requires of a (peer, channel) FIFO.
+            #
+            # The recv's .step used to be advanced to its true completion epoch, to stop a
+            # switch-relayed recv from stalling an unrelated send packed into the same
+            # threadblock. Threadblocks are no longer packed (see below), so there is no unrelated
+            # send to stall, and advancing it would only reintroduce the ordering mismatch.
 
             # The flow id is a bijection with the physical route (src -> switches
             # -> dst), keyed by (src, dst, path_key): every send/recv on that
@@ -829,38 +804,44 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                       f'channel_policy={channel_policy} -- they will be forced into the same '
                       f'threadblock, losing the intended parallelism between switch paths.')
 
-    # Group by which operations need to be in the same threadblock
+    # Group by which operations need to be in the same threadblock, then give each group its OWN
+    # threadblock: one per (gpu, direction, peer, channel).
+    #
+    # That quadruple is exactly an MSCCL connection -- a connection is scoped to (channelId, peer)
+    # and each one is an independent FIFO with its own step counter (mscclSetupConnections in
+    # msccl_setup.cc) -- so a threadblock now serializes precisely the set of operations that the
+    # runtime already serializes, and nothing else.
+    #
+    # Threadblocks used to be PACKED: several groups shared one threadblock whenever their peers
+    # and steps did not collide, minimizing threadblock count. That packing is what made
+    # flow_completion_steps necessary, because it put unrelated operations -- a send to one peer
+    # and a switch-relayed recv from another -- into one step-ordered list, where the recv could
+    # stall the send behind it. Correcting the recv's .step to its true completion epoch fixed that
+    # stall, but at the cost of ordering recvs by ARRIVAL while sends stayed ordered by DEPARTURE,
+    # which breaks the invariant the runtime actually requires: for one (peer, channel) the two
+    # ends must agree on order, or the FIFO pairs a send with the wrong recv. That is silent data
+    # corruption, not a stall. Measured before this change: 3 of the 32 example schedules emitted
+    # a mismatched pairing, one of them on every single (peer, channel) group it had.
+    #
+    # Splitting removes the cause instead of compensating for it: with no mixed threadblock there
+    # is no unrelated operation to stall, so no completion correction is needed, and send and recv
+    # keep the same .step and therefore the same order (see the sort below). The cost is more
+    # threadblocks -- measured +64% on the hetero allgather, 107 -> 176, max 20 per GPU -- with an
+    # unchanged step count, since the operations themselves are the same ones.
     tb_groups = defaultdict(list)
     for chan, chan_ops in ops_by_channel.items():
         for op in chan_ops:
             tb_groups[(op.gpu, op.is_send, op.peer, chan)].append(op)
 
     tbs_by_gpu_chan = defaultdict(lambda: defaultdict(list))
-    # For each group find or create a threadblock to add them to
-    for key, grp in tb_groups.items():
-        rank, is_send, peer, chan = key
-        make_none = False
-        tbs = tbs_by_gpu_chan[rank][chan]
-        for tb in tbs:
-            tb_peer = tb.send if is_send else tb.recv
-            # An existing threadblock can be reused if:
-            # - Either the relevant peer is not set yet or the peer is the same
-            # - No operations already in the threadblock execute in the same step
-            if tb_peer == -1 or tb_peer == peer:
-                if all(not any(op1.step == op2.step for op2 in grp) for op1 in tb.steps):
-                    break
-        else:
-            # No existing threadblock was suitble, so create a new one
-            tb = _Threadblock(chan)
-            tbs.append(tb)
-        # Ensure the peer is set correctly
+    for (rank, is_send, peer, chan), grp in tb_groups.items():
+        tb = _Threadblock(chan)
         if is_send:
-            assert tb.send == -1 or tb.send == peer
             tb.send = peer
         else:
-            assert tb.recv == -1 or tb.recv == peer
             tb.recv = peer
         tb.steps.extend(grp)
+        tbs_by_gpu_chan[rank][chan].append(tb)
 
     # Sort threadblocks in each GPU by peers and then the channel
     # This is important as in NCCL threadblocks using the same NVLink concurrently should be close together
@@ -994,14 +975,16 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                     op_elem.set('cnt', str(op.cnt))
                 assert len(op.depends) <= 1
                 if len(op.depends) == 1:
-                    if make_none and op.depends[0].block_rbid is None:
-                        op_elem.set('depid', '-1')
-                    else:
-                        op_elem.set('depid', str(op.depends[0].block_rbid))
-                    if make_none and op.depends[0].idx is None:
-                        op_elem.set('deps', '-1')
-                    else:
-                        op_elem.set('deps', str(op.depends[0].idx))
+                    # These were previously guarded by a `make_none` flag that was only ever
+                    # assigned False, so the guards were unreachable and the values below were
+                    # always emitted. Assert instead of silently writing depid="None", which the
+                    # runtime would parse as garbage.
+                    dep = op.depends[0]
+                    assert dep.block_rbid is not None and dep.idx is not None, (
+                        f'dependency of {op.op_type} on gpu {op.gpu} was never assigned a '
+                        f'threadblock/index: rbid={dep.block_rbid} idx={dep.idx}')
+                    op_elem.set('depid', str(dep.block_rbid))
+                    op_elem.set('deps', str(dep.idx))
                 elif old_format:
                     op_elem.set('depid', '-1')
                     op_elem.set('deps', '-1')

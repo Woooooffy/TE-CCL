@@ -91,8 +91,7 @@ def parse_flows(schedule):
     assuming any fixed offset.
 
     Returns (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
-    switch_rank_map, flow_completion_steps, sorted_epochs,
-    flow_completion_epochs):
+    switch_rank_map, sorted_epochs, flow_completion_epochs):
     - steps_in_order is a list of lists of (global_chunk_id, src, dst)
       0-indexed tuples, one list per non-empty epoch, in increasing epoch
       order.
@@ -101,10 +100,14 @@ def parse_flows(schedule):
       true epoch axis -- including gaps where a whole epoch is globally empty
       and thus dropped from steps_in_order.
     - flow_completion_epochs maps (step_idx, global_chunk_id, src, dst) -> the
-      raw epoch by which dst actually holds the chunk, the raw-epoch counterpart
-      of flow_completion_steps. Used to place a recv at its arrival epoch in the
-      per-GPU debug view (a relayed recv can land later than, and even after the
-      last, flow-start epoch).
+      raw epoch by which dst actually holds the chunk. For a flow relayed through
+      switches, "in epoch N" in a 7-Flows line is only the *start* epoch (see
+      chunk_flow_path_to_string() in teccl/solvers/allgather.py), so a relayed
+      flow's true completion can be several epochs later; it is read from the
+      "8-Chunk paths" section's "met by epoch E" rather than assumed to be one
+      epoch per hop, which only holds at zero link latency. Used to place a recv
+      at its arrival epoch in the per-GPU debug view -- diagnostics only, it does
+      not influence the emitted operation order.
     - flow_path_keys maps (step_idx, global_chunk_id, src, dst) -> path key,
       where step_idx is the index into steps_in_order (not the raw epoch
       number) and the path key is whatever _parse_switch_path() returned for
@@ -113,33 +116,6 @@ def parse_flows(schedule):
       into a single send op.
     - switch_rank_map maps each raw switch id appearing in any path key to a
       dense 0-indexed id, the same way rank_map does for GPU ids.
-    - flow_completion_steps maps (step_idx, global_chunk_id, src, dst) -> a
-      dense step-domain value (comparable to step_idx) representing the true
-      epoch by which dst actually has the data, as opposed to step_idx which
-      only reflects the epoch the transfer started. For a flow relayed
-      through switches, "in epoch N" in a 7-Flows line is only the *start*
-      epoch (see chunk_flow_path_to_string() in teccl/solvers/allgather.py);
-      each switch hop costs at least one additional epoch of store-and-
-      forward latency, so a relayed flow's true completion can be several
-      epochs later than step_idx implies. That true completion is recorded
-      separately, per (destination, chunk, origin) demand, in the schedule's
-      "8-Chunk paths" section as "met by epoch E". This is derived from that
-      section rather than assumed to be "1 epoch per hop", since that only
-      holds when the topology's link-latency parameters are zero.
-
-      Known limitation: this value only corrects ordering *across* threadblock
-      groups (e.g. an unrelated send no longer waits behind a switch-relayed
-      recv it shares a threadblock with). It does not, and cannot, reorder
-      multiple recvs that already share one (gpu, peer, channel) -- switches
-      and per-flow paths are invisible to TeCCLTopology (see its docstring),
-      so two flows collapsed onto the same virtual src-dst edge keep whatever
-      relative order their raw start epochs gave them, regardless of whether
-      one of them actually completes later than the other because it took a
-      longer/more congested switch path. That's a pre-existing gap in this
-      topology abstraction, not something introduced or fixable by this
-      value -- properly addressing it would require ncclize to reason about
-      per-flow path/congestion information when deciding intra-channel order,
-      which it does not do today.
     """
     parsed = []
     raw_ids = set()
@@ -187,13 +163,11 @@ def parse_flows(schedule):
     # demand entry for the same chunk (it needs the chunk for itself too),
     # so "last segment of every demand" covers every hop appearing in
     # 7-Flows, regardless of relay-chain length.
-    # flow_completion_epochs mirrors flow_completion_steps but keeps the *raw*
-    # completion epoch (not the dense step-domain value). It lets the per-GPU
+    # flow_completion_epochs keeps the raw completion epoch. It lets the per-GPU
     # debug view place each recv at the epoch the chunk actually *arrives*,
     # rather than the epoch its flow started -- a switch-relayed recv can land
-    # several epochs after it was sent, and raw completion epochs (unlike the
-    # bisected dense value) can even exceed the last flow-start epoch.
-    flow_completion_steps = {}
+    # several epochs after it was sent, and can even exceed the last flow-start
+    # epoch.
     flow_completion_epochs = {}
     for demand_key, path_segments in schedule['8-Chunk paths'].items():
         dm = DEMAND_RE.match(demand_key)
@@ -224,17 +198,12 @@ def parse_flows(schedule):
 
         chunk_id = rank_map[origin_raw] * num_subchunks + subchunk
         step_idx = epoch_to_step_idx[hop_epoch]
-        completion_step = bisect.bisect_left(sorted_epochs, completion_epoch)
-        flow_completion_steps[
-            (step_idx, chunk_id, rank_map[hop_src_raw], rank_map[hop_dst_raw])
-        ] = completion_step
         flow_completion_epochs[
             (step_idx, chunk_id, rank_map[hop_src_raw], rank_map[hop_dst_raw])
         ] = completion_epoch
 
     return (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
-            switch_rank_map, flow_completion_steps, sorted_epochs,
-            flow_completion_epochs)
+            switch_rank_map, sorted_epochs, flow_completion_epochs)
 
 
 def _segment_volume(match):
@@ -548,14 +517,12 @@ def parse_flows_lp(schedule, collective_name):
     epoch_to_step_idx = {epoch: idx for idx, epoch in enumerate(sorted_epochs)}
 
     flow_path_keys = {}
-    flow_completion_steps = {}
     flow_completion_epochs = {}
     flow_rates = {}
     for hop_epoch, chunk_id, src, dst, path_key, completion_epoch, rate in raw_flows:
         step_idx = epoch_to_step_idx[hop_epoch]
         key = (step_idx, chunk_id, src, dst)
         flow_path_keys[key] = path_key
-        flow_completion_steps[key] = bisect.bisect_left(sorted_epochs, completion_epoch)
         flow_completion_epochs[key] = completion_epoch
         if rate is not None:
             prev = flow_rates.setdefault(key, rate)
@@ -565,8 +532,7 @@ def parse_flows_lp(schedule, collective_name):
                     f'two different rates ({prev} and {rate}).')
 
     return (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-            flow_completion_steps, sorted_epochs, flow_completion_epochs,
-            flow_rates, root_dense)
+            sorted_epochs, flow_completion_epochs, flow_rates, root_dense)
 
 
 def build_switch_routes(flow_manifest, switch_rank_map):
@@ -689,8 +655,8 @@ def build_algorithm(schedule, name='teccl'):
 
     if lp_format:
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-         flow_completion_steps, sorted_epochs, flow_completion_epochs,
-         flow_rates, root_dense) = parse_flows_lp(schedule, collective_name)
+         sorted_epochs, flow_completion_epochs, flow_rates,
+         root_dense) = parse_flows_lp(schedule, collective_name)
         collective = _build_collective(collective_name, num_nodes, root_dense)
     else:
         # parse_flows labels chunks src-major (rank_map[origin] * S + subchunk), so
@@ -702,8 +668,7 @@ def build_algorithm(schedule, name='teccl'):
                 "MILP-format schedules use src-major chunk labels, which cannot "
                 "represent alltoall's destination-major chunk identity.")
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-         flow_completion_steps, sorted_epochs, flow_completion_epochs) = \
-            parse_flows(schedule)
+         sorted_epochs, flow_completion_epochs) = parse_flows(schedule)
         flow_rates = {}
         collective = _build_collective(collective_name, num_nodes,
                                        schedule.get('0-Root'))
@@ -754,8 +719,7 @@ def build_algorithm(schedule, name='teccl'):
         else:
             piece_rate = chunk_size / epoch_duration
 
-    return (algo, flow_path_keys, switch_rank_map, flow_completion_steps,
-            gpu_epoch_view, piece_rate)
+    return (algo, flow_path_keys, switch_rank_map, gpu_epoch_view, piece_rate)
 
 
 def enforce_send_epoch_ordering(xml_str, send_epoch_manifest):
@@ -863,7 +827,7 @@ def main():
     with open(args.schedule) as f:
         schedule = json.load(f)
 
-    (algo, flow_path_keys, switch_rank_map, flow_completion_steps,
+    (algo, flow_path_keys, switch_rank_map,
      gpu_epoch_view, piece_rate) = build_algorithm(schedule)
 
     # Always run the feasibility check and surface any realizability warnings;
@@ -885,7 +849,6 @@ def main():
         scale_remote=args.scale_remote,
         flow_path_keys=flow_path_keys,
         flow_manifest=flow_manifest,
-        flow_completion_steps=flow_completion_steps,
         piece_rate=piece_rate,
         send_epoch_manifest=send_epoch_manifest,
         logging=True,
