@@ -149,12 +149,30 @@ def test_hostB_forced_relay():
                 # target set is all gpus of whichever cell this ingress belongs to
                 assert dem.dst_gpus in (tuple(A_gpus), tuple(C_gpus)), dem
 
-    # self_distribution for B's internal allgather (source & dest both in B).
+    # self_distribution for B's internal allgather (source & dest both in B), MINUS anything the
+    # egress_stage already delivers: 5/6/7 each relay to gateway 4, so their internal fan-out no
+    # longer names 4 -- one physical send cannot be owed to two demands. Gateway 4 stages nothing
+    # (its data is native to the uplink), so its own fan-out still covers all of 5/6/7.
+    staged = {(d.identity, d.src_gpu): set(d.dst_gpus) for d in egress}
     selfd = [d for d in res.intra_demands if d.kind == "self_distribution"]
     assert {d.identity for d in selfd} == {(s, 0) for s in B_gpus}, selfd
     for d in selfd:
-        assert d.cell == B and d.dst_gpus == tuple(g for g in B_gpus if g != d.src_gpu), d
-    print("  [2] Host B forced-relay oracle (3 coalesced egress relays, native exempt) OK")
+        covered = staged.get((d.identity, d.src_gpu), set())
+        want = tuple(g for g in B_gpus if g != d.src_gpu and g not in covered)
+        assert d.cell == B and d.dst_gpus == want, (d, want)
+    assert {d.src_gpu: d.dst_gpus for d in selfd} == {
+        4: (5, 6, 7), 5: (6, 7), 6: (5, 7), 7: (5, 6)}, {d.src_gpu: d.dst_gpus for d in selfd}
+
+    # The three demand kinds must be DISJOINT: no (identity, src, dst) delivery is asked twice.
+    seen = defaultdict(set)
+    for d in res.intra_demands:
+        for t in d.dst_gpus:
+            if t != d.src_gpu:
+                seen[(d.identity, d.src_gpu, t)].add(d.kind)
+    dup = {k: v for k, v in seen.items() if len(v) > 1}
+    assert not dup, f"a delivery is claimed by more than one demand kind: {dict(list(dup.items())[:4])}"
+    print("  [2] Host B forced-relay oracle (3 coalesced egress relays, native exempt; "
+          "self_distribution disjoint from staging) OK")
 
 
 # ------------------------------------------------------------------------------------------

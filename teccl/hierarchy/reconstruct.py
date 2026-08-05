@@ -700,6 +700,7 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
     result.subdivision = q
     _coalesce_egress(result)
     _emit_self_distribution(result, fine_demand, mapping, q)
+    _dedup_deliveries(result)
     _assert_rate_within_capacity(result, fine_topology, epoch_duration)
     return result
 
@@ -741,6 +742,50 @@ def _coalesce_egress(result: IdentityResolution) -> None:
                 volume=max(prev.volume, dem.volume),
                 deadline_epoch=min(prev.deadline_epoch, dem.deadline_epoch))
     result.intra_demands = list(merged.values()) + others
+
+
+def _dedup_deliveries(result: IdentityResolution) -> int:
+    """Make the demand kinds DISJOINT: no (identity, src, dst) delivery is asked for twice.
+
+    An egress_stage relay native->gateway and a self_distribution native->wanters both name the
+    gateway when the gateway also wants the data -- which for AllGather is every gateway, since
+    every GPU wants every chunk. They are one physical send, so the requirement belongs to exactly
+    one demand, and it belongs to the egress_stage: that one is HARD (a network send waits on it)
+    and it must exist regardless, while the self_distribution's copy is redundant.
+
+    Doing this HERE rather than in the scheduler is what makes it reliable. intra_solve does dedup
+    overlapping deliveries, but only on its DIRECT path (_add_direct); a fan-out lowered to a
+    binomial tree bypasses that table entirely, so the redundancy survived exactly when the density
+    test chose a tree -- 3 of 26 overlaps in the hetero allgather, delivering the same bytes twice
+    over one NVLink edge. Removing the overlap from the demand set makes the outcome independent of
+    which lowering branch is picked, and leaves the scheduler's own dedup as a safety net rather
+    than a load-bearing mechanism.
+
+    Returns the number of redundant targets removed. Note the delivery requirement itself is NOT
+    lost: the gateway still appears in the egress_stage's dst_gpus, so delivery-coverage checks
+    still demand it.
+    """
+    staged: Dict[Tuple[Identity, int], set] = defaultdict(set)
+    for d in result.intra_demands:
+        if d.kind == "egress_stage":
+            staged[(d.identity, d.src_gpu)].update(d.dst_gpus)
+    if not staged:
+        return 0
+
+    kept: List[IntraCellDemand] = []
+    removed = 0
+    for d in result.intra_demands:
+        covered = staged.get((d.identity, d.src_gpu)) if d.kind != "egress_stage" else None
+        if not covered:
+            kept.append(d)
+            continue
+        targets = tuple(t for t in d.dst_gpus if t not in covered)
+        removed += len(d.dst_gpus) - len(targets)
+        if targets:
+            kept.append(replace(d, dst_gpus=targets))
+        # else: every target was already staged, so the demand is entirely redundant -- drop it.
+    result.intra_demands = kept
+    return removed
 
 
 def _emit_self_distribution(result: IdentityResolution, fine_demand,
