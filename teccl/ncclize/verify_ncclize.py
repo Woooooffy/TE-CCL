@@ -26,7 +26,7 @@ import sys
 from lxml import etree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from teccl_ncclize import build_algorithm, enforce_send_epoch_ordering
+from teccl_ncclize import build_algorithm, is_lp_format
 import json
 
 
@@ -39,11 +39,15 @@ def generate_xml(schedule_path):
                          warn_epoch_ordering_violations)
 
     (algo, flow_path_keys, switch_rank_map,
-     gpu_epoch_view, piece_rate) = build_algorithm(schedule)
-    warn_epoch_ordering_violations(check_epoch_ordering_feasibility(gpu_epoch_view))
+     gpu_epoch_view, piece_rate, pacing_gates) = build_algorithm(schedule)
+    # The flat-axis feasibility check only applies to single-level schedules; a hierarchical
+    # (LP-format) schedule interleaves per-level epoch grids, so its network-layer pacing is
+    # checked per-layer in the stitch instead (see teccl_ncclize.main).
+    if not is_lp_format(schedule):
+        warn_epoch_ordering_violations(check_epoch_ordering_feasibility(gpu_epoch_view))
     flow_manifest = []
-    send_epoch_manifest = []
-    xml = ncclize(
+    # Send pacing is realized inside ncclize from the pacing_gates manifest; no XML post-pass.
+    return ncclize(
         algo,
         channel_policy=ChannelPolicy.MatchTopology,
         old_format=True,
@@ -53,10 +57,9 @@ def generate_xml(schedule_path):
         flow_path_keys=flow_path_keys,
         flow_manifest=flow_manifest,
         piece_rate=piece_rate,
-        send_epoch_manifest=send_epoch_manifest,
+        pacing_gates=pacing_gates,
         logging=False,
     )
-    return enforce_send_epoch_ordering(xml, send_epoch_manifest)
 
 
 def check_depid_deps(root):

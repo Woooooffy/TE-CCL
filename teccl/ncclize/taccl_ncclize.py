@@ -400,7 +400,42 @@ class ChannelPolicy(Enum):
     def __str__(self):
         return self.value
 
-def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, piece_rate=None, send_epoch_manifest=None, max_channels=32):
+
+def _realize_pacing_gates(gpus, pacing_gates):
+    """Wire the caller's send-pacing gate manifest into ``op.depends``.
+
+    ``pacing_gates`` is a list of ``(consumer_key, producer_key)`` edges, each key a
+    ``(step, src, dst, path_key)`` send-op identity, computed by teccl_ncclize from per-send
+    link-occupancy windows (finish-before-start; see ``_finish_before_start_gates`` there). The
+    pacing POLICY -- which send waits on which, from rate and topology -- lives with the level that
+    produced the schedule; this function only REALIZES it, because only here do ops have the
+    threadblock ids and post-nop-expansion step indices a ``depid``/``deps`` edge needs.
+
+    A key can map to several ops when ``make_intervals`` splits one epoch's transfer into
+    non-contiguous offset runs; those share a threadblock and run in step order, so gating a
+    consumer on the producer key's LAST op (all its bytes done) suffices, and every consumer op of
+    the key inherits the gate. The gate is appended as an extra dependency; the nop-expansion pass
+    below realizes any dependency past the first and drops same-threadblock ones (threadblock step
+    order already serializes those). Every edge points to a strictly-earlier-finishing send, so the
+    added edges cannot form a cycle. Requires ``op.block_rbid`` to be assigned already.
+    """
+    key_to_ops = defaultdict(list)
+    for gpu in gpus.values():
+        for tb in gpu.threadblocks:
+            for op in tb.steps:
+                if op.is_send:
+                    key_to_ops[(op.step, op.gpu, op.peer, op.path_key)].append(op)
+    for consumer_key, producer_key in pacing_gates:
+        producers = key_to_ops.get(producer_key)
+        consumers = key_to_ops.get(consumer_key)
+        if not producers or not consumers:
+            continue
+        producer = producers[-1]  # last in threadblock order: its completion covers the key
+        for op in consumers:
+            op.depends = list(op.depends) + [producer]
+
+
+def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, piece_rate=None, send_epoch_manifest=None, pacing_gates=None, max_channels=32):
     '''
     Generate the XML format used by the NCCL SCCL backend.
 
@@ -863,6 +898,11 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for op in tb.steps:
                 op.block_rbid = tb.rbid
 
+    # Realize the caller's send-pacing gates (finish-before-start edges) into op.depends BEFORE nop
+    # expansion, so each added gate becomes an ordinary extra dependency.
+    if pacing_gates:
+        _realize_pacing_gates(gpus, pacing_gates)
+
     for rank, gpu in gpus.items():
         for tb in gpu.threadblocks:
             tb.steps.sort(key=lambda op: op.step)
@@ -1000,9 +1040,10 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                 # for a deliberately unpaced flow, which emits no attribute at all.
                 if op.piece_rate is not None:
                     op_elem.set('rate', str(op.cnt * op.piece_rate))
-                # Record each send op's epoch, keyed by its final XML location
-                # (gpu, tb, s). Epoch ordering can no longer read the epoch off
-                # the flow id (one route-based id spans epochs), so it uses this.
+                # Optional per-send epoch record, keyed by final XML location (gpu, tb, s).
+                # Epoch ordering is now enforced in-band by _realize_pacing_gates (extra op.depends
+                # before nop expansion), so this manifest no longer drives it; it is retained only
+                # as an informational hook for callers that want a per-op epoch map.
                 if send_epoch_manifest is not None and op.is_send:
                     send_epoch_manifest.append(
                         {'gpu': rank, 'tb': tb.rbid, 's': op.idx, 'epoch': op.step})

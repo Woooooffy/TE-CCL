@@ -299,6 +299,46 @@ def _compute_subdivision(schedule):
     return M
 
 
+def _finish_before_start_gates(paced_sends):
+    """Derive send-pacing gate edges from per-send link-occupancy windows.
+
+    `paced_sends` maps a send op key (step_idx, src, dst, path_key) to its
+    (start_epoch, finish_epoch) window in FINE epochs, where finish = start +
+    volume/rate (how long the send occupies its outgoing link). Gate each send S on
+    the LATEST-finishing paced send P *from the same source GPU* whose link-occupancy
+    finishes at or before S starts -- i.e. the send that frees the uplink exactly when
+    S is due. That predecessor's rate-paced completion pins S to its epoch (P1/P2);
+    S needs no gate if nothing finishes in time (an early-firing residual, the
+    deferred-P3 case the stitch reports).
+
+    Deriving the edge from finish-vs-start rather than step ORDER is what makes it
+    correct for two cases a plain sort gets wrong: two sends in the SAME epoch never
+    gate each other (a same-epoch P has finish > start_S, so it is not a candidate),
+    and a multi-epoch send does not serialize a later send that runs alongside its
+    tail on freed capacity (that P is excluded; the send that truly frees the link is
+    picked). Grouping is by source GPU, valid while each GPU has a single uplink;
+    per-physical-link grouping (multi-uplink) is the topology-aware follow-up.
+
+    Returns a list of (consumer_key, producer_key) edges.
+    """
+    from collections import defaultdict as _dd
+    by_gpu = _dd(list)
+    for key, (start, finish) in paced_sends.items():
+        by_gpu[key[1]].append((start, finish, key))
+    edges = []
+    for sends in by_gpu.values():
+        for cstart, _cfin, ckey in sends:
+            best = None  # (finish, key) of the latest-finishing eligible predecessor
+            for pstart, pfin, pkey in sends:
+                if pkey == ckey:
+                    continue
+                if pfin <= cstart and (best is None or pfin > best[0]):
+                    best = (pfin, pkey)
+            if best is not None:
+                edges.append((ckey, best[1]))
+    return edges
+
+
 def parse_flows_lp(schedule, collective_name):
     """Parse an LP schedule (any collective) the way parse_flows() does for the
     allgather MILP, but generate sends from the nested "8-Chunk paths" so each
@@ -519,6 +559,17 @@ def parse_flows_lp(schedule, collective_name):
     flow_path_keys = {}
     flow_completion_epochs = {}
     flow_rates = {}
+    # Per-send link-occupancy window, keyed at OP granularity (one send op per
+    # (step, src, dst, path_key); its many chunk pieces share it). start is the
+    # send's fine start epoch; finish = start + volume/rate is when the SENDER is
+    # done pushing and the uplink frees -- deliberately NOT completion_epoch, which
+    # is the data's ARRIVAL (later, includes relay latency) and is the wrong clock
+    # for uplink pacing. Under the level's fill-one-epoch rate rule the duration is
+    # exactly m; a sub-rate (multi-epoch) send yields a proportionally larger finish,
+    # which is what makes the gate robust to that case.
+    chunk_size = schedule.get('9-Chunk_Size', 1.0)
+    delta = schedule['1-Epoch_Duration']
+    paced_sends = {}   # (step_idx, src, dst, path_key) -> (start_fine, finish_fine)
     for hop_epoch, chunk_id, src, dst, path_key, completion_epoch, rate in raw_flows:
         step_idx = epoch_to_step_idx[hop_epoch]
         key = (step_idx, chunk_id, src, dst)
@@ -530,9 +581,14 @@ def parse_flows_lp(schedule, collective_name):
                 raise ValueError(
                     f'Flow {src}->{dst} chunk {chunk_id} at step {step_idx} carries '
                     f'two different rates ({prev} and {rate}).')
+            duration = max(1, round(chunk_size / (M * rate * delta)))
+            paced_sends[(step_idx, src, dst, path_key)] = (hop_epoch, hop_epoch + duration)
+
+    pacing_gates = _finish_before_start_gates(paced_sends)
 
     return (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-            sorted_epochs, flow_completion_epochs, flow_rates, root_dense)
+            sorted_epochs, flow_completion_epochs, flow_rates, root_dense,
+            pacing_gates)
 
 
 def build_switch_routes(flow_manifest, switch_rank_map):
@@ -655,8 +711,8 @@ def build_algorithm(schedule, name='teccl'):
 
     if lp_format:
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-         sorted_epochs, flow_completion_epochs, flow_rates,
-         root_dense) = parse_flows_lp(schedule, collective_name)
+         sorted_epochs, flow_completion_epochs, flow_rates, root_dense,
+         pacing_gates) = parse_flows_lp(schedule, collective_name)
         collective = _build_collective(collective_name, num_nodes, root_dense)
     else:
         # parse_flows labels chunks src-major (rank_map[origin] * S + subchunk), so
@@ -672,6 +728,16 @@ def build_algorithm(schedule, name='teccl'):
         flow_rates = {}
         collective = _build_collective(collective_name, num_nodes,
                                        schedule.get('0-Root'))
+        # Flat single-level schedule: every send occupies its epoch for exactly one
+        # epoch, so the link-occupancy finish is start+1 for all of them. Same
+        # finish-before-start rule as the LP path -> gate the first send of each epoch
+        # on the previous epoch's send, never same-epoch sends.
+        flat_sends = {}
+        for step_idx, sends in enumerate(steps_in_order):
+            start = sorted_epochs[step_idx]
+            for chunk_id, src, dst in sends:
+                flat_sends[(step_idx, src, dst, None)] = (start, start + 1)
+        pacing_gates = _finish_before_start_gates(flat_sends)
 
     gpu_epoch_view = build_gpu_epoch_view(
         steps_in_order, sorted_epochs, num_nodes, flow_completion_epochs)
@@ -719,86 +785,8 @@ def build_algorithm(schedule, name='teccl'):
         else:
             piece_rate = chunk_size / epoch_duration
 
-    return (algo, flow_path_keys, switch_rank_map, gpu_epoch_view, piece_rate)
-
-
-def enforce_send_epoch_ordering(xml_str, send_epoch_manifest):
-    """Post-process MSCCL XML to serialize same-GPU sends by epoch.
-
-    TACCL's ncclize() only generates depid/deps links for data-flow reasons:
-    a send depends on the recv that previously wrote the chunk into the GPU's
-    buffer. Sends of a GPU's *own* chunk (initialised by <copy>, never tracked
-    in the writers table) therefore get depid='-1', so all such sends to
-    different peers start simultaneously regardless of epoch.
-
-    In TE-CCL's fat-tree model every GPU shares a single uplink to its leaf
-    switch across all epochs. Sending in multiple epochs simultaneously
-    overloads that uplink. This function adds the missing deps so that an
-    epoch-N send waits for the epoch-(N-1) send on the same GPU to complete.
-
-    Only sends with depid=='-1' are modified. Relay sends already carry a
-    data-flow dep from ncclize (on the recv that wrote the chunk being
-    forwarded) and are implicitly epoch-ordered through that chain.
-
-    depid/deps semantics (msccl_interpreter.h / taccl_ncclize.py):
-      depid  = block_rbid of the dependency op (TB id on the *same* GPU)
-      deps   = op.idx of the dependency op (= 's' attribute in the XML)
-    hasdep=1 on the target op enables the flag write in the MSCCL runtime.
-
-    send_epoch_manifest is ncclize()'s list of per-send-op records
-    {'gpu', 'tb', 's', 'epoch'}, populated at XML emission. The epoch is looked
-    up by an op's final (gpu, tb, s) location rather than by its mscclflowid,
-    because a flow id is now a bijection with a route and so spans multiple
-    epochs (see the flow_id assignment in ncclize()).
-    """
-    import xml.etree.ElementTree as ET
-
-    # (gpu, tb, s) -> epoch index (= index into steps_in_order)
-    epoch_by_op = {(r['gpu'], r['tb'], r['s']): r['epoch']
-                   for r in send_epoch_manifest}
-
-    root = ET.fromstring(xml_str)
-
-    for gpu_elem in root.findall('gpu'):
-        gpu_id = int(gpu_elem.get('id'))
-        # Collect every send op: (epoch, tb_rbid, s_idx, step_elem)
-        sends = []
-        for tb_elem in gpu_elem.findall('tb'):
-            tb_rbid = int(tb_elem.get('id'))
-            for step_elem in tb_elem.findall('step'):
-                if step_elem.get('type') != 's':
-                    continue
-                s_idx = int(step_elem.get('s'))
-                epoch = epoch_by_op.get((gpu_id, tb_rbid, s_idx))
-                if epoch is None:
-                    continue
-                sends.append((epoch, tb_rbid, s_idx, step_elem))
-
-        if len(sends) <= 1:
-            continue
-
-        # Stable sort by (epoch, s_idx) gives a consistent serialisation order.
-        sends.sort(key=lambda x: (x[0], x[2]))
-
-        for i in range(1, len(sends)):
-            curr_epoch, curr_tb, _, curr_elem = sends[i]
-            prev_epoch, prev_tb, prev_s, prev_elem = sends[i - 1]
-
-            if curr_epoch <= prev_epoch:
-                continue  # same epoch: concurrent sends on different links are fine
-            if curr_tb == prev_tb:
-                continue  # same TB: sequential step ordering already handles this
-            if curr_elem.get('depid') != '-1':
-                continue  # ncclize already added a data-flow dep (relay send)
-
-            curr_elem.set('depid', str(prev_tb))
-            curr_elem.set('deps', str(prev_s))
-            # Mark the dep target so the runtime writes its completion flag.
-            if prev_elem.get('hasdep') == '0':
-                prev_elem.set('hasdep', '1')
-
-    ET.indent(root, space='  ')
-    return ET.tostring(root, encoding='unicode')
+    return (algo, flow_path_keys, switch_rank_map, gpu_epoch_view, piece_rate,
+            pacing_gates)
 
 
 def main():
@@ -828,17 +816,26 @@ def main():
         schedule = json.load(f)
 
     (algo, flow_path_keys, switch_rank_map,
-     gpu_epoch_view, piece_rate) = build_algorithm(schedule)
+     gpu_epoch_view, piece_rate, pacing_gates) = build_algorithm(schedule)
 
-    # Always run the feasibility check and surface any realizability warnings;
-    # writing the human-readable dump is independent and opt-in.
-    violations = check_epoch_ordering_feasibility(gpu_epoch_view)
-    warn_epoch_ordering_violations(violations)
+    # Send pacing is enforced INSIDE ncclize by realizing the pacing_gates manifest (per-flow
+    # finish-before-start edges derived here in teccl_ncclize), so there is no XML post-pass.
+    #
+    # The flat-axis feasibility check only makes sense for a single-level (flat) schedule, where
+    # "the preceding epoch has a send" genuinely means "the send is paced to its epoch". A
+    # hierarchical (LP-format) schedule interleaves levels with different epoch lengths on one fine
+    # axis -- a coarse network send legitimately sits m fine epochs after the previous one -- so
+    # this check would false-positive on that intended sparsity. The network layer's realizability
+    # is instead reported per-layer by the stitch (teccl.hierarchy.stitch.check_network_pacing),
+    # in coarse-epoch units, at solve time. So run the flat check only for the flat format.
+    if is_lp_format(schedule):
+        violations = None
+    else:
+        violations = check_epoch_ordering_feasibility(gpu_epoch_view)
+        warn_epoch_ordering_violations(violations)
 
-    # flow_manifest drives switch routing (one entry per route); the per-op
-    # send_epoch_manifest drives epoch ordering.
+    # flow_manifest drives switch routing (one entry per route).
     flow_manifest = []
-    send_epoch_manifest = []
 
     xml = ncclize(
         algo,
@@ -850,11 +847,9 @@ def main():
         flow_path_keys=flow_path_keys,
         flow_manifest=flow_manifest,
         piece_rate=piece_rate,
-        send_epoch_manifest=send_epoch_manifest,
+        pacing_gates=pacing_gates,
         logging=True,
     )
-
-    xml = enforce_send_epoch_ordering(xml, send_epoch_manifest)
 
     if args.no_rate:
         # Strip the per-op rate attribute from the already-serialized XML so the

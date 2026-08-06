@@ -413,11 +413,49 @@ def assert_link_capacity(records: Sequence[DeliveryRecord], fine_topology: Topol
             f"[(src, dst, epoch, GB, capacity)]: {over[:6]}")
 
 
+def check_network_pacing(res: IdentityResolution) -> List[Tuple[int, int]]:
+    """Per-GPU (network-layer) realizability: which paced sends still fire early.
+
+    This is the network layer's own pacing check, run in its own units (coarse epochs) -- the
+    counterpart to the flat check in teccl.ncclize.helpers, which cannot reason correctly about a
+    flattened multi-level fine axis. The intra layer needs no such check: its NVLink hops are
+    deliberately unpaced and follow data dependencies only.
+
+    A network send at coarse epoch k on egress GPU g is held to epoch k by P2 -- a gate on g's send
+    at epoch k-1, which is rate-paced to fill exactly one coarse epoch and so completes right at the
+    boundary. At k=0 it is held by the egress staging it already depends on (P1). If g has NO send
+    at epoch k-1 and k>0, the P2 chain has a gap and nothing pins the send to epoch k: it fires as
+    early as its data dependency allows. Those residuals are returned as (gpu, epoch) pairs; closing
+    them is the deferred P3 fallback (a recv landing in k-1 used as a manufactured clock tick),
+    intentionally not implemented -- revisit only if these fire heavily.
+    """
+    epochs_by_gpu: Dict[int, set] = defaultdict(set)
+    for p in res.pieces:
+        epochs_by_gpu[p.egress_gpu].add(p.send_epoch)
+    residual: List[Tuple[int, int]] = []
+    for gpu, epochs in sorted(epochs_by_gpu.items()):
+        for k in sorted(epochs):
+            if k > 0 and (k - 1) not in epochs:
+                residual.append((gpu, k))
+    return residual
+
+
 def stitch(res: IdentityResolution, intra_flows: Sequence[IntraFlow], fine_topology: Topology,
            fine_demand, coarse_epoch: float, collective: str) -> Tuple[Dict, List[DeliveryRecord]]:
     """Hierarchical solution -> flat schedule dict. Returns (flow_str_info, records)."""
     delta, m = derive_grid(res.scale, fine_topology, coarse_epoch)
     assert_native_ownership(res)
+
+    # Network-layer pacing residuals (paced sends a P2 gap leaves firing early). Reported, not
+    # fatal: the deferred P3 fallback is what closes them.
+    residual = check_network_pacing(res)
+    if residual:
+        print(f"[stitch] network pacing: {len(residual)} paced send(s) fire early -- a same-GPU "
+              f"predecessor at epoch k-1 is missing, so P2 cannot pin them to their coarse epoch "
+              f"(deferred P3 territory) [(gpu, epoch)]: {residual[:8]}")
+    else:
+        print("[stitch] network pacing: every paced send has a same-GPU predecessor at k-1; "
+              "P2 pins them all to their coarse epoch")
 
     # Bands 0..K-1 are pinned to the network sends, so they must fit inside a coarse epoch.
     num_coarse_epochs = max((p.send_epoch for p in res.pieces), default=-1) + 1
