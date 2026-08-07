@@ -15,6 +15,7 @@ import argparse
 import bisect
 import json
 import math
+import os
 import re
 import sys
 from collections import defaultdict
@@ -656,28 +657,42 @@ def build_switch_routes(flow_manifest, switch_rank_map):
 class TeCCLTopology:
     """Minimal topology shim satisfying the interface ncclize()/Algorithm need.
 
-    Link capacities are derived directly from the schedule itself (the max
-    number of times a given src->dst edge is used within any single epoch),
-    rather than reconstructed from TE-CCL's internal NDv2/DGX/etc. link model,
-    so the result is always consistent with whatever schedule is fed in.
+    `links[dst][src]` is built from the schedule -- the max number of times a given src->dst edge
+    is used within any single epoch (counted on the raw per-chunk list, BEFORE make_intervals
+    merges contiguous chunks into one op). Historically that integer did DOUBLE DUTY: the channel
+    allocator round-robins each edge's flows across `link(src,dst)` channels
+    (_allocate_channels_match_topology), AND Algorithm.make_implementation checks it as a bandwidth
+    capacity (bandwidth_constraints -> `util <= bw * rounds`).
 
-    NOTE: `links[dst][src]` does DOUBLE DUTY -- it is both the channel replica count the
-    allocator round-robins over (_allocate_channels_match_topology) AND the bandwidth capacity
-    Algorithm.make_implementation checks each step against (bandwidth_constraints: `util <= bw *
-    rounds`). Because a step is modeled as rounds=1, two concurrent chunks on one edge require
-    the count to be >= 2, so it cannot simply be lowered to the physical link parallelism to
-    reduce channels -- that breaks the bandwidth check. Decoupling the two roles (physical
-    replica count for channels, rate/rounds for bandwidth) is the real fix for the channel
-    over-allocation and is left as follow-up.
+    That coupling both OVER-ALLOCATES channels (the pre-merge concurrency count, not the physical
+    link parallelism) and pins the channel count to the bandwidth demand. But the bandwidth check
+    is TAUTOLOGICAL here: `bw` is set to the max-over-epochs concurrency and `util` is that same
+    concurrency with rounds=1, so `util <= bw*1` holds by construction and catches nothing. The
+    REAL capacity guarantees live in TE-CCL's own rate-based asserts against the real fine topology
+    (reconstruct._assert_rate_within_capacity, stitch.assert_link_capacity), which model the
+    rate-paced runtime the round-based taccl check cannot.
+
+    So in PHYSICAL mode (a real fine Topology is fed in, `physical_replicas=True`) we:
+      * report `link(src,dst) = 1` for each used edge -- the physical point-to-point parallelism
+        (TE-CCL topologies model bandwidth, not multi-rail counts), so channels = one per distinct
+        switch path, no per-chunk multiplier; same-path flows sharing a channel stay correctly
+        ordered (same route => departure order == arrival order), so this is correct, not just
+        smaller; and
+      * emit NO bandwidth_constraints, skipping the tautological self-check (TE-CCL already
+        verified real capacity upstream). This is what lets `link=1` stand without tripping
+        `util <= bw*rounds`.
+    Default (no real topology, e.g. a flat single-level schedule) keeps the schedule-inferred
+    counts and the (harmless, tautological) check, so those paths are byte-for-byte unchanged.
     """
 
-    def __init__(self, name, num_nodes, steps):
+    def __init__(self, name, num_nodes, steps, physical_replicas=False):
         self.name = name
         self._num_nodes = num_nodes
+        self.physical_replicas = physical_replicas
         self.switches = []  # TE-CCL's switch hops are not modeled as separate
                              # topology elements; see note in parse_flows().
 
-        # links[dst][src] = number of channels available on that edge
+        # links[dst][src] = per-epoch concurrency on that edge (used edges are those with > 0).
         self.links = [[0] * num_nodes for _ in range(num_nodes)]
         for sends in steps:
             per_epoch_count = defaultdict(int)
@@ -690,9 +705,18 @@ class TeCCLTopology:
         return self._num_nodes
 
     def link(self, src, dst):
-        return self.links[dst][src]
+        used = self.links[dst][src]
+        if self.physical_replicas:
+            # One physical link per used edge; bandwidth is handled by rate-pacing + TE-CCL's own
+            # capacity asserts, not by this count.
+            return 1 if used > 0 else 0
+        return used
 
     def bandwidth_constraints(self):
+        if self.physical_replicas:
+            # Tautological here and redundant with TE-CCL's rate-based capacity asserts; skipping it
+            # is what lets the physical link count (1) stand instead of the concurrency count.
+            return
         for dst, dst_links in enumerate(self.links):
             for src, lk in enumerate(dst_links):
                 if lk > 0:
@@ -723,7 +747,15 @@ def _build_collective(collective_name, num_nodes, root_dense):
         f"No taccl collective mapping for {collective_name!r}")
 
 
-def build_algorithm(schedule, name='teccl'):
+def build_algorithm(schedule, name='teccl', topology=None):
+    """Build the taccl Algorithm from a TE-CCL schedule.
+
+    `topology` is the real fine Topology, when the caller has it (the hierarchical driver passes
+    the object; the CLI constructs it from --topology). Supplying it switches TeCCLTopology into
+    PHYSICAL mode: one channel replica per used link and no (tautological) taccl bandwidth check --
+    the fix for the channel over-allocation. Omitted (None) keeps the schedule-inferred behaviour
+    every flat single-level schedule relies on.
+    """
     from taccl_algorithm import Algorithm, Step
     from taccl_instance import Instance
     from helpers import build_gpu_epoch_view
@@ -776,7 +808,19 @@ def build_algorithm(schedule, name='teccl'):
     if factor > 1:
         collective = collective.chunk_up(factor)
 
-    topology = TeCCLTopology(name, num_nodes, steps_in_order)
+    if topology is not None:
+        # A real fine topology was supplied: sanity-check it against the schedule, then run
+        # TeCCLTopology in physical mode (one channel per link, no tautological bandwidth check).
+        # The schedule's GPUs are exactly the non-switch nodes of the fine topology; a mismatch
+        # means the wrong --topology was passed, which would silently mis-scale channels.
+        real_gpus = len(topology.capacity) - len(topology.switch_indices)
+        if num_nodes != real_gpus:
+            raise ValueError(
+                f"topology {type(topology).__name__} has {real_gpus} non-switch GPU(s) but the "
+                f"schedule has {num_nodes}; wrong topology for this schedule.")
+        topology = TeCCLTopology(name, num_nodes, steps_in_order, physical_replicas=True)
+    else:
+        topology = TeCCLTopology(name, num_nodes, steps_in_order)
 
     steps = [Step(1, sends) for sends in steps_in_order]
 
@@ -815,10 +859,58 @@ def build_algorithm(schedule, name='teccl'):
             pacing_gates)
 
 
+def load_topology(name, chunk_size=1.0):
+    """Construct a real fine Topology by class name, for --topology.
+
+    The fine topologies are all constructible from just their name + chunk_size (the structure is
+    fixed in the class); chunk_size does not affect the link structure the channel allocator reads,
+    so the default is fine. The hierarchical driver, which already holds the Topology object, should
+    pass it to build_algorithm directly instead of going through here.
+    """
+    # This module is usually run as a script with teccl/ncclize on sys.path (for the taccl_* imports),
+    # so the `teccl` package root is not importable yet -- add the repo root.
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    from teccl.input_data import TopologyParams
+    from teccl.topologies.topology import Topology
+
+    # name -> "module:ClassName" for the topologies that can appear at the ncclize boundary.
+    registry = {
+        'HeteroTaperedCluster': 'hetero_tapered_cluster:HeteroTaperedCluster',
+        'RailOptimizedSpineLeaf': 'rail_optimized_spine_leaf:RailOptimizedSpineLeaf',
+        'FatTreePod': 'fat_tree_pod:FatTreePod',
+        'FatTreePodSingleSpine': 'fat_tree_pod_single_spine:FatTreePodSingleSpine',
+        'DGX1': 'dgx1:DGX1',
+        'DGX2': 'dgx2:DGX2',
+        'NDv2': 'ndv2:NDv2',
+        'Mesh': 'mesh:Mesh',
+        'Star': 'star:Star',
+        'IncastSwitch': 'incast_switch:IncastSwitch',
+    }
+    if name not in registry:
+        raise ValueError(
+            f"unknown --topology {name!r}; known: {', '.join(sorted(registry))}. "
+            f"(Or call build_algorithm(schedule, topology=<Topology instance>) directly.)")
+    module_name, class_name = registry[name].split(':')
+    import importlib
+    module = importlib.import_module(f'teccl.topologies.{module_name}')
+    cls = getattr(module, class_name)
+    topo = cls(TopologyParams(name=name, chunk_size=chunk_size))
+    assert isinstance(topo, Topology)
+    return topo
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--schedule', help='TE-CCL schedule JSON file')
     p.add_argument('-o', '--output', required=True, help='output XML file')
+    p.add_argument('--topology', default=None,
+                    help='name of the real fine Topology this schedule runs on (e.g. '
+                         'HeteroTaperedCluster). When given, the channel allocator uses physical '
+                         '(one-per-link) channel counts and the tautological taccl bandwidth check '
+                         'is skipped (TE-CCL verifies real capacity upstream). Omit for a flat '
+                         'single-level teccl solve.')
     p.add_argument('--instances', type=int, default=1)
     p.add_argument('--scale-remote', type=int, default=1)
     p.add_argument('--switch-routing-output', default=None,
@@ -847,8 +939,10 @@ def main():
     with open(args.schedule) as f:
         schedule = json.load(f)
 
+    real_topology = load_topology(args.topology) if args.topology else None
     (algo, flow_path_keys, switch_rank_map,
-     gpu_epoch_view, piece_rate, pacing_gates) = build_algorithm(schedule)
+     gpu_epoch_view, piece_rate, pacing_gates) = build_algorithm(
+        schedule, topology=real_topology)
 
     # Send pacing is enforced INSIDE ncclize by realizing the pacing_gates manifest (per-flow
     # finish-before-start edges derived here in teccl_ncclize), so there is no XML post-pass.

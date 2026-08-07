@@ -97,5 +97,6 @@ echo "=== [5/5] ncclize round trip: flat schedule -> MSCCL XML (runs check_imple
 srun python teccl/ncclize/teccl_ncclize.py \
     --schedule "Schedules/coarse_hetero_${COLL}_flat.json" \
     --hierarchical \
+    --topology HeteroTaperedCluster \
     -o "xml/hetero_${COLL}.xml" \
     --epoch-debug-output "logs/hetero_${COLL}_epochs.txt"

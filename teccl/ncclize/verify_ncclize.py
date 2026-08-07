@@ -26,11 +26,11 @@ import sys
 from lxml import etree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from teccl_ncclize import build_algorithm
+from teccl_ncclize import build_algorithm, load_topology
 import json
 
 
-def generate_xml(schedule_path, hierarchical=False):
+def generate_xml(schedule_path, hierarchical=False, topology=None):
     with open(schedule_path) as f:
         schedule = json.load(f)
 
@@ -38,8 +38,10 @@ def generate_xml(schedule_path, hierarchical=False):
     from helpers import (check_epoch_ordering_feasibility,
                          warn_epoch_ordering_violations)
 
+    real_topology = load_topology(topology) if topology else None
     (algo, flow_path_keys, switch_rank_map,
-     gpu_epoch_view, piece_rate, pacing_gates) = build_algorithm(schedule)
+     gpu_epoch_view, piece_rate, pacing_gates) = build_algorithm(
+        schedule, topology=real_topology)
     # The flat-axis feasibility check only applies to a SINGLE-LEVEL (flat) solve; a hierarchical
     # multi-level schedule interleaves per-level epoch grids, so its network-layer pacing is checked
     # per-layer in the stitch instead. This is about how it was SOLVED (flat vs hierarchical), not
@@ -154,6 +156,9 @@ def main():
                     help='treat the given schedule(s) as hierarchical multi-level solves and skip '
                          'the flat-axis feasibility warnings (see generate_xml). The default '
                          'example suite is all flat, so omit it there.')
+    p.add_argument('--topology', default=None,
+                    help='real fine Topology name for physical (one-per-link) channel allocation, '
+                         'passed through to build_algorithm. Omit for the flat example suite.')
     args = p.parse_args()
 
     schedules = args.schedules
@@ -165,7 +170,8 @@ def main():
     for schedule_path in schedules:
         name = os.path.basename(schedule_path)
         try:
-            xml_str = generate_xml(schedule_path, hierarchical=args.hierarchical)
+            xml_str = generate_xml(schedule_path, hierarchical=args.hierarchical,
+                                   topology=args.topology)
         except Exception as e:
             print(f'[FAIL] {name}: exception during generation: {e}')
             failures += 1
