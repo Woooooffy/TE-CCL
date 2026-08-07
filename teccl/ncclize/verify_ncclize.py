@@ -26,11 +26,11 @@ import sys
 from lxml import etree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from teccl_ncclize import build_algorithm, is_lp_format
+from teccl_ncclize import build_algorithm
 import json
 
 
-def generate_xml(schedule_path):
+def generate_xml(schedule_path, hierarchical=False):
     with open(schedule_path) as f:
         schedule = json.load(f)
 
@@ -40,10 +40,11 @@ def generate_xml(schedule_path):
 
     (algo, flow_path_keys, switch_rank_map,
      gpu_epoch_view, piece_rate, pacing_gates) = build_algorithm(schedule)
-    # The flat-axis feasibility check only applies to single-level schedules; a hierarchical
-    # (LP-format) schedule interleaves per-level epoch grids, so its network-layer pacing is
-    # checked per-layer in the stitch instead (see teccl_ncclize.main).
-    if not is_lp_format(schedule):
+    # The flat-axis feasibility check only applies to a SINGLE-LEVEL (flat) solve; a hierarchical
+    # multi-level schedule interleaves per-level epoch grids, so its network-layer pacing is checked
+    # per-layer in the stitch instead. This is about how it was SOLVED (flat vs hierarchical), not
+    # the schedule FORMAT (a flat LP solve still wants the check), so the caller states it.
+    if not hierarchical:
         warn_epoch_ordering_violations(check_epoch_ordering_feasibility(gpu_epoch_view))
     flow_manifest = []
     # Send pacing is realized inside ncclize from the pacing_gates manifest; no XML post-pass.
@@ -149,6 +150,10 @@ def main():
     p.add_argument('schedules', nargs='*',
                     help='schedule JSON files to check; defaults to all of '
                          'teccl/examples/schedules/*.json')
+    p.add_argument('--hierarchical', action='store_true',
+                    help='treat the given schedule(s) as hierarchical multi-level solves and skip '
+                         'the flat-axis feasibility warnings (see generate_xml). The default '
+                         'example suite is all flat, so omit it there.')
     args = p.parse_args()
 
     schedules = args.schedules
@@ -160,7 +165,7 @@ def main():
     for schedule_path in schedules:
         name = os.path.basename(schedule_path)
         try:
-            xml_str = generate_xml(schedule_path)
+            xml_str = generate_xml(schedule_path, hierarchical=args.hierarchical)
         except Exception as e:
             print(f'[FAIL] {name}: exception during generation: {e}')
             failures += 1

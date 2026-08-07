@@ -96,5 +96,6 @@ srun python -m teccl.examples.hierarchy_stitch_test
 echo "=== [5/5] ncclize round trip: flat schedule -> MSCCL XML (runs check_implements) ==="
 srun python teccl/ncclize/teccl_ncclize.py \
     --schedule "Schedules/coarse_hetero_${COLL}_flat.json" \
+    --hierarchical \
     -o "xml/hetero_${COLL}.xml" \
     --epoch-debug-output "logs/hetero_${COLL}_epochs.txt"

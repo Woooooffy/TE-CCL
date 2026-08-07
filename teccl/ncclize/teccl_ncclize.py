@@ -832,6 +832,12 @@ def main():
                          'The schedule is computed identically; only the final '
                          'written output differs, to enable regression testing '
                          'against outputs that predate the rate field.')
+    p.add_argument('--hierarchical', action='store_true',
+                    help='this schedule came from the hierarchical (multi-level) solver, so the '
+                         'flat-axis realizability feasibility check does not apply -- its epoch '
+                         'axis interleaves per-level grids and the network layer is checked '
+                         'per-layer in the stitch instead. Omit for an old-style flat single-level '
+                         'teccl solve (MILP or LP), where the flat-axis check is run.')
     args = p.parse_args()
 
     from taccl_ncclize import ncclize, ChannelPolicy
@@ -847,14 +853,19 @@ def main():
     # Send pacing is enforced INSIDE ncclize by realizing the pacing_gates manifest (per-flow
     # finish-before-start edges derived here in teccl_ncclize), so there is no XML post-pass.
     #
-    # The flat-axis feasibility check only makes sense for a single-level (flat) schedule, where
-    # "the preceding epoch has a send" genuinely means "the send is paced to its epoch". A
-    # hierarchical (LP-format) schedule interleaves levels with different epoch lengths on one fine
-    # axis -- a coarse network send legitimately sits m fine epochs after the previous one -- so
-    # this check would false-positive on that intended sparsity. The network layer's realizability
-    # is instead reported per-layer by the stitch (teccl.hierarchy.stitch.check_network_pacing),
-    # in coarse-epoch units, at solve time. So run the flat check only for the flat format.
-    if is_lp_format(schedule):
+    # The flat-axis feasibility check only makes sense for a SINGLE-LEVEL (flat) schedule, where the
+    # whole schedule shares one epoch grid, so "the preceding epoch has a send" genuinely means "the
+    # send is paced to its epoch". A HIERARCHICAL (multi-level) schedule interleaves levels with
+    # different epoch lengths on one fine axis -- a coarse network send legitimately sits m fine
+    # epochs after the previous one -- so this check would false-positive on that intended sparsity;
+    # the network layer's realizability is reported per-layer by the stitch
+    # (teccl.hierarchy.stitch.check_network_pacing) at solve time instead.
+    #
+    # This is a property of HOW the schedule was solved (flat vs hierarchical), NOT of the schedule
+    # FORMAT (MILP-flat vs LP-nested): a flat single-level solve using the LP formulation is still
+    # flat and still wants the check. So the caller states it explicitly with --hierarchical rather
+    # than us inferring it from is_lp_format.
+    if args.hierarchical:
         violations = None
     else:
         violations = check_epoch_ordering_feasibility(gpu_epoch_view)
