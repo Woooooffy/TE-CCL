@@ -1,0 +1,39 @@
+cpu-bind=MASK - lanka27, task  0  0 [1204000]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka27, task  0  0 [1204402]: mask 0xff0000ff set
+cpu-bind=MASK - lanka27, task  0  0 [1204642]: mask 0xff0000ff set
+cpu-bind=MASK - lanka27, task  0  0 [1204795]: mask 0xff0000ff set
+cpu-bind=MASK - lanka27, task  0  0 [1204911]: mask 0xff0000ff set
+WARNING:root:there is a potential bug! there is traffic unaccounted for
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/examples/hierarchy_coarse_solve_rail.py", line 146, in main
+    lp_solver = solve_on_topology(_make_input(Formulation.LP, collective, lp_out,
+                                              epoch_multiplier), coarse)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/examples/hierarchy_pipeline.py", line 35, in solve_on_topology
+    solver.solve()
+    ~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 261, in solve
+    epoch_result_schedule_solver = self.get_schedules(
+        solver, user_input, self.topology_obj)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 203, in get_schedules
+    schedule, schedule_json = initial_solver.get_schedule()
+                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/solvers/lp_formulation.py", line 1036, in get_schedule
+    return self.get_flow_schedule()
+           ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/solvers/lp_formulation.py", line 974, in get_flow_schedule
+    assert 0, "potential bug, check code"
+           ^
+AssertionError: potential bug, check code
+cpu-bind=MASK - lanka27, task  0  0 [1205705]: mask 0xff0000ff set
+cpu-bind=MASK - lanka27, task  0  0 [1205931]: mask 0xff0000ff set
+cpu-bind=MASK - lanka27, task  0  0 [1206084]: mask 0xff0000ff set
+<frozen importlib._bootstrap>:491: RuntimeWarning: The global interpreter lock (GIL) has been enabled to load module 'lxml.etree', which has not declared that it can run safely without the GIL. To override this behavior and keep the GIL disabled (at your own risk), run with PYTHON_GIL=0 or -Xgil=0.
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/ncclize/teccl_ncclize.py", line 1007, in <module>
+    main()
+    ~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/ncclize/teccl_ncclize.py", line 939, in main
+    with open(args.schedule) as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'Schedules/coarse_rail_allgather_flat.json'
+srun: error: lanka27: task 0: Exited with exit code 1
