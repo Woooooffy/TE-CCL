@@ -47,7 +47,7 @@
 #SBATCH --output=logs/teccl-%j.out
 #SBATCH --error=logs/teccl-%j.err
 #SBATCH --time=12:00:00
-#SBATCH --nodes=1 --ntasks=1 --cpus-per-task=16 --mem=200G
+#SBATCH --nodes=1 --ntasks=1 --cpus-per-task=16 --mem=100G
 #SBATCH --account=commit
 #SBATCH --qos=commit-main
 #SBATCH --partition=lanka-v3
