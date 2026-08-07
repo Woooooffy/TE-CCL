@@ -69,6 +69,19 @@ def main():
           {(0, 0, 1, None): (0, 1), (1, 7, 1, None): (1, 2)},
           [])
 
+    # Multi-uplink: one GPU, two sends entering the fabric at DIFFERENT first
+    # switches (path (9,..) vs (10,..)) use different uplinks, so even across an
+    # epoch boundary they do NOT gate each other.
+    check("multi-uplink: different first switch, independent, no edges",
+          {(0, 0, 1, (9, 5)): (0, 1), (1, 0, 2, (10, 5)): (1, 2)},
+          [])
+
+    # Same first switch (same uplink) DOES chain across the epoch boundary, even
+    # when the downstream switch path differs.
+    check("same uplink, different downstream path, still chains",
+          {(0, 0, 1, (9, 5)): (0, 1), (1, 0, 2, (9, 6)): (1, 2)},
+          [((1, 0, 2, (9, 6)), (0, 0, 1, (9, 5)))])
+
     print("pacing gate tests OK")
 
 

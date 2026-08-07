@@ -299,34 +299,51 @@ def _compute_subdivision(schedule):
     return M
 
 
+def _send_uplink(key):
+    """The physical outgoing link a send op contends for, from its key
+    (step, src, dst, path_key).
+
+    A send leaves its source GPU over that GPU's uplink to the first switch on its
+    route, so the contended link is (src, first_switch); two sends from one GPU that
+    enter the fabric at DIFFERENT first switches use different uplinks and do not
+    compete. path_key is the tuple of (raw) switch ids on the route, so path_key[0]
+    is that first switch. A send with no switch route (path_key is None -- a direct
+    hop) is keyed by (src, None); those all share one bucket, which is the safe
+    conservative grouping.
+    """
+    _step, src, _dst, path_key = key
+    first_switch = path_key[0] if path_key else None
+    return (src, first_switch)
+
+
 def _finish_before_start_gates(paced_sends):
     """Derive send-pacing gate edges from per-send link-occupancy windows.
 
     `paced_sends` maps a send op key (step_idx, src, dst, path_key) to its
     (start_epoch, finish_epoch) window in FINE epochs, where finish = start +
     volume/rate (how long the send occupies its outgoing link). Gate each send S on
-    the LATEST-finishing paced send P *from the same source GPU* whose link-occupancy
-    finishes at or before S starts -- i.e. the send that frees the uplink exactly when
-    S is due. That predecessor's rate-paced completion pins S to its epoch (P1/P2);
-    S needs no gate if nothing finishes in time (an early-firing residual, the
-    deferred-P3 case the stitch reports).
+    the LATEST-finishing paced send P *contending for the same physical uplink* (see
+    _send_uplink) whose link-occupancy finishes at or before S starts -- i.e. the send
+    that frees that uplink exactly when S is due. That predecessor's rate-paced
+    completion pins S to its epoch (P1/P2); S needs no gate if nothing finishes in time
+    (an early-firing residual, the deferred-P3 case the stitch reports).
 
     Deriving the edge from finish-vs-start rather than step ORDER is what makes it
     correct for two cases a plain sort gets wrong: two sends in the SAME epoch never
     gate each other (a same-epoch P has finish > start_S, so it is not a candidate),
     and a multi-epoch send does not serialize a later send that runs alongside its
     tail on freed capacity (that P is excluded; the send that truly frees the link is
-    picked). Grouping is by source GPU, valid while each GPU has a single uplink;
-    per-physical-link grouping (multi-uplink) is the topology-aware follow-up.
+    picked). Grouping is per physical uplink (src, first_switch), so a multi-uplink
+    GPU paces each of its uplinks independently.
 
     Returns a list of (consumer_key, producer_key) edges.
     """
     from collections import defaultdict as _dd
-    by_gpu = _dd(list)
+    by_link = _dd(list)
     for key, (start, finish) in paced_sends.items():
-        by_gpu[key[1]].append((start, finish, key))
+        by_link[_send_uplink(key)].append((start, finish, key))
     edges = []
-    for sends in by_gpu.values():
+    for sends in by_link.values():
         for cstart, _cfin, ckey in sends:
             best = None  # (finish, key) of the latest-finishing eligible predecessor
             for pstart, pfin, pkey in sends:
@@ -643,6 +660,15 @@ class TeCCLTopology:
     number of times a given src->dst edge is used within any single epoch),
     rather than reconstructed from TE-CCL's internal NDv2/DGX/etc. link model,
     so the result is always consistent with whatever schedule is fed in.
+
+    NOTE: `links[dst][src]` does DOUBLE DUTY -- it is both the channel replica count the
+    allocator round-robins over (_allocate_channels_match_topology) AND the bandwidth capacity
+    Algorithm.make_implementation checks each step against (bandwidth_constraints: `util <= bw *
+    rounds`). Because a step is modeled as rounds=1, two concurrent chunks on one edge require
+    the count to be >= 2, so it cannot simply be lowered to the physical link parallelism to
+    reduce channels -- that breaks the bandwidth check. Decoupling the two roles (physical
+    replica count for channels, rate/rounds for bandwidth) is the real fix for the channel
+    over-allocation and is left as follow-up.
     """
 
     def __init__(self, name, num_nodes, steps):
