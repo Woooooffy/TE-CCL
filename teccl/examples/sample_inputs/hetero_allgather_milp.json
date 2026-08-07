@@ -3,7 +3,7 @@
     "TopologyParams": {
         "name": "HeteroTaperedCluster",
         "chassis": 1,
-        "chunk_size": 1
+        "chunk_size": 0.5
     },
     "GurobiParams": {
         "time_limit": 2,
@@ -21,7 +21,7 @@
     "InstanceParams": {
         "collective": 1,
         "formulation": 1,
-        "num_chunks": 2,
+        "num_chunks": 4,
         "epoch_type": 2,
         "epoch_multiplier": 1,
         "epoch_duration": -1,
@@ -31,6 +31,6 @@
         "symmetry": true,
         "objective_type": 2,
         "solution_method": 1,
-        "schedule_output_file": "Schedules/flat_hetero_allgather_milp_no_copy_2chunks.json"
+        "schedule_output_file": "Schedules/flat_hetero_allgather_milp_no_copy_4chunks.json"
     }
 }
