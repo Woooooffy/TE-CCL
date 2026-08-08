@@ -21,6 +21,7 @@ Deliberately Gurobi-free AND numpy-free (the fine demand is built by hand), so i
 
     python -m teccl.examples.hierarchy_level_chunk_test
 """
+import json
 from fractions import Fraction
 
 from teccl.hierarchy.abstract import (
@@ -209,12 +210,32 @@ def test_g1_is_a_noop():
     print("  [4] g == 1 is an exact no-op (topology, demand, scale all unchanged) OK")
 
 
+def test_scale_is_serializable():
+    """The driver writes the live scale into Schedules/{prefix}_identities.json, and that path is
+    reachable only through a Gurobi solve -- so it is exactly the kind of code the structural tests
+    never touch. It escaped once already: `dataclasses.asdict` passes the Fractions through raw and
+    json.dump died on them ONLY on the remote, after the coarse LP had already been paid for.
+    Serialize every scale a level boundary can produce, here, for free."""
+    root = ChunkScale(bytes_per_chunk=1.0, num_chunks=1)
+    for scale in (root, root.refine(2), root.coarsen(8), root.coarsen(8).refine(16),
+                  root.coarsen(2).refine(2)):
+        blob = json.dumps({"scale": scale.to_json()}, indent=2)
+        back = json.loads(blob)["scale"]
+        assert Fraction(back["refinement_from_root"]["num"],
+                        back["refinement_from_root"]["den"]) == scale.refinement_from_root
+        assert Fraction(back["num_chunks"]["num"],
+                        back["num_chunks"]["den"]) == scale.num_chunks
+        assert abs(back["payload_per_gpu"] - 1.0) < 1e-12, (scale, back)
+    print("  [5] every level-boundary scale round-trips through JSON exactly OK")
+
+
 def main() -> None:
     print("level-chunk boundary tests (ascending half of the recursion)")
     test_scale_round_trip()
     test_gcd_rule()
     test_rescale_topology()
     test_g1_is_a_noop()
+    test_scale_is_serializable()
     print("level-chunk tests OK")
 
 

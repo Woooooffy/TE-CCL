@@ -107,6 +107,21 @@ class ChunkScale:
             raise ValueError(f"link_bw must be positive, got {link_bw!r}")
         return self.bytes_per_chunk / link_bw
 
+    def to_json(self) -> dict:
+        """JSON-safe view. `dataclasses.asdict` leaks raw Fractions, which no JSON encoder can
+        write (and which a `default=list` fallback turns into a confusing TypeError rather than an
+        obvious one), so serialize the ratios EXPLICITLY: exact as [numerator, denominator] plus a
+        float alongside for anything that just wants to eyeball it. Exactness matters here -- these
+        are the numbers that say how much refinement budget a level spent."""
+        def ratio(f: Fraction) -> dict:
+            return {"num": f.numerator, "den": f.denominator, "value": float(f)}
+        return {
+            "bytes_per_chunk": self.bytes_per_chunk,
+            "num_chunks": ratio(self.num_chunks),
+            "refinement_from_root": ratio(self.refinement_from_root),
+            "payload_per_gpu": self.payload_per_gpu,
+        }
+
     def assert_conserves(self, other: "ChunkScale", tol: float = 1e-9) -> None:
         """Refinement must leave the per-GPU payload untouched."""
         a, b = self.payload_per_gpu, other.payload_per_gpu

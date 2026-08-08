@@ -70,7 +70,9 @@ def run_identity_resolution(lp_solver, mapping, fine_demand, fine, coarse_epoch:
     out = {
         "pieces": [asdict(p) for p in res.pieces],
         "intra_demands": [asdict(d) for d in res.intra_demands],
-        "scale": asdict(res.scale) if res.scale else None,
+        # to_json(), not asdict(): the scale holds exact Fractions and asdict passes them through
+        # raw, which no JSON encoder can write.
+        "scale": res.scale.to_json() if res.scale else None,
         "subdivision": res.subdivision,
     }
     path = f"Schedules/{prefix}_identities.json"
