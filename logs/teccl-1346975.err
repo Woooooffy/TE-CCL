@@ -1,0 +1,26 @@
+cpu-bind=MASK - lanka26, task  0  0 [1547054]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka26, task  0  0 [1547571]: mask 0xff0000ff set
+cpu-bind=MASK - lanka26, task  0  0 [1547686]: mask 0xff0000ff set
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/examples/hierarchy_identity_resolution_test.py", line 509, in <module>
+    main()
+    ~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/examples/hierarchy_identity_resolution_test.py", line 501, in main
+    test_replay_real_allgather_json()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/examples/hierarchy_identity_resolution_test.py", line 284, in test_replay_real_allgather_json
+    res = resolve_identities(solver, m, fine_demand, topo)   # must not raise (was the crash)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/reconstruct.py", line 689, in resolve_identities
+    assert abs(total_cap - len(identities)) < 1e-3, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: pair (0, 1): egress volume 2.0 (level chunk 1) != identity count 4. coarse volume disagrees with demand count
+srun: error: lanka26: task 0: Exited with exit code 1
+cpu-bind=MASK - lanka26, task  0  0 [1547839]: mask 0xff0000ff set
+cpu-bind=MASK - lanka26, task  0  0 [1547992]: mask 0xff0000ff set
+cpu-bind=MASK - lanka26, task  0  0 [1548108]: mask 0xff0000ff set
+cpu-bind=MASK - lanka26, task  0  0 [1548796]: mask 0xff0000ff set
+cpu-bind=MASK - lanka26, task  0  0 [1548962]: mask 0xff0000ff set
+cpu-bind=MASK - lanka26, task  0  0 [1549116]: mask 0xff0000ff set
+<frozen importlib._bootstrap>:491: RuntimeWarning: The global interpreter lock (GIL) has been enabled to load module 'lxml.etree', which has not declared that it can run safely without the GIL. To override this behavior and keep the GIL disabled (at your own risk), run with PYTHON_GIL=0 or -Xgil=0.
