@@ -1,9 +1,11 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from math import gcd
+from typing import Dict, List, Optional, Tuple
 
 from teccl.input_data import TopologyParams
 from teccl.hierarchy.cell import Cell
+from teccl.hierarchy.scale import ChunkScale
 from teccl.topologies.topology import Topology
 
 
@@ -64,6 +66,37 @@ class CoarseTopology(Topology):
 
     def set_switch_indicies(self) -> None:
         self.switch_indices = self._c_switch_indices
+
+    def rescale_to_chunk(self, g: int) -> None:
+        """Re-express this level in a chunk `g` times larger than the one it inherited.
+
+        `capacity` is in CHUNKS/sec (bytes/sec divided by chunk_size), so fusing g chunks into one
+        divides it by g and multiplies chunk_size by g. That is the whole unit change: because
+        `get_epoch_duration_{slow,fast}_link` read nothing but `capacity`, the level's epoch then
+        becomes "one chunk AT THIS LEVEL'S SIZE on the selected link" automatically, with no
+        epoch-type or multiplier concept added anywhere.
+
+        Both cached epoch durations are reset, because Topology.__init__ computed them eagerly --
+        before this level's chunk could possibly be known (it depends on the coarse demand, which
+        depends on this topology existing). `alpha` is a propagation delay, a time, and does not
+        scale with the volume unit.
+
+        The demand MUST be divided by the same g at the same time or `capacity * epoch_duration`
+        and the demand end up in different units; use `set_level_chunk`, which does both.
+        """
+        if g < 1 or int(g) != g:
+            raise ValueError(f"level chunk factor must be a positive integer, got {g!r}")
+        g = int(g)
+        if g == 1:
+            return
+        n = len(self.capacity)
+        for i in range(n):
+            for j in range(n):
+                if self.capacity[i][j]:
+                    self.capacity[i][j] /= g
+        self.chunk_size *= g
+        self.epoch_duration_fast_link = 0.0
+        self.epoch_duration_slow_link = 0.0
 
 
 def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
@@ -263,6 +296,92 @@ def coarsify_demand(fine_demand, mapping: HierarchyMapping) -> List[List[List[in
                 if cv != cs:
                     coarse[cs][cv][0] += 1
     return coarse
+
+
+def level_chunk_units(coarse_demand) -> int:
+    """The chunk this level should use, in units of the chunk it inherited: the GCD of its demand
+    volumes.
+
+    This is the coarsest unit in which EVERY demand of this level is still a whole number -- which
+    is precisely the recursion's governing invariant (see teccl/hierarchy/scale.py: "every level
+    receives integer demands, expressed in that level's own chunk unit"). Coarsening past the GCD
+    would make some demand fractional; coarsening less leaves the level measuring itself in a unit
+    finer than anything it can actually address, which is what lets a solver split a commodity in
+    ways nothing downstream wants.
+
+    Rail AllGather gives gcd(8, ..., 8) = 8 -- one coarse chunk is a host's whole payload. Hetero
+    AllGather gives gcd(4, 4, 6) = 2, which is NOT any single host's payload: neither the largest
+    nor the smallest cell is the right unit when cells differ, only their common divisor is.
+
+    Returns 1 when the volumes are coprime (or there is no demand), which makes every caller an
+    exact no-op -- the honest graceful degradation, since no coarser unit keeps the demands whole.
+    """
+    g = 0
+    for row in coarse_demand:
+        for cell in row:
+            for v in cell:
+                if v:
+                    iv = int(round(v))
+                    if abs(v - iv) > 1e-9:
+                        raise ValueError(
+                            f"coarse demand volume {v} is not an integer; the level chunk is only "
+                            f"defined for integer demands (see scale.py's recursion invariant)")
+                    g = gcd(g, abs(iv))
+    return g or 1
+
+
+def rescale_demand(coarse_demand, g: int):
+    """Divide every demand volume by `g`, the counterpart of CoarseTopology.rescale_to_chunk.
+
+    Exactness is asserted rather than rounded: `g` comes from level_chunk_units, so a remainder
+    here means the demand changed between the two calls, and silently rounding it would move bytes.
+    """
+    if g < 1 or int(g) != g:
+        raise ValueError(f"level chunk factor must be a positive integer, got {g!r}")
+    g = int(g)
+    if g == 1:
+        return coarse_demand
+    out = []
+    for row in coarse_demand:
+        new_row = []
+        for cell in row:
+            new_cell = []
+            for v in cell:
+                iv = int(round(v))
+                if iv % g:
+                    raise ValueError(
+                        f"demand volume {iv} is not divisible by the level chunk {g}")
+                new_cell.append(iv // g)
+            new_row.append(new_cell)
+        out.append(new_row)
+    return out
+
+
+def set_level_chunk(coarse: CoarseTopology, coarse_demand, scale: Optional[ChunkScale] = None,
+                    g: Optional[int] = None) -> Tuple[List[List[List[int]]], int, ChunkScale]:
+    """Put a coarse level into ITS OWN chunk unit: topology, demand and ChunkScale together.
+
+    These three must move as one. `capacity * epoch_duration` is compared against demand volumes,
+    so rescaling the topology without the demand (or vice versa) silently changes what every
+    capacity constraint means. Doing it here, atomically, is what keeps that impossible.
+
+    Pass `scale` when this level is itself the product of an earlier solve (a true multi-level
+    recursion, where the level above already refined by some Q), or whenever the fine demand has
+    more than one chunk per GPU: the default root assumes ONE chunk of `coarse.chunk_size` per fine
+    GPU, and `num_chunks` is what carries `payload_per_gpu` down to the stitch's Algo_Bandwidth.
+    Returns the rescaled demand, the factor used, and the level's scale.
+
+    Note the ORDER this imposes on a driver: abstract() -> coarsify_demand() -> set_level_chunk()
+    -> solve. The chunk cannot be known before the demand exists, and the demand cannot be
+    coarsified before the topology exists.
+    """
+    if g is None:
+        g = level_chunk_units(coarse_demand)
+    root = scale or ChunkScale(bytes_per_chunk=coarse.chunk_size, num_chunks=1)
+    level = root.coarsen(g)
+    root.assert_conserves(level)
+    coarse.rescale_to_chunk(g)
+    return rescale_demand(coarse_demand, g), g, level
 
 
 def lift_demand(mapping: HierarchyMapping, num_sub_chunks: int = None) -> None:

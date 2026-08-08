@@ -48,7 +48,30 @@ from teccl.input_data import Collective, TopologyParams
 from teccl.solvers.demand import build_demand
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
 
-COARSE_EPOCH = 0.02
+def _coarse_epoch(schedule_json) -> float:
+    """The coarse epoch is a PROPERTY OF THE SOLVE that produced the file being replayed, so read
+    it off that file rather than restating a constant here. It moves the moment a level is
+    re-expressed in its own chunk unit (abstract.set_level_chunk), and a stale literal would then
+    quietly put every band deadline on the wrong grid while every assertion still passed."""
+    return float(schedule_json["1-Epoch_Duration"])
+
+
+def _level_chunk(schedule_json, fine_topology) -> int:
+    """How many FINE chunks one unit of this schedule's volume is worth.
+
+    A solved schedule records the chunk it was solved in as "9-Chunk_Size", so a coarsened level
+    (abstract.set_level_chunk) is self-describing and a replay needs no out-of-band knowledge.
+    Schedules written before coarsening existed carry the fine chunk size and yield 1, which is an
+    exact no-op -- so old and new fixtures both replay correctly through the same path."""
+    g = float(schedule_json.get("9-Chunk_Size", fine_topology.chunk_size)) / fine_topology.chunk_size
+    assert abs(g - round(g)) < 1e-9, f"schedule chunk {g}x the fine chunk is not a whole multiple"
+    return int(round(g))
+
+
+# Synthetic fixtures below build their own records rather than replaying a solve, so they need
+# SOME coarse epoch; this is the hetero solve's (1 GB chunk over its 50 GB/s slowest uplink) and is
+# used only where no real schedule is in play.
+SYNTHETIC_COARSE_EPOCH = 0.02
 
 
 def _flow(cell, identity, src, dst, band, rnd, kind, hard=False, switch=99):
@@ -210,9 +233,12 @@ def _replay_pipeline(tag, collective):
 
     with open(path) as f:
         schedule_json = json.load(f)
+    coarse_epoch = _coarse_epoch(schedule_json)
     solver = _fake_solver(_replay_per_chunk_flow_paths(schedule_json),
-                          switch_indices=list(coarse.switch_indices))
-    res = resolve_identities(solver, mapping, fine_demand, topo)
+                          switch_indices=list(coarse.switch_indices),
+                          epoch_duration=coarse_epoch)
+    res = resolve_identities(solver, mapping, fine_demand, topo,
+                             level_chunk=_level_chunk(schedule_json, topo))
 
     by_cell = collections.defaultdict(list)
     for d in res.intra_demands:
@@ -223,8 +249,8 @@ def _replay_pipeline(tag, collective):
             flows += schedule_cell(cid, mapping.coarse_cells[cid], by_cell[cid], debug=False,
                                    subdivision=res.subdivision)
 
-    info, records = stitch(res, flows, topo, fine_demand, COARSE_EPOCH, tag)
-    return topo, res, flows, info, records, fine_demand
+    info, records = stitch(res, flows, topo, fine_demand, coarse_epoch, tag)
+    return topo, res, flows, info, records, fine_demand, coarse_epoch
 
 
 def _check_ncclize(info, tag):
@@ -249,9 +275,9 @@ def test_replay(tag, collective):
     if out is None:
         print(f"  SKIP {tag}: Schedules/coarse_hetero_{tag}_lp.json not found")
         return False
-    topo, res, flows, info, records, fine_demand = out
+    topo, res, flows, info, records, fine_demand, coarse_epoch = out
 
-    delta, m = derive_grid(res.scale, topo, COARSE_EPOCH)
+    delta, m = derive_grid(res.scale, topo, coarse_epoch)
     # Refinement re-denominates the payload without creating or destroying bytes, and the reported
     # time must be exactly the grid it is derived from.
     fine_chunks = 1 if collective == Collective.ALLGATHER else len(fine_demand[0][0])

@@ -35,7 +35,8 @@ gurobi.feasibility_tol. If the run dies there, that is the bug, not the hierarch
 clamp in get_flows_and_consumes, deliberately not applied here.
 
 Run from the repo root (needs Gurobi for the coarse solve):
-    python -m teccl.examples.hierarchy_coarse_solve_rail [allgather|alltoall] [lp|milp|both] [debug]
+    python -m teccl.examples.hierarchy_coarse_solve_rail [allgather|alltoall] [lp|milp|both] \
+        [debug] [nocoarsen]
 """
 import sys
 import traceback
@@ -44,7 +45,7 @@ from teccl.examples.hierarchy_pipeline import (
     print_solve_summary, run_identity_resolution, run_phase3_intra, run_stitch,
     solve_on_topology,
 )
-from teccl.hierarchy.abstract import abstract, coarsify_demand, lift_demand
+from teccl.hierarchy.abstract import abstract, coarsify_demand, lift_demand, set_level_chunk
 from teccl.input_data import (
     Collective, EpochType, Formulation, InstanceParams, ObjectiveType,
     SolutionMethod, TopologyParams, UserInputParams,
@@ -93,7 +94,8 @@ def _make_input(formulation: Formulation, collective: Collective, out_file: str,
 def main() -> None:
     coll_arg = sys.argv[1].lower() if len(sys.argv) > 1 else "allgather"
     which = sys.argv[2].lower() if len(sys.argv) > 2 else "lp"
-    debug_intra = len(sys.argv) > 3 and sys.argv[3].lower() in ("debug", "true", "1")
+    debug_intra = "debug" in [a.lower() for a in sys.argv[3:]]
+    no_coarsen = "nocoarsen" in [a.lower() for a in sys.argv[3:]]
     collective = Collective.ALLGATHER if coll_arg == "allgather" else Collective.ALLTOALL
     epoch_multiplier = 1
 
@@ -112,6 +114,15 @@ def main() -> None:
                    else CHUNKS_PER_PAIR * num_participating)
     fine_demand = build_demand(collective, fine, fine_chunks)
     coarse_demand = coarsify_demand(fine_demand, mapping)
+
+    # Put the coarse level into ITS OWN chunk unit before solving: the GCD of its demand volumes,
+    # which for uniform rail cells is a whole host payload (8 fine chunks). Topology, demand and
+    # scale move together. This is what makes the epoch "one chunk on the slowest link" TRUE AT
+    # THIS LEVEL -- inheriting the fine chunk left the epoch 8x too short, so a pair's demand was
+    # exactly one epoch of egress and the LP was free to split it across destinations arbitrarily.
+    # `nocoarsen` forces g=1 for an A/B against that behaviour.
+    coarse_demand, g, level_scale = set_level_chunk(coarse, coarse_demand,
+                                                   g=1 if no_coarsen else None)
     coarse.demand_override = coarse_demand
 
     vols = sorted({coarse_demand[u][v][0]
@@ -123,6 +134,8 @@ def main() -> None:
           f"({len(mapping.coarse_cells)} cells x {num_participating // len(mapping.coarse_cells)} "
           f"gpus + {len(coarse.switch_indices)} switches), collective={coll_arg}, which={which}")
     print(f"twin groups (symmetry): {coarse.equivalent_node_indices}")
+    print(f"level chunk: g={g} fine chunks -> {level_scale}, coarse epoch "
+          f"{coarse.get_epoch_duration_slow_link()}s (SLOWEST_LINK)")
     # Uniform by construction, so the distinct-volume set should be a single value; printing the
     # set rather than the full 44x44 matrix keeps the log readable and still catches asymmetry.
     print(f"coarse demand: {nonzero} nonzero (U->V) pairs, distinct volumes {vols}")
@@ -150,7 +163,7 @@ def main() -> None:
             # formulation rather than restating 0.02 here.
             coarse_epoch = lp_solver.best_solver.epoch_duration
             res = run_identity_resolution(lp_solver, mapping, fine_demand, fine, coarse_epoch,
-                                          prefix)
+                                          prefix, level_chunk=g)
             intra_flows = run_phase3_intra(res, mapping, prefix, fine, coarse_epoch,
                                            debug=debug_intra)
             run_stitch(res, intra_flows, fine, fine_demand, coarse_epoch, tag, prefix)

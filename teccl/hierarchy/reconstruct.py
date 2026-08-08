@@ -620,7 +620,8 @@ def _emit_refined(assignments: Sequence[_Assignment],
 
 def resolve_identities(coarse_solver, mapping: HierarchyMapping,
                        fine_demand, fine_topology: Topology,
-                       scale: Optional[ChunkScale] = None) -> IdentityResolution:
+                       scale: Optional[ChunkScale] = None,
+                       level_chunk: int = 1) -> IdentityResolution:
     """Resolve the identity-free coarse LP solution into concrete fine identities and emit the
     intra-cell demands phase-3 must satisfy. Collective-agnostic: every input is read off
     `fine_demand` / the coarse solution, nothing branches on the collective name.
@@ -639,6 +640,11 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
     fine_topology:  the fine Topology (for per-link capacities and switch ids).
     scale:          granularity the coarse demand is expressed in; defaults to the root
                     (fine_topology.chunk_size, one chunk per fine chunk index).
+    level_chunk:    how many FINE identities one unit of the coarse solution's volume represents
+                    -- the `g` from abstract.set_level_chunk, 1 when the coarse level was solved
+                    in the fine chunk unit. It is needed ONLY to check the coarse volumes against
+                    the identity count; the same rescale then converts everything to identity
+                    units, so no other step here is unit-aware.
     """
     id_sets, targets = identity_sets(fine_demand, mapping)
     pieces_by_pair = _extract_pieces(coarse_solver, mapping)
@@ -668,15 +674,24 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
 
         native = {d: d[0] for d in identities}       # native GPU of identity (s, ci) is s
         slots = _build_slots(pieces, U, V, mapping, fine_topology)
-        # The coarse solve delivers exactly coarse[U][V] == |ID(U,V)| units to V, so the slot
-        # capacities must sum to the identity count. Rescale away float noise so the assignment
-        # stays feasible; a gross mismatch is an upstream bug.
-        total_cap = sum(s.capacity for s in slots)
+        # The coarse solve delivers exactly coarse[U][V] units to V, and coarse[U][V] is
+        # |ID(U,V)| / level_chunk -- the identity count re-expressed in the COARSE LEVEL'S OWN
+        # chunk (abstract.set_level_chunk), which is the identity count itself in the flat case
+        # where level_chunk == 1. Rescale away float noise so the assignment stays feasible; a
+        # gross mismatch is an upstream bug.
+        #
+        # This rescale is also where the level's unit change is ABSORBED: it normalizes the slot
+        # capacities to identity units, so every step below -- the assignment, the subdivision
+        # factor, the emitted volumes -- is denominated in fine identities exactly as before,
+        # whatever chunk the coarse level solved in. That is why coarsening needs no other change
+        # here, and why the ChunkScale handed to the stitch stays the FINE root refined by q.
+        total_cap = sum(s.capacity for s in slots) * level_chunk
         assert abs(total_cap - len(identities)) < 1e-3, (
-            f"pair {(U, V)}: egress volume {total_cap} != identity count {len(identities)}. "
+            f"pair {(U, V)}: egress volume {total_cap} (level chunk {level_chunk}) != identity "
+            f"count {len(identities)}. "
             f"{_origin_diagnosis(pieces_by_pair, U, V) or 'coarse volume disagrees with demand count'}")
         if total_cap:
-            f = len(identities) / total_cap
+            f = len(identities) / total_cap * level_chunk
             slots = [replace(s, capacity=s.capacity * f) for s in slots]
 
         tgt = {d: targets[(d, V)] for d in identities}

@@ -32,8 +32,14 @@
 #       deferred pacing follow-up closes, not a stitch failure. Record the count as the baseline.
 #
 # Usage (from repo root):
-#   sbatch scripts/run_hetero_phase3.sh              # allgather (default)
-#   sbatch scripts/run_hetero_phase3.sh alltoall     # alltoall
+#   sbatch scripts/run_hetero_phase3.sh                      # allgather (default)
+#   sbatch scripts/run_hetero_phase3.sh alltoall             # alltoall
+#   sbatch scripts/run_hetero_phase3.sh allgather nocoarsen  # A/B: pre-coarsening behaviour (g=1)
+#
+# NOTE: the coarse level is now solved in its OWN chunk unit (abstract.set_level_chunk, the GCD of
+# the coarse demand volumes). For these 4/4/6 cells that is g=2, so the coarse epoch is 0.04s, not
+# 0.02s, and the demands are 2/3 rather than 4/6. Every epoch-derived baseline below moves with it;
+# the replay tests read the epoch and the level chunk off the schedule file, so they follow along.
 #
 # Run locally instead (needs a Gurobi license on this box):
 #   python -m teccl.examples.hierarchy_coarse_solve_hetero allgather lp
@@ -64,18 +70,22 @@ fi
 # Collective: first positional arg, default allgather. The coarse solve uses the LP arm (the MILP
 # is intractable / gives no allgather makespan benefit -- see the design notes).
 COLL="${1:-allgather}"
+# Any extra args (e.g. `nocoarsen`) pass straight through to the driver.
+shift || true
+EXTRA=("$@")
 
 # Gurobi-free structural tests first: they take seconds and cover identity resolution (the joint
 # lexicographic assignment + capacity-aware ingress + sub-chunk refinement), the phase-3 scheduler,
 # and the phase-4 stitch (epoch layout, precedence levels, chunk-label addressing). Failing here
 # means not burning solver time on a broken lower half.
 echo "=== [1/5] Gurobi-free structural tests ==="
+srun python -m teccl.examples.hierarchy_level_chunk_test
 srun python -m teccl.examples.hierarchy_identity_resolution_test
 srun python -m teccl.examples.hierarchy_intra_solve_test
 srun python teccl/ncclize/pacing_gates_test.py
 
 echo "=== [2/5] hetero coarse solve -> identity resolution -> phase-3 -> phase-4 stitch: collective=${COLL}, LP arm ==="
-srun python -m teccl.examples.hierarchy_coarse_solve_hetero "${COLL}" lp
+srun python -m teccl.examples.hierarchy_coarse_solve_hetero "${COLL}" lp "${EXTRA[@]}"
 
 # End-to-end replay of the freshly written coarse LP through both downstream stages, asserting the
 # cross-stage invariants: whole sub-chunk volumes, delivery coverage for every (identity, gpu),

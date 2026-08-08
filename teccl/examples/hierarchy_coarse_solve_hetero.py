@@ -18,7 +18,7 @@ below the coarse solve is Gurobi-free and is replayed locally by hierarchy_stitc
 Everything below the coarse solve is topology-independent and lives in hierarchy_pipeline.
 
 Run from the repo root:
-    python -m teccl.examples.hierarchy_coarse_solve_hetero [allgather|alltoall] [lp|milp|both]
+    python -m teccl.examples.hierarchy_coarse_solve_hetero [allgather|alltoall] [lp|milp|both] [nocoarsen]
 """
 import sys
 import traceback
@@ -27,7 +27,7 @@ from teccl.examples.hierarchy_pipeline import (
     print_solve_summary, run_identity_resolution, run_phase3_intra, run_stitch,
     solve_on_topology,
 )
-from teccl.hierarchy.abstract import abstract, coarsify_demand, lift_demand
+from teccl.hierarchy.abstract import abstract, coarsify_demand, lift_demand, set_level_chunk
 from teccl.input_data import (
     Collective, EpochType, Formulation, InstanceParams, ObjectiveType,
     SolutionMethod, TopologyParams, UserInputParams,
@@ -65,6 +65,7 @@ def _make_input(formulation: Formulation, collective: Collective, out_file: str)
 def main() -> None:
     coll_arg = sys.argv[1].lower() if len(sys.argv) > 1 else "allgather"
     which = sys.argv[2].lower() if len(sys.argv) > 2 else "lp"
+    no_coarsen = "nocoarsen" in [a.lower() for a in sys.argv[3:]]
     collective = Collective.ALLGATHER if coll_arg == "allgather" else Collective.ALLTOALL
 
     fine = HeteroTaperedCluster(TopologyParams(name="HeteroTaperedCluster", chunk_size=1))
@@ -91,6 +92,13 @@ def main() -> None:
         fine_chunks = CHUNKS_PER_PAIR * num_participating
     fine_demand = build_demand(collective, fine, fine_chunks)
     coarse_demand = coarsify_demand(fine_demand, mapping)
+
+    # Put the coarse level into its own chunk unit (abstract.set_level_chunk): the GCD of the
+    # coarse volumes. For these 4/4/6 cells that is 2 -- NOT any single cell's payload, which is
+    # exactly why the rule has to be the common divisor rather than a largest/smallest choice.
+    # `nocoarsen` forces g=1 to reproduce the pre-coarsening behaviour.
+    coarse_demand, g, level_scale = set_level_chunk(coarse, coarse_demand,
+                                                   g=1 if no_coarsen else None)
     coarse.demand_override = coarse_demand
 
     vols = {(u, v): coarse_demand[u][v][0]
@@ -99,6 +107,8 @@ def main() -> None:
     print(f"coarse topology: {mapping.num_coarse} nodes "
           f"({len(mapping.coarse_cells)} cells + {len(coarse.switch_indices)} switches), "
           f"collective={coll_arg}, which={which}")
+    print(f"level chunk: g={g} fine chunks -> {level_scale}, coarse epoch "
+          f"{coarse.get_epoch_duration_slow_link()}s (SLOWEST_LINK)")
     print(f"coarse demand volumes (U->V): {vols}")
 
     tag = coll_arg
@@ -121,7 +131,7 @@ def main() -> None:
             # it must be read off the solved formulation rather than restated.
             coarse_epoch = lp_solver.best_solver.epoch_duration
             res = run_identity_resolution(lp_solver, mapping, fine_demand, fine, coarse_epoch,
-                                          prefix)
+                                          prefix, level_chunk=g)
             intra_flows = run_phase3_intra(res, mapping, prefix, fine, coarse_epoch)
             run_stitch(res, intra_flows, fine, fine_demand, coarse_epoch, tag, prefix)
         except Exception as e:

@@ -49,6 +49,8 @@ carries the dependency order. Re-deriving a "level" from the flows would recompu
 additionally discard the port-contention the scheduler resolved -- understating prologue and epilogue
 time by the ratio of rounds to depth (5-6x on these schedules).
 """
+import logging
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -90,12 +92,55 @@ class DeliveryRecord:
 # ----------------------------------------------------------------------------------------------
 # S0. Grid and preconditions
 # ----------------------------------------------------------------------------------------------
+def intra_link_bandwidth(fine_topology: Topology, cells=None) -> float:
+    """The bandwidth the INTRA level's epoch is measured against: its own link set.
+
+    A level's epoch is "one chunk (at that level's size) on a link of that level's graph", and the
+    intra level's graph is a cell's internal fabric -- not the whole fine topology. For a
+    single-NVSwitch cell every internal link is identical, so fastest and slowest coincide and the
+    user's EpochType has nothing to choose between; that is why this returns one number rather than
+    taking a selector. Restricting to the cell's own links is what makes that true by construction
+    instead of by coincidence: `max` over the whole fine topology happens to land on the NVSwitch
+    in both current topologies, and would silently pick an unrelated link in one where it does not.
+
+    Falls back to the whole-topology max when the topology declares no cells (a flat schedule being
+    replayed through the stitch), which is the historical behaviour.
+    """
+    cells = cells if cells is not None else getattr(fine_topology, "cells", None)
+    caps = set()
+    for cell in cells or []:
+        members = set(cell.members)
+        for i in members:
+            for j in members:
+                c = fine_topology.capacity[i][j]
+                if c > 0:
+                    caps.add(c)
+    if not caps:
+        return max(max(row) for row in fine_topology.capacity)
+    if len(caps) > 1:
+        # Not fatal -- pick the fastest, matching the historical reading -- but say so, because the
+        # "a round is one chunk on a port" identity the whole band arithmetic rests on assumes the
+        # ports are interchangeable.
+        logging.warning(
+            "intra-cell links are not uniform (%s); the fine epoch is sized to the fastest, so a "
+            "round on a slower internal link takes more than one fine epoch", sorted(caps))
+    return max(caps)
+
+
 def derive_grid(scale: ChunkScale, fine_topology: Topology, coarse_epoch: float,
                 max_refinement: int = 128) -> Tuple[float, int]:
     """The fine epoch duration and how many of them a coarse epoch holds.
 
     Both are DERIVED from the live ChunkScale, never written down: refinement changes the chunk
     size, and delta and m must move with it or the round count and the epoch grid silently desync.
+
+    m is FLOORED and delta then back-solved as Delta/m, rather than requiring Delta/delta to come
+    out whole. The fine grid must divide the coarse epoch exactly -- every band deadline is stated
+    in fine epochs -- but nothing requires the natural chunk-crossing time to be the divisor. The
+    old form asserted integrality and passed only because 1800/50 = 36 exactly on both current
+    topologies; it already failed for a coarse FASTEST_LINK epoch (0.0025/delta = 4.5). Flooring
+    makes delta >= the natural time, so an intra round still fits inside one fine epoch, and it
+    keeps m*K*delta == K*Delta exactly, so the network half of the makespan is unrounded.
     """
     if scale is None:
         raise ValueError("IdentityResolution has no ChunkScale; cannot derive the fine epoch grid")
@@ -104,15 +149,14 @@ def derive_grid(scale: ChunkScale, fine_topology: Topology, coarse_epoch: float,
             f"cumulative chunk refinement {scale.refinement_from_root} exceeds the budget "
             f"{max_refinement}: ncclize's chunk_up() would have to expand every chunk that finely. "
             f"The budget is shared by every level of the recursion.")
-    max_bw = max(max(row) for row in fine_topology.capacity)
-    delta = scale.epoch_duration(max_bw)
-    m_float = coarse_epoch / delta
-    m = int(round(m_float))
-    if abs(m_float - m) > 1e-6 or m < 1:
+    natural = scale.epoch_duration(intra_link_bandwidth(fine_topology))
+    m = int(math.floor(coarse_epoch / natural + 1e-9))
+    if m < 1:
         raise AssertionError(
-            f"a coarse epoch is not a whole number of fine epochs: Delta={coarse_epoch} / "
-            f"delta={delta} = {m_float}. Rounding it would corrupt every deadline on the axis.")
-    return delta, m
+            f"a coarse epoch ({coarse_epoch}) is shorter than one intra round ({natural}): the "
+            f"inner fabric is not faster than the outer one, so intra work cannot hide under "
+            f"network time and the whole per-band timing premise fails here.")
+    return coarse_epoch / m, m
 
 
 def assert_native_ownership(res: IdentityResolution) -> None:

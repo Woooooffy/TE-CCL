@@ -47,11 +47,29 @@ from teccl.examples.hierarchy_identity_resolution_test import (
 from teccl.hierarchy.abstract import abstract
 from teccl.hierarchy.intra_solve import schedule_cell
 from teccl.hierarchy.reconstruct import resolve_identities
+from teccl.hierarchy.stitch import derive_grid
 from teccl.input_data import Collective, TopologyParams
 from teccl.solvers.demand import build_demand
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
 
-COARSE_EPOCH = 0.02          # matches the hetero coarse solve (1 GB chunk / 50 GB/s slowest uplink)
+def _coarse_epoch(schedule_json) -> float:
+    """Read the coarse epoch off the schedule being replayed rather than restating it. It is a
+    property of the solve that produced the file, and it moves as soon as a level is re-expressed
+    in its own chunk unit (abstract.set_level_chunk) -- a stale literal would silently put the
+    capacity budgets and the epoch grid below on a different scale than the flows they bound."""
+    return float(schedule_json["1-Epoch_Duration"])
+
+
+def _level_chunk(schedule_json, fine_topology) -> int:
+    """How many FINE chunks one unit of this schedule's volume is worth.
+
+    A solved schedule records the chunk it was solved in as "9-Chunk_Size", so a coarsened level
+    (abstract.set_level_chunk) is self-describing and a replay needs no out-of-band knowledge.
+    Schedules written before coarsening existed carry the fine chunk size and yield 1, which is an
+    exact no-op -- so old and new fixtures both replay correctly through the same path."""
+    g = float(schedule_json.get("9-Chunk_Size", fine_topology.chunk_size)) / fine_topology.chunk_size
+    assert abs(g - round(g)) < 1e-9, f"schedule chunk {g}x the fine chunk is not a whole multiple"
+    return int(round(g))
 
 
 def _check_refinement(res, topo, fine_chunks: int) -> None:
@@ -68,7 +86,7 @@ def _check_refinement(res, topo, fine_chunks: int) -> None:
     assert res.scale.refinement_from_root == res.subdivision, (res.scale, res.subdivision)
 
 
-def _check_link_capacity(res, topo) -> tuple:
+def _check_link_capacity(res, topo, coarse_epoch) -> tuple:
     """Per (fine link, coarse epoch) occupancy in absolute GB, both directions."""
     eg = collections.defaultdict(float)
     ing = collections.defaultdict(float)
@@ -78,12 +96,12 @@ def _check_link_capacity(res, topo) -> tuple:
         ing[(p.ingress_gpu, p.via_switches[-1], p.arrival_epoch)] += gb
     over, worst_e, worst_i = [], 0.0, 0.0
     for (g, sw, k), vol in sorted(eg.items()):
-        cap = topo.capacity[g][sw] * COARSE_EPOCH
+        cap = topo.capacity[g][sw] * coarse_epoch
         worst_e = max(worst_e, vol / cap)
         if vol > cap + 1e-9:
             over.append(("egress", g, sw, k, round(vol, 4), round(cap, 4)))
     for (h, sw, k), vol in sorted(ing.items()):
-        cap = topo.capacity[sw][h] * COARSE_EPOCH
+        cap = topo.capacity[sw][h] * coarse_epoch
         worst_i = max(worst_i, vol / cap)
         if vol > cap + 1e-9:
             over.append(("ingress", h, sw, k, round(vol, 4), round(cap, 4)))
@@ -119,10 +137,10 @@ def _check_delivery_coverage(res, flows) -> int:
     return len(required)
 
 
-def _check_intra_fits_epoch(res, flows, topo) -> tuple:
-    nvlink_bw = max(max(row) for row in topo.capacity)
-    delta = res.scale.epoch_duration(nvlink_bw)
-    m = COARSE_EPOCH / delta
+def _check_intra_fits_epoch(res, flows, topo, coarse_epoch) -> tuple:
+    # delta/m from the stitch's own derive_grid, so this check and the axis the stitch lays out
+    # cannot drift apart (they were two independent copies of the same arithmetic).
+    delta, m = derive_grid(res.scale, topo, coarse_epoch)
     per_gap = collections.defaultdict(int)
     for f in flows:
         per_gap[(f.cell, f.band)] = max(per_gap[(f.cell, f.band)], f.local_round + f.span)
@@ -148,12 +166,15 @@ def replay(tag: str, collective: Collective) -> bool:
 
     with open(path) as f:
         schedule_json = json.load(f)
+    coarse_epoch = _coarse_epoch(schedule_json)
     solver = _fake_solver(_replay_per_chunk_flow_paths(schedule_json),
-                          switch_indices=list(coarse.switch_indices))
-    res = resolve_identities(solver, mapping, fine_demand, topo)
+                          switch_indices=list(coarse.switch_indices),
+                          epoch_duration=coarse_epoch)
+    res = resolve_identities(solver, mapping, fine_demand, topo,
+                             level_chunk=_level_chunk(schedule_json, topo))
 
     _check_refinement(res, topo, fine_chunks)
-    worst_e, worst_i = _check_link_capacity(res, topo)
+    worst_e, worst_i = _check_link_capacity(res, topo, coarse_epoch)
 
     by_cell = collections.defaultdict(list)
     for d in res.intra_demands:
@@ -166,7 +187,7 @@ def replay(tag: str, collective: Collective) -> bool:
                                    subdivision=res.subdivision)
 
     n_required = _check_delivery_coverage(res, flows)
-    peak, m, hot = _check_intra_fits_epoch(res, flows, topo)
+    peak, m, hot = _check_intra_fits_epoch(res, flows, topo, coarse_epoch)
 
     ingress_used = collections.Counter(p.ingress_gpu for p in res.pieces)
     single = [d for d in res.intra_demands

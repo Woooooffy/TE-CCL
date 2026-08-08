@@ -437,6 +437,62 @@ def test_ingress_prefers_target():
     print("  [7] ingress gateway prefers a target when the choice is free OK")
 
 
+def test_level_chunk_unit_invariance():
+    """The resolution must not depend on WHICH CHUNK the coarse level solved in.
+
+    abstract.set_level_chunk lets a coarse level re-express itself in a `g`-times coarser unit (the
+    GCD of its demands), so the same physical solution arrives here with volumes divided by g. The
+    resolution is denominated in FINE IDENTITIES, so it must come out bit-identical -- the slot
+    renormalization against the identity count is what absorbs the unit change, and this test is
+    what says so out loud. If it ever fails, some step below has grown a unit assumption.
+
+    Note what is held fixed: `epoch_duration` is the ONE place the coarse epoch's absolute value
+    enters (via the per-epoch ingress downlink budget). A real coarsening scales the epoch by g AND
+    the volume per epoch by g, so that budget's tightness is unchanged; holding it fixed here is
+    what makes this a like-for-like comparison rather than a quietly loosened one.
+    """
+    path = "Schedules/coarse_hetero_allgather_lp.json"
+    if not os.path.exists(path):
+        print(f"  [8] SKIP level-chunk invariance: {path} not found")
+        return
+    with open(path) as f:
+        schedule_json = json.load(f)
+    topo = HeteroTaperedCluster(TopologyParams(name="HeteroTaperedCluster", chunk_size=1))
+    coarse, m = abstract(topo)
+    fine_demand = build_demand(Collective.ALLGATHER, topo, num_chunks=1)
+    pcp = _replay_per_chunk_flow_paths(schedule_json)
+    switches = list(coarse.switch_indices)
+
+    def fingerprint(res):
+        return ([(p.identity, p.egress_gpu, p.ingress_gpu, p.send_epoch, round(p.volume, 9))
+                 for p in res.pieces],
+                sorted((d.cell, d.kind, d.identity, d.src_gpu, tuple(d.dst_gpus))
+                       for d in res.intra_demands),
+                res.subdivision, res.scale)
+
+    base = fingerprint(resolve_identities(_fake_solver(pcp, switches), m, fine_demand, topo))
+    for g in (2, 4, 8):
+        rescaled = {k: [[(s, i, j, c, v / g, e) for (s, i, j, c, v, e) in path] for path in paths]
+                    for k, paths in pcp.items()}
+        res = resolve_identities(_fake_solver(rescaled, switches), m, fine_demand, topo,
+                                 level_chunk=g)
+        assert fingerprint(res) == base, f"resolution changed at level_chunk={g}"
+
+    # And the volume/identity-count check must still fire on a genuine mismatch rather than be
+    # defeated by the new factor: claiming g=1 for a solution denominated in halves is exactly the
+    # upstream bug the assert exists to catch.
+    halved = {k: [[(s, i, j, c, v / 2, e) for (s, i, j, c, v, e) in path] for path in paths]
+              for k, paths in pcp.items()}
+    try:
+        resolve_identities(_fake_solver(halved, switches), m, fine_demand, topo, level_chunk=1)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("a coarse volume / identity-count mismatch was not caught")
+    print("  [8] resolution is invariant to the coarse level's chunk unit (g=2,4,8); "
+          "mismatched g still rejected OK")
+
+
 def main() -> None:
     test_identity_sets_match_coarsify()
     test_hostB_forced_relay()
@@ -445,6 +501,7 @@ def main() -> None:
     test_replay_real_allgather_json()
     test_lexicographic_egress_dominates()
     test_ingress_prefers_target()
+    test_level_chunk_unit_invariance()
     print("identity resolution structural tests OK")
 
 

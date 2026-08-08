@@ -16,7 +16,7 @@ import json
 from collections import defaultdict
 from dataclasses import asdict
 
-from teccl.hierarchy.stitch import NETWORK, stitch
+from teccl.hierarchy.stitch import NETWORK, derive_grid, stitch
 from teccl.hierarchy.intra_solve import schedule_cell
 from teccl.hierarchy.reconstruct import resolve_identities
 from teccl.input_data import UserInputParams
@@ -37,14 +37,19 @@ def solve_on_topology(user_input: UserInputParams, topology: Topology) -> TECCLS
 
 
 def run_identity_resolution(lp_solver, mapping, fine_demand, fine, coarse_epoch: float,
-                            prefix: str):
+                            prefix: str, level_chunk: int = 1):
     """Resolve the identity-free coarse LP solution into concrete fine identities + intra-cell
     demands, print a summary, and serialize to Schedules/{prefix}_identities.json.
-    Returns the IdentityResolution (for phase-3), or None if there was nothing to resolve."""
+    Returns the IdentityResolution (for phase-3), or None if there was nothing to resolve.
+
+    `level_chunk` is the `g` the coarse level was solved in (abstract.set_level_chunk); it only
+    tells the resolver how to read the coarse volumes, which it then re-denominates into fine
+    identities, so the resolution itself is invariant to it."""
     if not getattr(lp_solver, "best_solver", None):
         print("no solved LP formulation to resolve (best_solver unset)")
         return None
-    res = resolve_identities(lp_solver.best_solver, mapping, fine_demand, fine)
+    res = resolve_identities(lp_solver.best_solver, mapping, fine_demand, fine,
+                             level_chunk=level_chunk)
 
     egress = [d for d in res.intra_demands if d.kind == "egress_stage"]
     ingress = [d for d in res.intra_demands if d.kind == "ingress_distribution"]
@@ -178,10 +183,12 @@ def report_intra_fits_epoch(flows, res, fine, coarse_epoch: float) -> None:
     can hold. `port_cap = 1.0` is scale-invariant (it DEFINES the round), so refinement changes a
     round's duration, not its capacity -- both the round count and m scale with Q, and the margin
     is preserved. Asserting `peak rounds <= m` is what certifies the whole "the inner fabric is
-    much faster than the outer" premise the per-gap-independent timing rests on."""
-    nvlink_bw = max(max(row) for row in fine.capacity)
-    delta = res.scale.epoch_duration(nvlink_bw)
-    m = coarse_epoch / delta
+    much faster than the outer" premise the per-gap-independent timing rests on.
+
+    delta and m come from the stitch's own derive_grid rather than being recomputed here: this
+    report and the axis the stitch actually lays out must agree by construction, and they used to
+    be two independent copies of the same arithmetic."""
+    delta, m = derive_grid(res.scale, fine, coarse_epoch)
     per_gap = defaultdict(int)
     for f in flows:
         per_gap[(f.cell, f.band)] = max(per_gap[(f.cell, f.band)], f.local_round + f.span)
