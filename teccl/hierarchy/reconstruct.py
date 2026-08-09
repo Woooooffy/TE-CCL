@@ -35,7 +35,7 @@ Finally the chunk is REFINED so that every emitted volume is a whole sub-chunk
 (_subdivision_factor / _emit_refined). Fractional volumes are intrinsic here -- they come from the
 coarse LP relaxation splitting a commodity across parallel paths, and from the abstraction summing
 several fine links into one coarse link -- and refining at this boundary is what keeps every
-downstream volume-merging step (this module's _coalesce_egress, intra_solve's _add_direct) from
+downstream volume-merging step (this module's _coalesce_egress, crossbar_solve's _add_direct) from
 having to reason about disjoint byte ranges it cannot represent. The resulting granularity is
 reported on IdentityResolution.scale; see teccl/hierarchy/scale.py for why it must be threaded
 rather than read off the topology.
@@ -127,17 +127,26 @@ def _cell_of(mapping: HierarchyMapping) -> Dict[int, int]:
     return mapping.fine_to_coarse
 
 
-def identity_sets(fine_demand, mapping: HierarchyMapping
+def identity_sets(fine_demand, mapping: HierarchyMapping, relabel=None
                   ) -> Tuple[Dict[Tuple[int, int], List[Identity]],
                              Dict[Tuple[Identity, int], Tuple[int, ...]]]:
     """Derive, straight off the fine demand array, the per-(U,V) identity set and per-identity
     destination-GPU set. Mirrors abstract.coarsify_demand's counting exactly so that
     len(ID[(U,V)]) == coarse[U][V].
 
+    `relabel` maps a tensor coordinate (axis-0 index, chunk-axis index) to the identity it stands
+    for, and must be supplied BELOW THE ROOT. At the root the two coincide -- axis 0 is the source
+    GPU and the chunk axis is its chunk index, so `(s, ci)` IS the identity -- but at a child level
+    axis 0 is the local index of whichever GPU currently HOLDS the data and the chunk axis is a
+    fresh per-holder enumeration, so the raw coordinate merely has the shape of an identity while
+    naming the wrong chunk of the wrong GPU. Node indices need no such treatment: they are correct
+    in the index space of the topology the tensor was built against, which is the one `mapping`
+    describes. See teccl/hierarchy/problem.py (LevelDemand.relabel).
+
     Returns:
-      id_sets[(U, V)]      = sorted list of identities (s, ci) with coarse(s)=U that some GPU in
+      id_sets[(U, V)]      = sorted list of identities with coarse(holder)=U that some GPU in
                              V wants (U != V).
-      targets[((s,ci), V)] = tuple of fine GPUs t in cell V with fine_demand[s][t][ci] > 0.
+      targets[(identity, V)] = tuple of fine GPUs t in cell V with fine_demand[s][t][ci] > 0.
     """
     f2c = _cell_of(mapping)
     n_fine = len(fine_demand)
@@ -147,6 +156,7 @@ def identity_sets(fine_demand, mapping: HierarchyMapping
         cs = f2c[s]
         chunks = len(fine_demand[s][s]) if n_fine else 0
         for ci in range(chunks):
+            ident: Identity = relabel((s, ci)) if relabel else (s, ci)
             # who wants (s, ci), grouped by destination cell
             wanters_by_cell: Dict[int, List[int]] = defaultdict(list)
             for t in range(n_fine):
@@ -155,8 +165,8 @@ def identity_sets(fine_demand, mapping: HierarchyMapping
             for cv, ts in wanters_by_cell.items():
                 if cv == cs:
                     continue
-                id_sets[(cs, cv)].append((s, ci))
-                targets[((s, ci), cv)] = tuple(sorted(ts))
+                id_sets[(cs, cv)].append(ident)
+                targets[(ident, cv)] = tuple(sorted(ts))
     for key in id_sets:
         id_sets[key].sort()
     return id_sets, targets
@@ -326,7 +336,7 @@ def _solve_assignment(identities: Sequence[Identity],
     Egress must dominate ingress rather than trade against it. The two relays are not
     interchangeable: an `egress_stage` relay is HARD (its deadline is the network send epoch, and
     missing it slips the internode schedule) while `ingress_distribution` is SOFT (no deadline,
-    absorbed by the intra-fabric slack) -- see intra_solve's hard/soft split. An egress relay also
+    absorbed by the intra-fabric slack) -- see crossbar_solve's hard/soft split. An egress relay also
     sits UPSTREAM of the network hop and adds pressure to the pre-epoch-0 staging prologue, whereas
     an ingress relay is downstream and off the network critical path. With equal weights the solver
     would be indifferent between "relay at the source" and "relay at the destination" (both cost 1)
@@ -473,6 +483,17 @@ class _Assignment:
     egress_gpu: int
     ingress_gpu: int
     volume: float
+    # Which node in THIS LEVEL's index space physically holds the identity, and therefore stages it
+    # onto the gateway. -1 means "identity[0]", which is correct at the ROOT and only there: an
+    # identity names its native source GPU, but below the root the data has already been relayed and
+    # is held by some other GPU -- in a different index space, at that. Reading the holder off the
+    # identity below the root silently emits a staging relay from a node id that means something
+    # else entirely at this level.
+    holder: int = -1
+
+    @property
+    def native(self) -> int:
+        return self.holder if self.holder >= 0 else self.identity[0]
 
 
 def _ingress_epoch_capacity(slot: _Slot, mapping: HierarchyMapping,
@@ -499,7 +520,7 @@ def _subdivision_factor(assignments: Sequence[_Assignment]) -> int:
         two equal gateways forces halves).
 
     Refining here means nothing downstream ever holds a fractional volume. That is what protects
-    the volume-MERGING steps below (_coalesce_egress here, _add_direct in intra_solve): both merge
+    the volume-MERGING steps below (_coalesce_egress here, _add_direct in crossbar_solve): both merge
     by max() over an (identity, src, dst) key, which is only correct when a merge cannot combine two
     DISJOINT byte ranges of one identity. Sub-chunk identities make such a merge unrepresentable,
     because the two ranges are distinct commodities with distinct keys. Integerizing at the ncclize
@@ -586,9 +607,9 @@ def _emit_refined(assignments: Sequence[_Assignment],
         group.sort(key=lambda a: (a.piece.send_epoch, a.egress_gpu, a.ingress_gpu,
                                   a.piece.via_switches, a.volume))
         s, ci = identity
-        native = s
         cursor = 0
         for a in group:
+            native = a.native
             count = int(round(a.volume * q))
             if abs(a.volume * q - count) > 1e-6:
                 raise AssertionError(
@@ -618,35 +639,43 @@ def _emit_refined(assignments: Sequence[_Assignment],
     return result
 
 
-def resolve_identities(coarse_solver, mapping: HierarchyMapping,
-                       fine_demand, fine_topology: Topology,
-                       scale: Optional[ChunkScale] = None,
-                       level_chunk: int = 1) -> IdentityResolution:
-    """Resolve the identity-free coarse LP solution into concrete fine identities and emit the
-    intra-cell demands phase-3 must satisfy. Collective-agnostic: every input is read off
-    `fine_demand` / the coarse solution, nothing branches on the collective name.
+def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
+                           fine_demand, fine_topology: Topology,
+                           level_chunk: int = 1, relabel=None, holder_of=None
+                           ) -> Tuple[List[_Assignment],
+                                      Dict[Tuple[Identity, int], Tuple[int, ...]],
+                                      float]:
+    """STEP A for an IDENTITY-FREE level: recover which fine identity rode which coarse piece.
 
-    Three steps: assign identities to (piece, egress gateway) slots by a joint lexicographic
-    min-cost program (_solve_assignment); choose each piece's landing GPU under a global fine
-    downlink budget (_pick_ingress); then refine the chunk so every emitted volume is a whole
-    sub-chunk (_subdivision_factor / _emit_refined). The refinement is reported on the returned
-    `scale`, and every downstream quantity derived from chunk size -- fine epoch duration, epochs
-    per coarse epoch, "9-Chunk_Size", algorithmic bandwidth -- must be taken from there.
+    The coarse LP is solved on a demand whose chunk axis `coarsify_demand` collapsed to a single
+    aggregated slot per (cell, cell) pair, so its solution says "8 units flowed U -> sw -> V in
+    epoch 3" and nothing about WHICH chunks. This step puts identity back: expand the pieces into
+    (piece, egress gateway) slots, assign identities to slots by the joint lexicographic min-cost
+    program (_solve_assignment), and choose each piece's landing GPU under a global fine downlink
+    budget (_pick_ingress).
+
+    Returns the `_Assignment` list -- the A/B interface -- plus the per-(identity, cell) target
+    map and the level's epoch duration, both of which step B needs. A level whose solver PRESERVES
+    identity skips this entirely and builds its `_Assignment`s directly (see
+    assign_identities_preserving); either way `build_child_problems` is what runs next.
 
     coarse_solver:  the solved LPFormulation (needs .per_chunk_flow_paths, .topology,
                     .epoch_duration).
     mapping:        HierarchyMapping from abstract().
     fine_demand:    the fine demand tensor build_demand produced (same one coarsify_demand used).
     fine_topology:  the fine Topology (for per-link capacities and switch ids).
-    scale:          granularity the coarse demand is expressed in; defaults to the root
-                    (fine_topology.chunk_size, one chunk per fine chunk index).
     level_chunk:    how many FINE identities one unit of the coarse solution's volume represents
                     -- the `g` from abstract.set_level_chunk, 1 when the coarse level was solved
                     in the fine chunk unit. It is needed ONLY to check the coarse volumes against
                     the identity count; the same rescale then converts everything to identity
                     units, so no other step here is unit-aware.
+    relabel:        tensor coordinate -> identity, required below the root (see identity_sets).
+    holder_of:      identity -> the node HOLDING it in this level's index space, required below the
+                    root for the same reason `_Assignment.holder` exists: `identity[0]` names the
+                    identity's native source, which below the root is neither where the data
+                    currently is nor even an index in this level's space.
     """
-    id_sets, targets = identity_sets(fine_demand, mapping)
+    id_sets, targets = identity_sets(fine_demand, mapping, relabel=relabel)
     pieces_by_pair = _extract_pieces(coarse_solver, mapping)
 
     epoch_duration = getattr(coarse_solver, "epoch_duration", None)
@@ -672,7 +701,9 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
                 f"no coarse pieces for demanded pair {(U, V)} (|ID|={len(identities)}): "
                 + (detail if detail else "coarse solve delivered nothing for this pair"))
 
-        native = {d: d[0] for d in identities}       # native GPU of identity (s, ci) is s
+        # Where each identity lives at THIS level. At the root that is the identity's own source;
+        # below it, `holder_of` says, because the data has already been relayed elsewhere.
+        native = {d: (holder_of.get(d, d[0]) if holder_of else d[0]) for d in identities}
         slots = _build_slots(pieces, U, V, mapping, fine_topology)
         # The coarse solve delivers exactly coarse[U][V] units to V, and coarse[U][V] is
         # |ID(U,V)| / level_chunk -- the identity count re-expressed in the COARSE LEVEL'S OWN
@@ -702,8 +733,92 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
             h = _pick_ingress(slot, d, vol, tgt, cap, ingress_ledger)
             assignments.append(_Assignment(
                 src_cell=U, dst_cell=V, identity=d, piece=slot.piece,
-                egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=vol))
+                egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=vol,
+                holder=native[d] if holder_of else -1))
 
+    return assignments, targets, epoch_duration
+
+
+def make_piece(src_cell: int, dst_cell: int, egress_neighbor: int, ingress_neighbor: int,
+               via_switches: Tuple[int, ...], volume: float, send_epoch: int,
+               arrival_epoch: int) -> "_CoarsePiece":
+    """Public constructor for a coarse piece, for level solvers that know their own routing
+    instead of having it walked out of a solved formulation by `_extract_pieces` (the crossbar
+    solver: its answer is always `U -> switch -> V`, so there is nothing to walk)."""
+    return _CoarsePiece(src_cell=src_cell, dst_cell=dst_cell, egress_neighbor=egress_neighbor,
+                        ingress_neighbor=ingress_neighbor, via_switches=via_switches,
+                        volume=volume, send_epoch=send_epoch, arrival_epoch=arrival_epoch,
+                        origin=(src_cell, dst_cell))
+
+
+def assign_identities_preserving(carried: Sequence[Tuple["_CoarsePiece", Identity]],
+                                 holder: Dict[Identity, int],
+                                 targets: Dict[Tuple[Identity, int], Tuple[int, ...]],
+                                 mapping: HierarchyMapping, fine_topology: Topology,
+                                 epoch_duration: float) -> List[_Assignment]:
+    """STEP A for a level whose solver KEPT chunk identity (the crossbar; the MILP path too, if it
+    ever lands). Each coarse piece already names the identity it carries, so there is no assignment
+    problem left -- only the gateway question that `assign_identities_free` answers as a side
+    effect: which fine GPU egresses, and which lands it.
+
+    Not sharing `_solve_assignment` here is deliberate and load-bearing. Re-deriving an assignment
+    that is already known would let the lexicographic optimizer move an identity onto a different
+    piece, and -- worse -- would reintroduce the fractional volumes `_subdivision_factor` has to
+    integerize. Reading the assignment off the input keeps every volume whole, so `Q == 1` at these
+    levels and they spend nothing from the `refinement_from_root` budget that `MAX_M` caps across
+    the WHOLE recursion (see teccl/hierarchy/scale.py).
+
+    `holder` is where the identity physically lives at this level -- the `src_gpu` of the
+    IntraCellDemand that produced this flow, NOT `identity[0]`: below the root an identity has
+    already been relayed and its native source may not even be in this cell.
+    """
+    ingress_ledger: Dict[Tuple[int, int], float] = {}
+    assignments: List[_Assignment] = []
+
+    for piece, identity in carried:
+        U, V = piece.src_cell, piece.dst_cell
+        slots = _build_slots([piece], U, V, mapping, fine_topology)
+        if not slots:
+            raise RuntimeError(
+                f"no egress gateway for identity {identity} on cell {U} -> {V} via coarse neighbor "
+                f"{piece.egress_neighbor}; boundary_gpu has no entry for that pair")
+        # Egress: the identity's current holder if it owns the uplink, else the widest gateway --
+        # the same preference _solve_assignment's first lexicographic tier encodes, applied
+        # directly because there is only one identity in play.
+        native = holder.get(identity, identity[0])
+        on_native = [s for s in slots if s.egress_gpu == native]
+        slot = on_native[0] if on_native else max(slots, key=lambda s: (s.capacity, -s.egress_gpu))
+        cap = _ingress_epoch_capacity(slot, mapping, fine_topology, epoch_duration)
+        h = _pick_ingress(slot, identity, piece.volume, targets, cap, ingress_ledger)
+        assignments.append(_Assignment(
+            src_cell=U, dst_cell=V, identity=identity, piece=piece,
+            egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=piece.volume,
+            holder=native))
+    return assignments
+
+
+def build_child_problems(assignments: Sequence[_Assignment],
+                         targets: Dict[Tuple[Identity, int], Tuple[int, ...]],
+                         mapping: HierarchyMapping, fine_demand, fine_topology: Topology,
+                         epoch_duration: float,
+                         scale: Optional[ChunkScale] = None,
+                         relabel=None) -> IdentityResolution:
+    """STEP B: turn this level's `_Assignment`s into its flows plus THE NEXT LEVEL'S PROBLEM.
+
+    This runs at EVERY level, whatever produced the assignments, and it is not optional plumbing:
+    `_subdivision_factor` + `_emit_refined` ARE the integerization the recursion contract demands
+    (see teccl/hierarchy/scale.py: "every level receives INTEGER demands, expressed in that level's
+    own chunk unit"), and `_coalesce_egress` / `_dedup_deliveries` are what stop the child being
+    handed redundant demands it would schedule real traffic for. A level that skips this emits an
+    illegal child problem.
+
+    The refinement is reported on the returned `scale`, and every downstream quantity derived from
+    chunk size -- fine epoch duration, epochs per coarse epoch, "9-Chunk_Size", algorithmic
+    bandwidth -- must be taken from there.
+
+    scale: granularity the incoming volumes are expressed in; defaults to the root
+           (fine_topology.chunk_size, one chunk per fine chunk index).
+    """
     q = _subdivision_factor(assignments)
     root = scale or ChunkScale(bytes_per_chunk=fine_topology.chunk_size,
                                num_chunks=_num_fine_chunks(fine_demand))
@@ -714,10 +829,27 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
     result.scale = refined
     result.subdivision = q
     _coalesce_egress(result)
-    _emit_self_distribution(result, fine_demand, mapping, q)
+    _emit_self_distribution(result, fine_demand, mapping, q, relabel=relabel)
     _dedup_deliveries(result)
     _assert_rate_within_capacity(result, fine_topology, epoch_duration)
     return result
+
+
+def resolve_identities(coarse_solver, mapping: HierarchyMapping,
+                       fine_demand, fine_topology: Topology,
+                       scale: Optional[ChunkScale] = None,
+                       level_chunk: int = 1) -> IdentityResolution:
+    """Resolve an identity-free coarse solution into concrete fine identities and emit the
+    intra-cell demands the next level must satisfy: step A (identity-free variant) then step B.
+
+    Collective-agnostic: every input is read off `fine_demand` / the coarse solution, nothing
+    branches on the collective name. See assign_identities_free and build_child_problems for what
+    each half does and why the seam sits where it does.
+    """
+    assignments, targets, epoch_duration = assign_identities_free(
+        coarse_solver, mapping, fine_demand, fine_topology, level_chunk=level_chunk)
+    return build_child_problems(assignments, targets, mapping, fine_demand, fine_topology,
+                                epoch_duration, scale=scale)
 
 
 def _num_fine_chunks(fine_demand) -> int:
@@ -768,7 +900,7 @@ def _dedup_deliveries(result: IdentityResolution) -> int:
     one demand, and it belongs to the egress_stage: that one is HARD (a network send waits on it)
     and it must exist regardless, while the self_distribution's copy is redundant.
 
-    Doing this HERE rather than in the scheduler is what makes it reliable. intra_solve does dedup
+    Doing this HERE rather than in the scheduler is what makes it reliable. crossbar_solve does dedup
     overlapping deliveries, but only on its DIRECT path (_add_direct); a fan-out lowered to a
     binomial tree bypasses that table entirely, so the redundancy survived exactly when the density
     test chose a tree -- 3 of 26 overlaps in the hetero allgather, delivering the same bytes twice
@@ -804,14 +936,17 @@ def _dedup_deliveries(result: IdentityResolution) -> int:
 
 
 def _emit_self_distribution(result: IdentityResolution, fine_demand,
-                            mapping: HierarchyMapping, q: int = 1) -> None:
+                            mapping: HierarchyMapping, q: int = 1, relabel=None) -> None:
     """Emit the intra-cell demand coarsify_demand dropped: fine entries whose source and
     destination are both inside one cell. Structural (read straight off the fine array),
     independent of identity resolution; deadline_epoch=0 (available from the start).
 
     `q` is the sub-chunk refinement in force, so these demands are expressed in the same unit as
     the resolved pieces: one fine identity becomes q whole sub-chunk demands. Self-distribution
-    never introduces fractions of its own -- the data is already local -- so it only follows."""
+    never introduces fractions of its own -- the data is already local -- so it only follows.
+
+    `relabel` is the tensor-coordinate-to-identity map, required below the root for the same reason
+    identity_sets needs it."""
     f2c = _cell_of(mapping)
     n_fine = len(fine_demand)
     per_cell_targets: Dict[Tuple[int, Identity, int], List[int]] = defaultdict(list)
@@ -819,9 +954,10 @@ def _emit_self_distribution(result: IdentityResolution, fine_demand,
         cs = f2c[s]
         chunks = len(fine_demand[s][s]) if n_fine else 0
         for ci in range(chunks):
+            ident: Identity = relabel((s, ci)) if relabel else (s, ci)
             for t in range(n_fine):
                 if fine_demand[s][t][ci] > 0 and f2c[t] == cs:
-                    per_cell_targets[(cs, (s, ci), s)].append(t)
+                    per_cell_targets[(cs, ident, s)].append(t)
     for (cell, identity, src), tgts in sorted(per_cell_targets.items()):
         s, ci = identity
         for j in range(q):

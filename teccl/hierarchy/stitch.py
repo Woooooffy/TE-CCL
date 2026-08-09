@@ -4,7 +4,7 @@ Phase 4: stitch the hierarchical solution into ONE flat schedule on the fine top
 Inputs are the two halves of the solve below the coarse LP:
   * `IdentityResolution.pieces` -- inter-cell flows, already pinned to real fine GPUs and fine
     switch ids, carrying the coarse level's own pacing (`ResolvedPiece.rate`);
-  * the per-cell `IntraFlow`s from the memoized NVSwitch schedule (teccl.hierarchy.intra_solve).
+  * the per-cell `IntraFlow`s from the memoized NVSwitch schedule (teccl.hierarchy.crossbar_solve).
 
 Output is the `flow_str_info` dict every solver emits, so `teccl/ncclize/teccl_ncclize.py` consumes
 it unchanged and MSCCL XML comes out the far end.
@@ -55,7 +55,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from teccl.hierarchy.intra_solve import PROLOGUE_BAND, IntraFlow
+from teccl.hierarchy.crossbar_solve import PROLOGUE_BAND, IntraFlow
 from teccl.hierarchy.reconstruct import Identity, IdentityResolution
 from teccl.hierarchy.scale import ChunkScale
 from teccl.topologies.topology import Topology

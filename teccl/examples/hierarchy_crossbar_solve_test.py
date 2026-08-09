@@ -1,5 +1,5 @@
 """
-Gurobi-free structural tests for the phase-3 intra-cell scheduler (teccl.hierarchy.intra_solve).
+Gurobi-free structural tests for the phase-3 intra-cell scheduler (teccl.hierarchy.crossbar_solve).
 
 Steps 1-3 of the algorithm phase:
   [1] _to_jobs: IntraCellDemand -> scheduler jobs, incl. fan-out density test (direct vs binomial
@@ -10,7 +10,7 @@ Steps 1-3 of the algorithm phase:
       internal allgather together): deadlines met, ports never oversubscribed, demand satisfied.
 
 Run from the repo root (in the teccl env):
-    python -m teccl.examples.hierarchy_intra_solve_test
+    python -m teccl.examples.hierarchy_crossbar_solve_test
 """
 from collections import defaultdict
 
@@ -18,8 +18,8 @@ import numpy as np
 
 from teccl.hierarchy.abstract import abstract
 from teccl.hierarchy.reconstruct import IntraCellDemand, resolve_identities
-from teccl.hierarchy import intra_solve
-from teccl.hierarchy.intra_solve import (
+from teccl.hierarchy import crossbar_solve
+from teccl.hierarchy.crossbar_solve import (
     _Job, _to_jobs, _schedule_band, _assert_ports, _assert_deadlines, schedule_cell)
 from teccl.input_data import Collective, TopologyParams
 from teccl.solvers.demand import build_demand

@@ -37,7 +37,7 @@ from math import inf
 import numpy as np
 
 from teccl.hierarchy.abstract import abstract
-from teccl.hierarchy.intra_solve import (PROLOGUE_BAND, IntraFlow, _assign_bands, _Job,
+from teccl.hierarchy.crossbar_solve import (PROLOGUE_BAND, IntraFlow, _assign_bands, _Job,
                                          schedule_cell)
 from teccl.hierarchy.reconstruct import (IdentityResolution, IntraCellDemand, ResolvedPiece,
                                          resolve_identities)

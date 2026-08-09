@@ -41,7 +41,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from teccl.hierarchy.abstract import abstract, coarsify_demand
+from teccl.hierarchy.abstract import abstract, coarsify_demand, level_chunk_units
 from teccl.hierarchy.cell import Cell
 from teccl.hierarchy.reconstruct import HierarchyMapping, identity_sets, resolve_identities
 from teccl.input_data import Collective, TopologyParams
@@ -280,8 +280,19 @@ def test_replay_real_allgather_json():
     fine_demand = build_demand(Collective.ALLGATHER, topo, num_chunks=1)
 
     pcp = _replay_per_chunk_flow_paths(schedule_json)
-    solver = _fake_solver(pcp, switch_indices=list(coarse.switch_indices))
-    res = resolve_identities(solver, m, fine_demand, topo)   # must not raise (was the crash)
+    # Both the epoch and the chunk unit must come FROM THE SCHEDULE, not from this file's defaults.
+    # They move together (abstract.set_level_chunk coarsens the topology and the demand at once), so
+    # a hardcoded 0.02/g=1 silently describes a different problem than the one being replayed -- and
+    # then trips the resolver's own capacity assert, since every piece is paced against the epoch.
+    solver = _fake_solver(pcp, switch_indices=list(coarse.switch_indices),
+                          epoch_duration=schedule_json["1-Epoch_Duration"])
+    # The checked-in schedule was solved in the coarse level's OWN chunk unit (the driver calls
+    # abstract.set_level_chunk), so its volumes are in units of g fine identities. Re-derive that g
+    # the same way the driver does instead of assuming 1 -- assuming it made this replay fail the
+    # moment coarsening was turned on, since the coarse volumes then no longer count identities.
+    level_chunk = level_chunk_units(coarsify_demand(fine_demand, m))
+    res = resolve_identities(solver, m, fine_demand, topo,
+                             level_chunk=level_chunk)      # must not raise (was the crash)
 
     q = res.subdivision
     assert q >= 1 and res.scale is not None, (q, res.scale)
@@ -333,8 +344,9 @@ def test_replay_real_allgather_json():
             (sorted(native_eps), sorted(relay_eps))
 
     # Ingress fine-downlink capacity, per (gpu, epoch), in absolute GB. Volumes are sub-chunks now,
-    # so scale by the refined chunk size rather than assuming 1 GB.
-    ep = 0.02
+    # so scale by the refined chunk size rather than assuming 1 GB -- and take the epoch from the
+    # schedule being replayed, for the same reason the solver shim does.
+    ep = schedule_json["1-Epoch_Duration"]
     used = defaultdict(float)
     for p in res.pieces:
         used[(p.ingress_gpu, p.arrival_epoch)] += p.volume * res.scale.bytes_per_chunk
@@ -345,11 +357,19 @@ def test_replay_real_allgather_json():
             over.append((h, k, vol, cap * ep))
     assert not over, f"ingress downlink oversubscribed: {over}"
 
-    # Both GPUs of Host C's multi-GPU T1 boundary carry ingress traffic. Taking
-    # boundary_gpu[...][0] unconditionally left g13 completely idle on ingress while g11 ran at
-    # 150% of its downlink.
+    # Host C's ingress must be SPREAD, not piled onto one GPU. Taking boundary_gpu[...][0]
+    # unconditionally ran g11 at 150% of its downlink while a sibling sat idle; the capacity-aware
+    # choice is what fixed it, and the oversubscription assert above is the direct guard.
+    #
+    # This deliberately does NOT name g13. That expectation was over-fitted to a replay parameterized
+    # with the wrong epoch (0.02 against a schedule solved at 0.04): under half the real budget the
+    # resolver was forced to spill onto g13, and the test read the spill as the property. With the
+    # correct budget it lands on a GPU that actually wants the data instead -- strictly better, and
+    # the objective's ingress tier asking for exactly that. What must hold in both worlds is that
+    # more than one boundary GPU is used.
     c_ingress = collections.Counter(p.ingress_gpu for p in res.pieces if p.dst_cell == C)
-    assert c_ingress[11] and c_ingress[13], dict(c_ingress)
+    assert len(c_ingress) > 1, dict(c_ingress)
+    assert max(c_ingress.values()) < sum(c_ingress.values()), dict(c_ingress)
 
     print(f"  [5] replay real allgather JSON OK: {len(res.pieces)} pieces (Q={q}, "
           f"{res.scale}), Host-B relays {b_relays}, C egress gpus {sorted(c_egress_gpus)}, "
@@ -460,8 +480,17 @@ def test_level_chunk_unit_invariance():
     topo = HeteroTaperedCluster(TopologyParams(name="HeteroTaperedCluster", chunk_size=1))
     coarse, m = abstract(topo)
     fine_demand = build_demand(Collective.ALLGATHER, topo, num_chunks=1)
-    pcp = _replay_per_chunk_flow_paths(schedule_json)
+    # Normalize the replayed solution to ONE FINE IDENTITY PER UNIT before starting, because the
+    # checked-in schedule was itself solved in a coarsened unit (`9-Chunk_Size` fine chunks per
+    # coarse chunk). This test's whole subject is the g-dependence, so its baseline has to be the
+    # g=1 denomination rather than whatever the file happened to be written in -- otherwise the
+    # "base" is already a coarsened case and the comparison is against the wrong thing.
+    g_sched = level_chunk_units(coarsify_demand(fine_demand, m))
+    raw = _replay_per_chunk_flow_paths(schedule_json)
+    pcp = {k: [[(s, i, j, c, v * g_sched, e) for (s, i, j, c, v, e) in path] for path in paths]
+           for k, paths in raw.items()}
     switches = list(coarse.switch_indices)
+    ep = schedule_json["1-Epoch_Duration"]
 
     def fingerprint(res):
         return ([(p.identity, p.egress_gpu, p.ingress_gpu, p.send_epoch, round(p.volume, 9))
@@ -470,11 +499,11 @@ def test_level_chunk_unit_invariance():
                        for d in res.intra_demands),
                 res.subdivision, res.scale)
 
-    base = fingerprint(resolve_identities(_fake_solver(pcp, switches), m, fine_demand, topo))
+    base = fingerprint(resolve_identities(_fake_solver(pcp, switches, epoch_duration=ep), m, fine_demand, topo))
     for g in (2, 4, 8):
         rescaled = {k: [[(s, i, j, c, v / g, e) for (s, i, j, c, v, e) in path] for path in paths]
                     for k, paths in pcp.items()}
-        res = resolve_identities(_fake_solver(rescaled, switches), m, fine_demand, topo,
+        res = resolve_identities(_fake_solver(rescaled, switches, epoch_duration=ep), m, fine_demand, topo,
                                  level_chunk=g)
         assert fingerprint(res) == base, f"resolution changed at level_chunk={g}"
 
@@ -484,7 +513,7 @@ def test_level_chunk_unit_invariance():
     halved = {k: [[(s, i, j, c, v / 2, e) for (s, i, j, c, v, e) in path] for path in paths]
               for k, paths in pcp.items()}
     try:
-        resolve_identities(_fake_solver(halved, switches), m, fine_demand, topo, level_chunk=1)
+        resolve_identities(_fake_solver(halved, switches, epoch_duration=ep), m, fine_demand, topo, level_chunk=1)
     except AssertionError:
         pass
     else:

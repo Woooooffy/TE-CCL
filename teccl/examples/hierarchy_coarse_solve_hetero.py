@@ -23,11 +23,9 @@ Run from the repo root:
 import sys
 import traceback
 
-from teccl.examples.hierarchy_pipeline import (
-    print_solve_summary, run_identity_resolution, run_phase3_intra, run_stitch,
-    solve_on_topology,
-)
-from teccl.hierarchy.abstract import abstract, coarsify_demand, lift_demand, set_level_chunk
+from teccl.examples.hierarchy_pipeline import make_reporter, print_solve_summary
+from teccl.hierarchy.abstract import abstract, lift_demand
+from teccl.hierarchy.solve import solve_hierarchical
 from teccl.input_data import (
     Collective, EpochType, Formulation, InstanceParams, ObjectiveType,
     SolutionMethod, TopologyParams, UserInputParams,
@@ -69,21 +67,24 @@ def main() -> None:
     collective = Collective.ALLGATHER if coll_arg == "allgather" else Collective.ALLTOALL
 
     fine = HeteroTaperedCluster(TopologyParams(name="HeteroTaperedCluster", chunk_size=1))
-    coarse, mapping = abstract(fine)
-    lift_demand(mapping)  # heterogeneous: per-cell GPU-count chunk identities
+    # abstract() only to size the demand; solve_hierarchical redoes it internally as level 0. The
+    # per-cell GPU-count chunk identities lift_demand fills are a property of the topology, so
+    # doing it here is harmless and keeps the participant count available for the alltoall scaling.
+    _coarse, mapping = abstract(fine)
+    lift_demand(mapping)
 
-    # Fine demand -> coarse demand (collective-agnostic aggregation). The fine demand MUST be
-    # built at the same effective resolution the flat ground-truth solve uses, or the coarse
-    # volumes won't correspond to the flat problem and the comparison is meaningless.
+    # The fine demand MUST be built at the same effective resolution the flat ground-truth solve
+    # uses, or the coarse volumes won't correspond to the flat problem and the comparison is
+    # meaningless.
     #
-    # CHUNKS_PER_PAIR is the flat input num_chunks (per source, per destination). AllGather
-    # passes it through unscaled, so fine_chunks == CHUNKS_PER_PAIR. AllToAll is DIFFERENT: the
-    # scheduler scales the flat input by the participating-GPU count (scheduler.get_solver,
-    # ALLTOALL branch: num_chunks *= num_gpus), and build_demand then lays down
-    # fine_chunks // num_gpus chunks per ordered pair -- so to reproduce the flat alltoall we
-    # must pre-scale here to CHUNKS_PER_PAIR * num_gpus (build_demand is called DIRECTLY, it does
-    # not go through the scheduler's scaling). Keep CHUNKS_PER_PAIR in lockstep with the flat
-    # input JSON (hetero_alltoall_lp.json num_chunks).
+    # CHUNKS_PER_PAIR is the flat input num_chunks (per source, per destination). AllGather passes
+    # it through unscaled, so fine_chunks == CHUNKS_PER_PAIR. AllToAll is DIFFERENT: the scheduler
+    # scales the flat input by the participating-GPU count (scheduler.get_solver, ALLTOALL branch:
+    # num_chunks *= num_gpus), and build_demand then lays down fine_chunks // num_gpus chunks per
+    # ordered pair -- so to reproduce the flat alltoall we must pre-scale here to
+    # CHUNKS_PER_PAIR * num_gpus (build_demand is called DIRECTLY, it does not go through the
+    # scheduler's scaling). Keep CHUNKS_PER_PAIR in lockstep with the flat input JSON
+    # (hetero_alltoall_lp.json num_chunks).
     CHUNKS_PER_PAIR = 1
     num_participating = sum(len(c.gpus) for c in mapping.coarse_cells.values())
     if collective == Collective.ALLGATHER:
@@ -91,49 +92,32 @@ def main() -> None:
     else:
         fine_chunks = CHUNKS_PER_PAIR * num_participating
     fine_demand = build_demand(collective, fine, fine_chunks)
-    coarse_demand = coarsify_demand(fine_demand, mapping)
-
-    # Put the coarse level into its own chunk unit (abstract.set_level_chunk): the GCD of the
-    # coarse volumes. For these 4/4/6 cells that is 2 -- NOT any single cell's payload, which is
-    # exactly why the rule has to be the common divisor rather than a largest/smallest choice.
-    # `nocoarsen` forces g=1 to reproduce the pre-coarsening behaviour.
-    coarse_demand, g, level_scale = set_level_chunk(coarse, coarse_demand,
-                                                   g=1 if no_coarsen else None)
-    coarse.demand_override = coarse_demand
-
-    vols = {(u, v): coarse_demand[u][v][0]
-            for u in range(mapping.num_coarse) for v in range(mapping.num_coarse)
-            if coarse_demand[u][v][0]}
-    print(f"coarse topology: {mapping.num_coarse} nodes "
-          f"({len(mapping.coarse_cells)} cells + {len(coarse.switch_indices)} switches), "
-          f"collective={coll_arg}, which={which}")
-    print(f"level chunk: g={g} fine chunks -> {level_scale}, coarse epoch "
-          f"{coarse.get_epoch_duration_slow_link()}s (SLOWEST_LINK)")
-    print(f"coarse demand volumes (U->V): {vols}")
 
     tag = coll_arg
     prefix = f"coarse_hetero_{tag}"
     milp_out = f"Schedules/{prefix}_milp.json"
     lp_out = f"Schedules/{prefix}_lp.json"
 
+    print(f"fine topology: {len(fine.capacity)} nodes, {len(fine.cells)} cells, "
+          f"collective={coll_arg}, which={which}")
+
     if which in ("both", "milp"):
         print("\n=== MILP (switch_copy=True, multicast) ===")
         try:
-            solve_on_topology(_make_input(Formulation.MILP, collective, milp_out), coarse)
+            solve_hierarchical(fine, _make_input(Formulation.MILP, collective, milp_out),
+                               collective, fine_chunks, prefix=f"{prefix}_milp",
+                               fine_demand=fine_demand,
+                               level_chunk=1 if no_coarsen else None)
         except Exception as e:
             print(f"MILP solve failed: {type(e).__name__}: {e}")
     if which in ("both", "lp"):
         print("\n=== LP (switch_copy=False, unicast) ===")
         try:
-            lp_solver = solve_on_topology(_make_input(Formulation.LP, collective, lp_out), coarse)
-            # The coarse epoch is the coarse solve's own epoch duration -- every downstream
-            # quantity (m, the staging deadlines, the network pacing rate) is derived from it, so
-            # it must be read off the solved formulation rather than restated.
-            coarse_epoch = lp_solver.best_solver.epoch_duration
-            res = run_identity_resolution(lp_solver, mapping, fine_demand, fine, coarse_epoch,
-                                          prefix, level_chunk=g)
-            intra_flows = run_phase3_intra(res, mapping, prefix, fine, coarse_epoch)
-            run_stitch(res, intra_flows, fine, fine_demand, coarse_epoch, tag, prefix)
+            solve_hierarchical(fine, _make_input(Formulation.LP, collective, lp_out),
+                               collective, fine_chunks, prefix=prefix,
+                               fine_demand=fine_demand, write_outputs=True,
+                               report=make_reporter(prefix, tag),
+                               level_chunk=1 if no_coarsen else None)
         except Exception as e:
             print(f"LP solve / hierarchical reconstruction failed: {type(e).__name__}: {e}")
             traceback.print_exc()

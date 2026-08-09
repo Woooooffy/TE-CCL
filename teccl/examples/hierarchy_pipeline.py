@@ -1,24 +1,25 @@
 """
-The topology-independent half of the hierarchical driver: everything below the coarse solve.
+The drivers' shared REPORTING half: what a hierarchical run says about itself.
 
-A driver picks a fine topology, abstracts it, builds the coarse demand and solves it; from there
-the pipeline is identical whatever the topology looks like -- identity resolution (phase 2) ->
-intra-cell NVSwitch schedule (phase 3) -> stitch (phase 4) -> flat schedule on the fine topology.
-That shared tail lives here, so hierarchy_coarse_solve_hetero (irregular 3-host cluster) and
-hierarchy_coarse_solve_rail (symmetric 32-host rail-optimized spine-leaf) differ only in the parts
-that are genuinely topology-specific.
+Orchestration used to live here too -- each driver called run_identity_resolution ->
+run_phase3_intra -> run_stitch in order, which is what made "two levels" a property of the driver
+rather than of the topology. That sequence is now `teccl.hierarchy.solve.solve_hierarchical`, which
+recurses to whatever depth the topology declares, and a driver just calls it.
 
-`prefix` is the schedule-path stem the driver owns: outputs are
-Schedules/{prefix}_{lp,milp,identities,intra,flat}.json.
+What remains is narration. Every line these functions print stands in for a defect that was once
+silent -- a fine link oversubscribed by 150%, a merge combining two disjoint byte ranges of one
+chunk, intra work that did not fit the coarse epoch it ran under -- so they are worth printing on
+every remote run. They stay OUT of the solver because which of them a driver wants, and under what
+name, is a driver's business; the recursion should not grow a reporting policy.
+
+`solve_on_topology` also stays: it is how a level reaches TECCLSolver with an already-built
+Topology object, which `get_topology` cannot do (it only knows the named built-ins).
 """
 import copy
 import json
 from collections import defaultdict
-from dataclasses import asdict
 
-from teccl.hierarchy.stitch import NETWORK, derive_grid, stitch
-from teccl.hierarchy.intra_solve import schedule_cell
-from teccl.hierarchy.reconstruct import resolve_identities
+from teccl.hierarchy.stitch import derive_grid
 from teccl.input_data import UserInputParams
 from teccl.scheduler import TECCLSolver
 from teccl.topologies.topology import Topology
@@ -36,21 +37,29 @@ def solve_on_topology(user_input: UserInputParams, topology: Topology) -> TECCLS
     return solver
 
 
-def run_identity_resolution(lp_solver, mapping, fine_demand, fine, coarse_epoch: float,
-                            prefix: str, level_chunk: int = 1):
-    """Resolve the identity-free coarse LP solution into concrete fine identities + intra-cell
-    demands, print a summary, and serialize to Schedules/{prefix}_identities.json.
-    Returns the IdentityResolution (for phase-3), or None if there was nothing to resolve.
+def make_reporter(prefix: str, tag: str):
+    """Build the `report=` callback `solve.solve_hierarchical` calls once the root level has been
+    lowered, so the remote .out log keeps narrating the invariants it always did.
 
-    `level_chunk` is the `g` the coarse level was solved in (abstract.set_level_chunk); it only
-    tells the resolver how to read the coarse volumes, which it then re-denominates into fine
-    identities, so the resolution itself is invariant to it."""
-    if not getattr(lp_solver, "best_solver", None):
-        print("no solved LP formulation to resolve (best_solver unset)")
-        return None
-    res = resolve_identities(lp_solver.best_solver, mapping, fine_demand, fine,
-                             level_chunk=level_chunk)
+    The narration is deliberately NOT inside the solver. Each of these lines replaced a silent
+    defect, so they are worth printing on every run -- but which of them a given driver wants, and
+    under what name, is a driver's business, and the recursion should not grow a reporting policy.
+    """
+    def report(res, flows, fine, coarse_epoch):
+        if res is None:
+            print("no resolution to report")
+            return
+        describe_resolution(res, prefix)
+        report_resolution_invariants(res, fine, coarse_epoch)
+        print(f"\n=== sub-level schedule ({tag}) ===")
+        print(f"  {len(flows)} fine flows across "
+              f"{len({(f.cell, f.band) for f in flows})} (cell, band) pairs")
+        report_intra_fits_epoch(flows, res, fine, coarse_epoch)
+    return report
 
+
+def describe_resolution(res, prefix: str) -> None:
+    """The per-cell relay summary the driver has always printed before the invariant checks."""
     egress = [d for d in res.intra_demands if d.kind == "egress_stage"]
     ingress = [d for d in res.intra_demands if d.kind == "ingress_distribution"]
     selfd = [d for d in res.intra_demands if d.kind == "self_distribution"]
@@ -64,22 +73,6 @@ def run_identity_resolution(lp_solver, mapping, fine_demand, fine, coarse_epoch:
     for cell in sorted(per_cell_relay):
         print(f"  cell {cell} egress relays: "
               f"{sorted(set(f'{s}->{g}' for (_id, s, g) in per_cell_relay[cell]))}")
-
-    report_resolution_invariants(res, fine, coarse_epoch)
-
-    out = {
-        "pieces": [asdict(p) for p in res.pieces],
-        "intra_demands": [asdict(d) for d in res.intra_demands],
-        # to_json(), not asdict(): the scale holds exact Fractions and asdict passes them through
-        # raw, which no JSON encoder can write.
-        "scale": res.scale.to_json() if res.scale else None,
-        "subdivision": res.subdivision,
-    }
-    path = f"Schedules/{prefix}_identities.json"
-    with open(path, "w") as f:
-        json.dump(out, f, indent=2, default=list)
-    print(f"identity resolution written to {path}")
-    return res
 
 
 def report_resolution_invariants(res, fine, coarse_epoch: float) -> None:
@@ -133,50 +126,6 @@ def report_resolution_invariants(res, fine, coarse_epoch: float) -> None:
           f"(lexicographic tier 1 minimizes this; the ingress tier never trades against it)")
 
 
-def run_phase3_intra(res, mapping, prefix: str, fine=None, coarse_epoch: float = None,
-                     debug: bool = True):
-    """Phase-3: schedule every cell's intra-cell demands onto its NVSwitch (Gurobi-free, EDF
-    edge-coloring). Debug narration is on by default so the .out log shows the full per-step
-    derivation -- fan-out density decisions, dedup, per-round matchings, and optimality vs the
-    port-load bound. On a topology with many identical cells that narration is repeated per cell
-    and can dominate the log, so drivers may pass debug=False.
-
-    Serializes the fine IntraFlows to Schedules/{prefix}_intra.json and RETURNS them, since the
-    stitch consumes them together with the resolution."""
-    if res is None:
-        return []
-    by_cell = {}
-    for d in res.intra_demands:
-        by_cell.setdefault(d.cell, []).append(d)
-
-    print(f"\n=== phase-3 intra-cell scheduling ({prefix}) ===")
-    all_flows = []
-    for cid in sorted(mapping.coarse_cells):
-        cell = mapping.coarse_cells[cid]
-        demands = by_cell.get(cid, [])
-        if not demands:
-            continue
-        # switch_copy=False: the LP path is unicast, so the intra fabric is modeled unicast too.
-        flows = schedule_cell(cid, cell, demands, switch_copy=False, debug=debug,
-                              subdivision=res.subdivision)
-        all_flows.extend(flows)
-
-    # kind/hard are the job provenance the stitch places a flow by: `gap` alone is ambiguous
-    # (a self_distribution and an epoch-0 staging relay both land in gap 0).
-    out = [dict(cell=f.cell, identity=list(f.identity), sender=f.sender, receiver=f.receiver,
-                via_switch=f.via_switch, volume=f.volume, band=f.band, local_round=f.local_round,
-                span=f.span, identities=[list(i) for i in f.identities],
-                kind=f.kind, hard=f.hard)
-           for f in all_flows]
-    path = f"Schedules/{prefix}_intra.json"
-    with open(path, "w") as f:
-        json.dump(out, f, indent=2)
-    print(f"\nphase-3 intra schedule: {len(all_flows)} fine flows written to {path}")
-    if fine is not None and res.scale is not None and coarse_epoch is not None:
-        report_intra_fits_epoch(all_flows, res, fine, coarse_epoch)
-    return all_flows
-
-
 def report_intra_fits_epoch(flows, res, fine, coarse_epoch: float) -> None:
     """The phase-3 feasibility certificate: intra-cell work must fit inside a coarse epoch.
 
@@ -202,41 +151,6 @@ def report_intra_fits_epoch(flows, res, fine, coarse_epoch: float) -> None:
         f"intra-cell work does not fit a coarse epoch: {peak} rounds > m={m:.1f} at {hot}. The "
         f"inner fabric is not fast enough relative to the outer for per-gap-independent timing; "
         f"the windowed intra solver is the fallback.")
-
-
-def run_stitch(res, intra_flows, fine, fine_demand, coarse_epoch: float, tag: str, prefix: str):
-    """Phase-4: merge the inter-cell pieces and the intra-cell flows into ONE flat schedule on the
-    fine topology, written to Schedules/{prefix}_flat.json.
-
-    That file is an ordinary flat schedule -- ncclize consumes it with no hierarchy awareness:
-        python teccl/ncclize/teccl_ncclize.py --schedule Schedules/{prefix}_flat.json -o out.xml
-    which runs check_implements() and so independently validates that the stitched schedule really
-    implements the collective."""
-    if res is None or not intra_flows and not res.pieces:
-        return None
-    print(f"\n=== phase-4 stitch ({tag}) ===")
-    info, records = stitch(res, intra_flows, fine, fine_demand, coarse_epoch, tag)
-
-    path = f"Schedules/{prefix}_flat.json"
-    with open(path, "w") as f:
-        json.dump(info, f, indent=2, sort_keys=True)
-
-    net = [r for r in records if r.phase == NETWORK]
-    by_phase = defaultdict(int)
-    for r in records:
-        by_phase[r.phase] += 1
-    print(f"  {len(records)} delivery records {dict(by_phase)}; "
-          f"{len(info['8-Chunk paths'])} demands traced (causality + coverage verified)")
-    print(f"  fine epoch delta={info['1-Epoch_Duration']:.4e}s x "
-          f"{info['3-Epochs_Required']} epochs = {info['4-Collective_Finish_Time']:.4f}s, "
-          f"algo bw={info['5-Algo_Bandwidth']:.2f}, chunk={info['9-Chunk_Size']}")
-    # Only the coarse level paces its flows; the intra level deliberately does not, so this ratio
-    # should be exactly the network/intra split above.
-    rates = sorted({r.rate for r in net})
-    print(f"  paced network sends: {len(net)} at rate(s) {rates} GB/s; "
-          f"{len(records) - len(net)} intra sends unpaced")
-    print(f"  flat schedule written to {path}")
-    return info
 
 
 def print_solve_summary(paths) -> None:

@@ -4,8 +4,8 @@ Gurobi-free END-TO-END replay of the hierarchical pipeline below the coarse solv
 Replays a REAL solved coarse LP (Schedules/coarse_hetero_{coll}_lp.json) back into the
 per_chunk_flow_paths structure, then runs the two stages that consume it -- identity resolution
 (teccl.hierarchy.reconstruct) and the phase-3 intra-cell NVSwitch schedule
-(teccl.hierarchy.intra_solve) -- and checks the invariants that hold across BOTH stages. The
-per-stage structural oracles live in hierarchy_identity_resolution_test / hierarchy_intra_solve_test;
+(teccl.hierarchy.crossbar_solve) -- and checks the invariants that hold across BOTH stages. The
+per-stage structural oracles live in hierarchy_identity_resolution_test / hierarchy_crossbar_solve_test;
 this file is about the seam between them, which is where volume bookkeeping goes wrong.
 
 Checked here:
@@ -13,7 +13,7 @@ Checked here:
   1. Sub-chunk refinement: every piece and every intra demand carries volume exactly 1.0, and the
      ChunkScale conserves the per-GPU payload. Nothing below identity resolution should ever hold a
      fractional volume -- that is what keeps the volume-MERGING steps (reconstruct's
-     _coalesce_egress, intra_solve's _add_direct, both max() over an (identity, src, dst) key) from
+     _coalesce_egress, crossbar_solve's _add_direct, both max() over an (identity, src, dst) key) from
      silently combining two disjoint byte ranges of one identity.
 
   2. DELIVERY COVERAGE: every (identity, gpu) some demand asks for actually receives at least the
@@ -45,7 +45,7 @@ from teccl.examples.hierarchy_identity_resolution_test import (
     _fake_solver, _replay_per_chunk_flow_paths,
 )
 from teccl.hierarchy.abstract import abstract
-from teccl.hierarchy.intra_solve import schedule_cell
+from teccl.hierarchy.crossbar_solve import schedule_cell
 from teccl.hierarchy.reconstruct import resolve_identities
 from teccl.hierarchy.stitch import derive_grid
 from teccl.input_data import Collective, TopologyParams
@@ -124,7 +124,7 @@ def _check_delivery_coverage(res, flows) -> int:
                 required[(d.identity, t)] = max(required[(d.identity, t)], d.volume)
     delivered = collections.defaultdict(float)
     for f in flows:
-        # A flow may carry several co-travelling sub-chunks as ONE transfer (intra_solve's
+        # A flow may carry several co-travelling sub-chunks as ONE transfer (crossbar_solve's
         # _coalesce_subchunks), so credit each sub-chunk it moves -- `f.identity` is only the
         # representative, and counting it alone would report the rest as never delivered.
         for identity in f.identities:

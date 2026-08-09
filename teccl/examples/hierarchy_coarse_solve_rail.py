@@ -41,11 +41,9 @@ Run from the repo root (needs Gurobi for the coarse solve):
 import sys
 import traceback
 
-from teccl.examples.hierarchy_pipeline import (
-    print_solve_summary, run_identity_resolution, run_phase3_intra, run_stitch,
-    solve_on_topology,
-)
-from teccl.hierarchy.abstract import abstract, coarsify_demand, lift_demand, set_level_chunk
+from teccl.examples.hierarchy_pipeline import make_reporter, print_solve_summary
+from teccl.hierarchy.abstract import abstract, lift_demand
+from teccl.hierarchy.solve import solve_hierarchical
 from teccl.input_data import (
     Collective, EpochType, Formulation, InstanceParams, ObjectiveType,
     SolutionMethod, TopologyParams, UserInputParams,
@@ -113,32 +111,11 @@ def main() -> None:
     fine_chunks = (CHUNKS_PER_PAIR if collective == Collective.ALLGATHER
                    else CHUNKS_PER_PAIR * num_participating)
     fine_demand = build_demand(collective, fine, fine_chunks)
-    coarse_demand = coarsify_demand(fine_demand, mapping)
 
-    # Put the coarse level into ITS OWN chunk unit before solving: the GCD of its demand volumes,
-    # which for uniform rail cells is a whole host payload (8 fine chunks). Topology, demand and
-    # scale move together. This is what makes the epoch "one chunk on the slowest link" TRUE AT
-    # THIS LEVEL -- inheriting the fine chunk left the epoch 8x too short, so a pair's demand was
-    # exactly one epoch of egress and the LP was free to split it across destinations arbitrarily.
-    # `nocoarsen` forces g=1 for an A/B against that behaviour.
-    coarse_demand, g, level_scale = set_level_chunk(coarse, coarse_demand,
-                                                   g=1 if no_coarsen else None)
-    coarse.demand_override = coarse_demand
-
-    vols = sorted({coarse_demand[u][v][0]
-                   for u in range(mapping.num_coarse) for v in range(mapping.num_coarse)
-                   if coarse_demand[u][v][0]})
-    nonzero = sum(1 for u in range(mapping.num_coarse) for v in range(mapping.num_coarse)
-                  if coarse_demand[u][v][0])
-    print(f"coarse topology: {mapping.num_coarse} nodes "
-          f"({len(mapping.coarse_cells)} cells x {num_participating // len(mapping.coarse_cells)} "
-          f"gpus + {len(coarse.switch_indices)} switches), collective={coll_arg}, which={which}")
-    print(f"twin groups (symmetry): {coarse.equivalent_node_indices}")
-    print(f"level chunk: g={g} fine chunks -> {level_scale}, coarse epoch "
-          f"{coarse.get_epoch_duration_slow_link()}s (SLOWEST_LINK)")
-    # Uniform by construction, so the distinct-volume set should be a single value; printing the
-    # set rather than the full 44x44 matrix keeps the log readable and still catches asymmetry.
-    print(f"coarse demand: {nonzero} nonzero (U->V) pairs, distinct volumes {vols}")
+    print(f"fine topology: {len(fine.capacity)} nodes -> {mapping.num_coarse} coarse "
+          f"({len(mapping.coarse_cells)} cells x "
+          f"{num_participating // len(mapping.coarse_cells)} gpus), collective={coll_arg}, "
+          f"which={which}")
 
     tag = coll_arg
     prefix = f"coarse_rail_{tag}"
@@ -148,25 +125,23 @@ def main() -> None:
     if which in ("both", "milp"):
         print("\n=== MILP (switch_copy=True, multicast) ===")
         try:
-            solve_on_topology(_make_input(Formulation.MILP, collective, milp_out,
-                                          epoch_multiplier), coarse)
+            solve_hierarchical(fine, _make_input(Formulation.MILP, collective, milp_out,
+                                                 epoch_multiplier),
+                               collective, fine_chunks, prefix=f"{prefix}_milp",
+                               fine_demand=fine_demand,
+                               level_chunk=1 if no_coarsen else None)
         except Exception as e:
             print(f"MILP solve failed: {type(e).__name__}: {e}")
             traceback.print_exc()
     if which in ("both", "lp"):
         print("\n=== LP (switch_copy=False, unicast) ===")
         try:
-            lp_solver = solve_on_topology(_make_input(Formulation.LP, collective, lp_out,
-                                                      epoch_multiplier), coarse)
-            # The coarse epoch is the coarse solve's OWN epoch duration -- m, the staging
-            # deadlines and the network pacing rate all derive from it, so read it off the solved
-            # formulation rather than restating 0.02 here.
-            coarse_epoch = lp_solver.best_solver.epoch_duration
-            res = run_identity_resolution(lp_solver, mapping, fine_demand, fine, coarse_epoch,
-                                          prefix, level_chunk=g)
-            intra_flows = run_phase3_intra(res, mapping, prefix, fine, coarse_epoch,
-                                           debug=debug_intra)
-            run_stitch(res, intra_flows, fine, fine_demand, coarse_epoch, tag, prefix)
+            solve_hierarchical(fine, _make_input(Formulation.LP, collective, lp_out,
+                                                 epoch_multiplier),
+                               collective, fine_chunks, prefix=prefix,
+                               fine_demand=fine_demand, write_outputs=True,
+                               report=make_reporter(prefix, tag), debug=debug_intra,
+                               level_chunk=1 if no_coarsen else None)
         except Exception as e:
             print(f"LP solve / hierarchical reconstruction failed: {type(e).__name__}: {e}")
             traceback.print_exc()

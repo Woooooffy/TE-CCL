@@ -1,10 +1,16 @@
 """
-Phase-3 intra-cell scheduler for the hierarchical solver.
+The CROSSBAR level solver: a closed-form (Gurobi-free) solve for a cell whose internal fabric is a
+single non-blocking switch.
 
-Identity resolution (teccl.hierarchy.reconstruct) turns the identity-free coarse LP solution into
-concrete inter-cell pieces plus a list of IntraCellDemand descriptors that must be satisfied INSIDE
-each cell before/after the inter-cell sends. This module schedules those intra-cell demands onto the
-cell's internal fabric (a single non-blocking NVSwitch for the memoized case) and emits fine flows.
+This is one row in the recursion's base-case dispatch table (teccl.hierarchy.solve.solve_flat), not
+a distinct layer of the design. A level is "solve a demand set on a topology"; when that topology
+happens to be a crossbar the answer is known in closed form, so the level is MEMOIZED rather than
+handed to a real formulation. Every current topology's innermost level (an 8-GPU + NVSwitch host) is
+that case, which is why this module carried the whole intra-cell phase before the recursion existed.
+
+Step B of the level above (teccl.hierarchy.reconstruct.build_child_problems) hands each cell a list
+of IntraCellDemand descriptors that must be satisfied INSIDE it before/after the inter-cell sends.
+This module schedules those onto the cell's internal switch and emits fine flows.
 
 The core observation (see the design note hierarchical_phase3_forward_plan): a single NVSwitch is a
 non-blocking crossbar, so scheduling a set of point-to-point transfers on it is exactly a
@@ -53,6 +59,7 @@ from dataclasses import dataclass, field
 from math import inf
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
+from teccl.hierarchy.bands import PROLOGUE_BAND, band_of
 from teccl.hierarchy.cell import Cell
 from teccl.hierarchy.reconstruct import Identity, IntraCellDemand
 
@@ -63,12 +70,6 @@ EPS = 1e-9
 # per-round matching, then a per-cell optimality summary -- so the schedule can be eyeballed for
 # correctness against the max-port-load lower bound.
 _ENV_DEBUG = os.environ.get("TECCL_INTRA_DEBUG", "").lower() in ("1", "true", "yes", "on")
-
-# The band that runs BEFORE coarse epoch 0's network sends. Unlike bands 0..K-1 it is not
-# concurrent with any network traffic, so its width is whatever its own schedule needs rather than
-# a full coarse epoch -- and it is the one band whose length is charged directly to the makespan.
-PROLOGUE_BAND = -1
-
 
 def _p(debug: bool, msg: str = "") -> None:
     if debug:
@@ -510,41 +511,18 @@ def _assert_deadlines(jobs: Sequence[_Job]) -> None:
 # Step 3: per-cell orchestration
 # --------------------------------------------------------------------------------------------
 def _assign_bands(jobs: Sequence[_Job]) -> Dict[int, List[_Job]]:
-    """Place each job in the coarse-epoch band where its data becomes READY -- as early as
-    possible, not as late as its deadline allows.
+    """Group this cell's jobs by band, applying the shared policy (teccl.hierarchy.bands.band_of).
 
-    Readiness is the natural placement because it needs no lookahead: a job's inputs exist or they
-    do not. `release_gap` already carries it (0 for anything sourced from native data, arrival+1
-    for a fan-out of a network arrival, since a piece lands at the END of its arrival epoch).
-
-    The one exception is the PROLOGUE. A job that is ready in band b but must COMPLETE before band
-    b's network sends has nowhere to go inside b -- the sends sit at its leading edge -- so it moves
-    to b-1. For the only case that occurs today, egress staging that feeds coarse epoch 0, that is
-    band -1: work that happens before the collective's first network send. It is empty whenever
-    gateways own the data they send (rail-optimized) and non-empty exactly where the boundary
-    forces a relay first (the hetero cluster).
-
-    This replaces the earlier deadline-gap policy for hard jobs. Deadline-pinning made `band`
-    ambiguous downstream -- an epoch-0 staging relay and a self_distribution both landed in band 0
-    while belonging on opposite sides of the first network send -- and it delayed staging for no
-    gain, since the data was available all along.
+    Applied at the JOB level rather than the demand level because `_to_jobs` has to run first: its
+    dedup merges deliveries that several demands share (taking the earliest release and tightest
+    deadline, so the merged job's band is the right one for all of them) and its density test needs
+    the whole cell's load. The level boundary applies the same rule one step earlier, to demands --
+    see the bands module docstring for why both call sites exist.
     """
     by_band: Dict[int, List[_Job]] = defaultdict(list)
     for j in jobs:
-        # As early as ready, but not into the prologue merely because the data was always there --
-        # the prologue is reserved for work a deadline actually forces before the collective's
-        # first network send, which is what keeps it empty on topologies with no forced relay.
-        band = max(int(j.release_gap), 0)
-        if j.hard and j.deadline_gap != inf and band >= j.deadline_gap:
-            band = int(j.deadline_gap) - 1
-            if band < j.release_gap:
-                raise RuntimeError(
-                    f"job {j.src}->{j.dst} ({j.kind}, identity {j.identity}) cannot run before "
-                    f"band {int(j.release_gap)} but must complete before band "
-                    f"{int(j.deadline_gap)}; there is no band it can run in. This is the "
-                    f"host-transit case (data that arrives and must be forwarded onward too soon "
-                    f"after), which is unmodelled.")
-        by_band[band].append(j)
+        what = f"job {j.src}->{j.dst} ({j.kind}, identity {j.identity})"
+        by_band[band_of(j.release_gap, j.deadline_gap, j.hard, what)].append(j)
     return dict(by_band)
 
 
@@ -582,3 +560,108 @@ def schedule_cell(cell_id: int, cell: Cell, demands: Sequence[IntraCellDemand],
         _p(debug, f"=== cell {cell_id}: {len(flows)} flows across bands {bands}, "
                   f"peak {peak} rounds/band; all hard deadlines met, ports within cap ===")
     return flows
+
+
+# --------------------------------------------------------------------------------------------
+# Dispatch: is this level a crossbar, and if so, what does its solved routing look like?
+# --------------------------------------------------------------------------------------------
+def is_crossbar(topology: "Topology") -> bool:
+    """Does this level's graph consist of data nodes hanging off exactly one shared switch?
+
+    That is the shape whose optimal schedule is known in closed form, so it is the shape the
+    base-case dispatcher may route here instead of to a real formulation. Three conditions, all
+    necessary: exactly one switch (two switches means a routing choice), every data node bidirection-
+    ally attached to it (otherwise some pair has no path and the closed form is simply wrong), and no
+    direct data-to-data link (a link the crossbar schedule would leave unused, so the closed form
+    would no longer be optimal -- it would still be CORRECT, but silently pessimistic, and a level
+    that quietly gives up bandwidth is worse than one that admits it needs a solver).
+    """
+    n = len(topology.capacity)
+    switches = list(topology.switch_indices)
+    if len(switches) != 1:
+        return False
+    sw = switches[0]
+    passive = set(getattr(topology, "passive_indices", []))
+    data = [i for i in range(n) if i != sw and i not in passive]
+    if not data:
+        return False
+    for i in data:
+        if topology.capacity[i][sw] <= 0 or topology.capacity[sw][i] <= 0:
+            return False
+        for j in data:
+            if i != j and topology.capacity[i][j] > 0:
+                return False
+    return True
+
+
+def crossbar_routing(coarse, mapping,
+                     id_sets: Dict[Tuple[int, int], List[Identity]]
+                     ) -> List[Tuple[object, Identity]]:
+    """This level's ROUTING decision, as (coarse piece, identity) pairs for step A.
+
+    On a crossbar there is nothing to route: every delivery is `U -> switch -> V`. So unlike a
+    formulation level there is no model to solve and no solved model to walk paths back out of --
+    this just restates the level's own demand in the piece vocabulary
+    `reconstruct.assign_identities_preserving` consumes, keeping each identity attached so the level
+    spends nothing from the refinement budget (see that function's docstring).
+
+    Driven off `id_sets` rather than off IntraCellDemands so that it reads the same at every depth:
+    the ROOT has no IntraCellDemands at all (nothing above it has resolved anything yet, so its
+    demand is still a tensor), and `identity_sets` is the one description both the root and a child
+    level always have. Same-cell deliveries never appear in `id_sets` by construction, which is
+    correct -- they do not cross this level's fabric, and `build_child_problems` re-emits them one
+    level down as self_distribution.
+
+    Epochs ARE decided here, by the same edge-colouring the round scheduler uses one granularity
+    down (`_colour_epochs`). A level owns its own timing -- that is the recursion contract -- and
+    leaving every piece in epoch 0 is not "deferring the decision", it is asserting that a coarse
+    node can transmit its entire payload in one epoch, which immediately trips the level's own
+    capacity check (`_assert_rate_within_capacity`) because each flow is paced to fill exactly one
+    epoch.
+    """
+    from teccl.hierarchy.reconstruct import make_piece
+    switches = list(coarse.switch_indices)
+    assert len(switches) == 1, (
+        f"crossbar_routing needs exactly one switch on the level's graph, got {switches}")
+    coarse_sw = switches[0]
+    fine_sw = mapping.coarse_passthrough[coarse_sw]
+
+    pairs: List[Tuple[int, int]] = []
+    carried: List[Identity] = []
+    for (u, v), identities in sorted(id_sets.items()):
+        for ident in identities:
+            pairs.append((u, v))
+            carried.append(ident)
+
+    epochs = _colour_epochs(pairs)
+    return [(make_piece(src_cell=u, dst_cell=v,
+                        egress_neighbor=coarse_sw, ingress_neighbor=coarse_sw,
+                        via_switches=(fine_sw,), volume=1.0,
+                        send_epoch=k, arrival_epoch=k), ident)
+            for (u, v), ident, k in zip(pairs, carried, epochs)]
+
+
+def _colour_epochs(pairs: Sequence[Tuple[int, int]]) -> List[int]:
+    """Assign each (sender, receiver) transfer an epoch, one transfer per port per epoch.
+
+    This is the SAME Birkhoff-von Neumann edge-colouring the round scheduler does, applied one
+    granularity up: on a crossbar the only contention is each node's single egress port and single
+    ingress port, so a set of transfers is schedulable in epoch k exactly when it is a matching.
+    First-fit on the smallest epoch free at BOTH endpoints is the standard greedy; on the symmetric
+    all-to-all demand this level actually sees, it recovers the optimal max-port-load makespan, the
+    same way the round scheduler recovers the ring.
+
+    A crossbar level has no reason to reach for anything cleverer: the optimum here is the busiest
+    port, and the greedy meets it whenever the demand is regular.
+    """
+    send_used: Dict[int, set] = defaultdict(set)
+    recv_used: Dict[int, set] = defaultdict(set)
+    out: List[int] = []
+    for (u, v) in pairs:
+        k = 0
+        while k in send_used[u] or k in recv_used[v]:
+            k += 1
+        send_used[u].add(k)
+        recv_used[v].add(k)
+        out.append(k)
+    return out
