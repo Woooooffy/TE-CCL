@@ -19,7 +19,8 @@ import copy
 import json
 from collections import defaultdict
 
-from teccl.hierarchy.stitch import derive_grid
+from teccl.hierarchy.crossbar_solve import band_rounds
+from teccl.hierarchy.flatten import aligned_band, derive_grid
 from teccl.input_data import UserInputParams
 from teccl.scheduler import TECCLSolver
 from teccl.topologies.topology import Topology
@@ -136,17 +137,27 @@ def report_intra_fits_epoch(flows, res, fine, coarse_epoch: float) -> None:
     is preserved. Asserting `peak rounds <= m` is what certifies the whole "the inner fabric is
     much faster than the outer" premise the per-gap-independent timing rests on.
 
-    delta and m come from the stitch's own derive_grid rather than being recomputed here: this
-    report and the axis the stitch actually lays out must agree by construction, and they used to
-    be two independent copies of the same arithmetic."""
+    Every quantity here is the stitch's own -- `derive_grid` for delta and m, `band_rounds` for the
+    round counts, `aligned_band` for which bands the bound even applies to. This report and the axis
+    the stitch lays out must agree by construction, and each time a piece of that arithmetic was
+    restated locally the two drifted: first delta and m, and then the EXEMPTION. The prologue and
+    epilogue are not bounded by m (they have no network send to hide under and are charged their
+    true length instead), so a local `max` over all bands reported a long prologue as an overrun
+    that the stitch had never claimed would fit -- an assert strictly stronger than the property.
+
+    The assert is kept even though `stitch.assert_bands_fit` re-checks it: this runs BEFORE the
+    stitch, so on a failing run it names the hot (cell, band) next to the derivation that explains
+    it, rather than dying several steps later."""
     delta, m = derive_grid(res.scale, fine, coarse_epoch)
-    per_gap = defaultdict(int)
-    for f in flows:
-        per_gap[(f.cell, f.band)] = max(per_gap[(f.cell, f.band)], f.local_round + f.span)
-    peak = max(per_gap.values(), default=0)
-    hot = max(per_gap, key=lambda k: per_gap[k]) if per_gap else None
+    num_coarse_epochs = max((p.send_epoch for p in res.pieces), default=-1) + 1
+    per_band = band_rounds(flows)
+    bounded = {k: r for k, r in per_band.items() if aligned_band(k[1], num_coarse_epochs)}
+    peak = max(bounded.values(), default=0)
+    hot = max(bounded, key=lambda k: bounded[k]) if bounded else None
+    unbounded = max((r for k, r in per_band.items() if k not in bounded), default=0)
     print(f"  intra fits coarse epoch: fine epoch delta={delta:.3e}s, m={m:.1f} rounds per coarse "
-          f"epoch; peak {peak} rounds at cell/gap {hot} -> {100 * peak / m:.1f}% of the budget")
+          f"epoch; peak {peak} rounds at cell/band {hot} -> {100 * peak / m:.1f}% of the budget "
+          f"(prologue/epilogue peak {unbounded} rounds, charged directly, not bounded by m)")
     assert peak <= m + 1e-9, (
         f"intra-cell work does not fit a coarse epoch: {peak} rounds > m={m:.1f} at {hot}. The "
         f"inner fabric is not fast enough relative to the outer for per-gap-independent timing; "

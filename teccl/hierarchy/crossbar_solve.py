@@ -116,6 +116,27 @@ class IntraFlow:
             object.__setattr__(self, "identities", (self.identity,))
 
 
+def rounds_in(flows: Sequence[IntraFlow]) -> int:
+    """How many rounds a set of flows occupies: the exclusive end of the last one.
+
+    `local_round + span` is where a flow finishes, so the max over a set is exactly its round count.
+    This one line was written out at seven call sites for four different meanings -- a band's
+    makespan, a schedule's peak, the prologue's width, the fold stride in `solve.rebase` -- which is
+    how two of them drifted apart. It lives next to IntraFlow because that is the type it reads, and
+    because `bands.py` cannot host it without an import cycle.
+    """
+    return max((f.local_round + f.span for f in flows), default=0)
+
+
+def band_rounds(flows: Sequence[IntraFlow]) -> Dict[Tuple[int, int], int]:
+    """Rounds occupied per (cell, band). Cells schedule independently on their own switch, so the
+    cost of a band is the busiest cell's, never the sum -- which is why the key is the pair."""
+    used: Dict[Tuple[int, int], int] = defaultdict(int)
+    for f in flows:
+        used[(f.cell, f.band)] = max(used[(f.cell, f.band)], f.local_round + f.span)
+    return dict(used)
+
+
 @dataclass
 class _Job:
     """A single point-to-point transfer the scheduler must place into rounds.
@@ -473,7 +494,7 @@ def _schedule_band(jobs: List[_Job], gpus: Sequence[int], switch: int, band: int
     else:
         raise RuntimeError(f"intra-cell schedule exceeded {max_rounds} rounds in band {band}")
     if debug:
-        used = max((f.local_round + f.span for f in flows), default=0)
+        used = rounds_in(flows)
         verdict = "OPTIMAL (= port bound)" if used == lb else (
             f"above bound (tree/precedence depth)" if used > lb else "below bound?!")
         _p(debug, f"    [band {band}] used {used} round(s) vs bound {lb} -> {verdict}")
@@ -555,8 +576,7 @@ def schedule_cell(cell_id: int, cell: Cell, demands: Sequence[IntraCellDemand],
     _assert_ports(flows, port_cap=port_cap)
     if debug:
         bands = sorted({f.band for f in flows})
-        peak = max((max((f.local_round + f.span for f in flows if f.band == b), default=0)
-                    for b in bands), default=0)
+        peak = max(band_rounds(flows).values(), default=0)
         _p(debug, f"=== cell {cell_id}: {len(flows)} flows across bands {bands}, "
                   f"peak {peak} rounds/band; all hard deadlines met, ports within cap ===")
     return flows

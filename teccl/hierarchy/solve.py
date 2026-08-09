@@ -47,14 +47,15 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from teccl.hierarchy import crossbar_solve
 from teccl.hierarchy.abstract import (abstract, coarsify_demand, lift_demand, set_level_chunk)
-from teccl.hierarchy.bands import PROLOGUE_BAND, assign_bands
+from teccl.hierarchy.bands import assign_bands
 from teccl.hierarchy.crossbar_solve import IntraFlow, schedule_cell
 from teccl.hierarchy.problem import CoarseSolution, LevelDemand, LevelSolution, Subproblem
 from teccl.hierarchy.reconstruct import (IdentityResolution, IntraCellDemand,
                                          assign_identities_free, assign_identities_preserving,
                                          build_child_problems, identity_sets)
 from teccl.hierarchy.scale import ChunkScale
-from teccl.hierarchy.stitch import derive_grid, stitch
+from teccl.hierarchy.flat_schedule import build_flat_schedule
+from teccl.hierarchy.flatten import assert_bands_fit, derive_grid, rebase
 from teccl.hierarchy.subtopology import induce
 from teccl.solvers.demand import build_demand
 from teccl.topologies.topology import Topology
@@ -257,7 +258,6 @@ def _solve_recursive(problem: Subproblem, ctx: LevelContext) -> LevelSolution:
     fine_tensor = level_demand.demand if level_demand is not None else problem.root_tensor
     assert fine_tensor is not None, (
         f"level depth={problem.depth} has neither a root tensor nor demands to build one from")
-    relabel = level_demand.relabel if level_demand is not None else None
 
     coarse_demand = coarsify_demand(fine_tensor, mapping)
     # `level_chunk` is only ever forced at the root, by a driver reproducing pre-coarsening
@@ -273,14 +273,18 @@ def _solve_recursive(problem: Subproblem, ctx: LevelContext) -> LevelSolution:
                                      band=problem.band, cell_id=problem.cell_id),
                           ctx, mapping=mapping, demand_tensor=coarse_demand)
 
-    res = _lower(solution, problem, coarse, mapping, fine_tensor, g, relabel)
+    res = _lower(solution, problem, coarse, mapping, fine_tensor, g, level_demand)
     if solution.preserves_identity and res.subdivision != 1:
         raise AssertionError(
             f"an identity-preserving level refined by Q={res.subdivision}; it should spend nothing "
             f"from the refinement budget. Its assignments carried fractional volumes, which means "
             f"the routing step split a chunk -- see reconstruct.assign_identities_preserving.")
 
-    _delta, m = derive_grid(res.scale, topo, solution.epoch_duration)
+    # THIS LEVEL's grid. `m` does two jobs, for two different audiences: here it is the BOUND every
+    # band folded into this level must respect, and on the returned LevelSolution it is the STRIDE
+    # this level's own caller folds us with. Deriving it once, from this level's topology and epoch,
+    # is what keeps those two readings the same number -- see teccl/hierarchy/flatten.py.
+    delta, m = derive_grid(res.scale, topo, solution.epoch_duration)
     flows: List[IntraFlow] = []
     net_scale = res.scale
 
@@ -312,22 +316,37 @@ def _solve_recursive(problem: Subproblem, ctx: LevelContext) -> LevelSolution:
             child = Subproblem(topology=sub_topo, demands=band_demands, scale=res.scale,
                                depth=problem.depth + 1, band=band, budget_rounds=m, cell_id=cid)
             sol = solve_level(child, ctx)
-            flows += rebase(sol, cid, band, m, sub_topology=sub_topo)
+            flows += rebase(sol, cid, band, sub_topology=sub_topo)
             net_scale = _max_refined(net_scale, sol.scale)
 
+    # The feasibility certificate, applied AT EVERY LEVEL rather than only at the root. It is what
+    # makes this level's `m` a legitimate stride for its caller: a band that overruns its epoch
+    # would, once folded, overlap the next one. Failing here names the level and the cell, instead
+    # of surfacing as an unattributable overrun in the final schedule.
+    assert_bands_fit(flows, m, num_coarse_epochs=max((p.send_epoch for p in res.pieces),
+                                                     default=-1) + 1)
+
     return LevelSolution(flows=flows, pieces=res.pieces, scale=net_scale,
-                         resolution=res, epoch_duration=solution.epoch_duration)
+                         resolution=res, epoch_duration=solution.epoch_duration,
+                         delta=delta, rounds_per_epoch=m)
 
 
 def _lower(solution: CoarseSolution, problem: Subproblem, coarse, mapping, fine_tensor,
-           g: int, relabel) -> IdentityResolution:
+           g: int, level_demand) -> IdentityResolution:
     """Steps A and B for this level: recover identity, then build the child problems.
 
     Which step-A variant runs is the ONLY thing that depends on which solver produced the routing,
     and it is decided by `preserves_identity` rather than by the solver's type -- so a new level
     solver plugs in by answering that one question and nothing else here changes.
+
+    `level_demand` is None at the ROOT and carries the two translations every level below needs:
+    `relabel` (tensor coordinate -> global identity) and `holders` (identity -> the node holding it
+    here). At the root both are the identity map -- axis 0 IS the source GPU and the chunk axis IS
+    its chunk index -- so passing None keeps the original `identity[0]` behaviour exactly, which is
+    what makes the two-level path byte-identical.
     """
-    holder = _holders(fine_tensor, relabel)
+    relabel = level_demand.relabel if level_demand is not None else None
+    holder = level_demand.holders if level_demand is not None else None
     if not solution.preserves_identity:
         assignments, targets, epoch = assign_identities_free(
             solution, mapping, fine_tensor, problem.topology, level_chunk=g,
@@ -344,87 +363,8 @@ def _lower(solution: CoarseSolution, problem: Subproblem, coarse, mapping, fine_
 
 
 # ------------------------------------------------------------------------------------------------
-# Flatten-on-return, and the small helpers the recursion needs
+# Small scaffold helpers (the per-layer flatten itself lives in teccl.hierarchy.flatten)
 # ------------------------------------------------------------------------------------------------
-def _holders(fine_tensor, relabel) -> Optional[Dict]:
-    """identity -> the node HOLDING it in this level's index space.
-
-    The tensor's axis-0 index is by definition who has the data (that is what a demand tensor's
-    source axis means to every formulation), so the map falls straight out of the coordinates. At
-    the ROOT it is the identity map -- `identity[0]` already is the holder -- so `None` is returned
-    and the callers keep their original `identity[0]` behaviour exactly, which is what makes the
-    two-level path byte-identical.
-    """
-    if relabel is None:
-        return None
-    holder: Dict = {}
-    for s in range(len(fine_tensor)):
-        for ci in range(len(fine_tensor[s][s])):
-            holder.setdefault(relabel((s, ci)), s)
-    return holder
-
-
-def rebase(sol: LevelSolution, cell_id: int, band: int, m: int,
-           sub_topology=None) -> List[IntraFlow]:
-    """Flatten a whole child level onto ONE round axis inside the parent's band `band`.
-
-    A child returns two things on two different axes -- its sub-children's flows, indexed by the
-    CHILD's band, and its own inter-subcell pieces, indexed by the CHILD's epoch -- and they have to
-    be interleaved correctly, because a piece is fed by the staging that ran in the band before it.
-
-    THE BAND HAS A WIDTH, and that is the whole content of this function. Collapsing a child band to
-    a single parent round is what breaks causality: the staging for a piece at child epoch k is
-    placed by `band_of` in child band k-1, so if each band were one round the staging would land in
-    round k and the piece it feeds would also land in round k. Giving band b the window
-    `[(b+1)*w, (b+2)*w)` and putting the epoch-b piece at that window's LEADING EDGE `(b+1)*w`
-    restores the ordering exactly: band b-1's work ends at `(b+1)*w`, precisely when the piece it
-    fed departs. The `+1` shift is what makes room for the child's PROLOGUE, which by definition
-    must precede its epoch-0 send and so occupies `[0, w)`.
-
-    `w` is the child's widest band, measured from the schedule it actually produced rather than
-    estimated, so the window is exactly as wide as it needs to be.
-
-    `m` is the parent's budget for the band. It is not enforced here -- `stitch.assert_bands_fit`
-    checks the assembled total, which is what turns "the inner fabric is much faster than the outer"
-    from an assumption into a verified property, and reports the real overrun if it is not.
-    """
-    flows = to_parent_indices(sol.flows, sub_topology)
-    pieces = to_parent_indices(sol.pieces_as_flows(cell_id, band), sub_topology)
-    w = max((f.local_round + f.span for f in flows), default=0) + 1
-
-    out = [_replace_flow(f, band=band,
-                         local_round=(f.band - PROLOGUE_BAND) * w + f.local_round)
-           for f in flows]
-    # `pieces_as_flows` already put the child's epoch in `local_round`; place it at its window's
-    # leading edge on the same axis the flows above were just mapped onto.
-    out += [_replace_flow(p, band=band, local_round=(p.local_round + 1) * w) for p in pieces]
-    return out
-
-
-def to_parent_indices(flows: Sequence[IntraFlow], sub_topology) -> List[IntraFlow]:
-    """Undo `induce`'s renumbering on the way back up.
-
-    A child level is solved on a topology renumbered 0..n-1 (a `Topology` is dense by contract), so
-    every node id in the flows it returns is in the CHILD's index space. Exactly one translation is
-    owed per level, applied here on return, and because each level translates only its own children
-    the compositions telescope: a flow from three levels down arrives at the root having been mapped
-    through three tables, ending in global fine ids.
-
-    Identities are deliberately untouched -- they are global at every depth, which is the whole
-    reason this is a node-index problem and not an everything problem (see problem.py).
-    """
-    l2g = getattr(sub_topology, "local_to_global", None)
-    if l2g is None:
-        return list(flows)
-    return [_replace_flow(f, sender=l2g[f.sender], receiver=l2g[f.receiver],
-                          via_switch=l2g[f.via_switch]) for f in flows]
-
-
-def _replace_flow(f: IntraFlow, **kw) -> IntraFlow:
-    from dataclasses import replace
-    return replace(f, **kw)
-
-
 def _replay_memo(flows: Sequence[IntraFlow], problem: Subproblem) -> List[IntraFlow]:
     """Return a cached schedule. A hit is an EXACT repeat (see `_memo_key`), so there is nothing to
     translate -- the guard is here to fail loudly rather than silently mis-attribute data if the key
@@ -567,15 +507,19 @@ def solve_hierarchical(topology: Topology, user_input, collective, num_chunks: i
     solution = solve_level(root, ctx)
     res, coarse_epoch = solution.resolution, solution.epoch_duration
     if res is None:
-        raise RuntimeError("the root level produced no resolution; nothing to stitch")
+        raise RuntimeError("the root level produced no resolution; nothing to flatten")
 
     if report is not None:
         report(res, solution.flows, topology, coarse_epoch)
     if write_outputs:
         write_side_outputs(res, solution.flows, prefix)
 
-    info, _records = stitch(res, solution.flows, topology, fine_demand, coarse_epoch,
-                            getattr(collective, "name", str(collective)).lower())
+    # Hand the final pass the ROOT's own grid rather than letting it re-derive one, so the absolute
+    # axis it lays out is provably the axis the recursion folded onto.
+    info, _records = build_flat_schedule(
+        res, solution.flows, topology, fine_demand, coarse_epoch,
+        getattr(collective, "name", str(collective)).lower(),
+        grid=(solution.delta, solution.rounds_per_epoch))
     if write_outputs:
         import json
         with open(f"Schedules/{prefix}_flat.json", "w") as f:

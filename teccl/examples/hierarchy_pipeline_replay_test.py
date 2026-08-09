@@ -45,9 +45,9 @@ from teccl.examples.hierarchy_identity_resolution_test import (
     _fake_solver, _replay_per_chunk_flow_paths,
 )
 from teccl.hierarchy.abstract import abstract
-from teccl.hierarchy.crossbar_solve import schedule_cell
+from teccl.hierarchy.crossbar_solve import band_rounds, schedule_cell
 from teccl.hierarchy.reconstruct import resolve_identities
-from teccl.hierarchy.stitch import derive_grid
+from teccl.hierarchy.flatten import aligned_band, derive_grid
 from teccl.input_data import Collective, TopologyParams
 from teccl.solvers.demand import build_demand
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
@@ -140,14 +140,18 @@ def _check_delivery_coverage(res, flows) -> int:
 def _check_intra_fits_epoch(res, flows, topo, coarse_epoch) -> tuple:
     # delta/m from the stitch's own derive_grid, so this check and the axis the stitch lays out
     # cannot drift apart (they were two independent copies of the same arithmetic).
+    # band_rounds/aligned_band are the stitch's too, for the same reason: only bands PINNED to a
+    # network send are bounded by m. The prologue and epilogue have none to hide under and are
+    # charged their true length, so including them here would assert something stronger than the
+    # property the stitch actually guarantees.
     delta, m = derive_grid(res.scale, topo, coarse_epoch)
-    per_gap = collections.defaultdict(int)
-    for f in flows:
-        per_gap[(f.cell, f.band)] = max(per_gap[(f.cell, f.band)], f.local_round + f.span)
-    peak = max(per_gap.values(), default=0)
-    hot = max(per_gap, key=lambda k: per_gap[k]) if per_gap else None
+    num_coarse_epochs = max((p.send_epoch for p in res.pieces), default=-1) + 1
+    bounded = {k: r for k, r in band_rounds(flows).items()
+               if aligned_band(k[1], num_coarse_epochs)}
+    peak = max(bounded.values(), default=0)
+    hot = max(bounded, key=lambda k: bounded[k]) if bounded else None
     assert peak <= m + 1e-9, (
-        f"intra work does not fit a coarse epoch: {peak} rounds > m={m:.1f} at cell/gap {hot}")
+        f"intra work does not fit a coarse epoch: {peak} rounds > m={m:.1f} at cell/band {hot}")
     return peak, m, hot
 
 

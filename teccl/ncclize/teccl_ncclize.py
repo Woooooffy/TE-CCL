@@ -953,7 +953,7 @@ def main():
     # different epoch lengths on one fine axis -- a coarse network send legitimately sits m fine
     # epochs after the previous one -- so this check would false-positive on that intended sparsity;
     # the network layer's realizability is reported per-layer by the stitch
-    # (teccl.hierarchy.stitch.check_network_pacing) at solve time instead.
+    # (teccl.hierarchy.flat_schedule.check_network_pacing) at solve time instead.
     #
     # This is a property of HOW the schedule was solved (flat vs hierarchical), NOT of the schedule
     # FORMAT (MILP-flat vs LP-nested): a flat single-level solve using the LP formulation is still

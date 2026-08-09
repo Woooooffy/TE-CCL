@@ -1,22 +1,28 @@
 """
-Phase 4: stitch the hierarchical solution into ONE flat schedule on the fine topology.
+The FINAL post-process: the assembled hierarchical solution -> ONE flat schedule on the fine
+topology. Runs exactly once, after the recursion has returned.
 
-Inputs are the two halves of the solve below the coarse LP:
+Inputs are the two halves of the ROOT level:
   * `IdentityResolution.pieces` -- inter-cell flows, already pinned to real fine GPUs and fine
-    switch ids, carrying the coarse level's own pacing (`ResolvedPiece.rate`);
-  * the per-cell `IntraFlow`s from the memoized NVSwitch schedule (teccl.hierarchy.crossbar_solve).
+    switch ids, carrying the root level's own pacing (`ResolvedPiece.rate`);
+  * the `IntraFlow`s of everything beneath it, which `teccl.hierarchy.flatten.rebase` has ALREADY
+    folded into the root's `(band, local_round)` -- one fold per level on the way up, so however
+    deep the recursion went, what arrives here is two-level.
 
 Output is the `flow_str_info` dict every solver emits, so `teccl/ncclize/teccl_ncclize.py` consumes
 it unchanged and MSCCL XML comes out the far end.
 
 
-THE STITCH IS ONLY A FLATTENING
-------------------------------
-Each solver step owns its own fine schedule; the stitch translates those local schedules onto one
-absolute axis and does nothing else. There is no placement policy here, no dependency analysis, no
-re-derivation of an ordering some level already decided.
+THIS IS ONLY A FLATTENING
+-------------------------
+Each solver step owns its own fine schedule; this module translates the root's onto one ABSOLUTE
+axis and does nothing else. There is no placement policy here, no dependency analysis, no
+re-derivation of an ordering some level already decided. The per-layer half of the job --
+each level's time grid and the fold that produced these flows -- lives in
+`teccl.hierarchy.flatten`; the two were one module only while the solver had two levels, at which
+point they were indistinguishable.
 
-delta = scale.bytes_per_chunk / (fastest fine link) and m = Delta/delta, so a coarse epoch is
+delta and m are the ROOT level's grid, from `flatten.derive_grid`, so a coarse epoch is
 exactly m fine epochs. The intra level emits `(band, local_round)`, where band is the coarse epoch a
 transfer runs concurrently with and local_round is a fine-epoch offset -- the units already line up,
 because a round is "one chunk across one NVSwitch port" = bytes_per_chunk / nvlink_bw = delta. So
@@ -55,7 +61,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from teccl.hierarchy.crossbar_solve import PROLOGUE_BAND, IntraFlow
+from teccl.hierarchy.crossbar_solve import PROLOGUE_BAND, IntraFlow, rounds_in
+from teccl.hierarchy.flatten import aligned_band, assert_bands_fit, derive_grid
 from teccl.hierarchy.reconstruct import Identity, IdentityResolution
 from teccl.hierarchy.scale import ChunkScale
 from teccl.topologies.topology import Topology
@@ -92,73 +99,6 @@ class DeliveryRecord:
 # ----------------------------------------------------------------------------------------------
 # S0. Grid and preconditions
 # ----------------------------------------------------------------------------------------------
-def intra_link_bandwidth(fine_topology: Topology, cells=None) -> float:
-    """The bandwidth the INTRA level's epoch is measured against: its own link set.
-
-    A level's epoch is "one chunk (at that level's size) on a link of that level's graph", and the
-    intra level's graph is a cell's internal fabric -- not the whole fine topology. For a
-    single-NVSwitch cell every internal link is identical, so fastest and slowest coincide and the
-    user's EpochType has nothing to choose between; that is why this returns one number rather than
-    taking a selector. Restricting to the cell's own links is what makes that true by construction
-    instead of by coincidence: `max` over the whole fine topology happens to land on the NVSwitch
-    in both current topologies, and would silently pick an unrelated link in one where it does not.
-
-    Falls back to the whole-topology max when the topology declares no cells (a flat schedule being
-    replayed through the stitch), which is the historical behaviour.
-    """
-    cells = cells if cells is not None else getattr(fine_topology, "cells", None)
-    caps = set()
-    for cell in cells or []:
-        members = set(cell.members)
-        for i in members:
-            for j in members:
-                c = fine_topology.capacity[i][j]
-                if c > 0:
-                    caps.add(c)
-    if not caps:
-        return max(max(row) for row in fine_topology.capacity)
-    if len(caps) > 1:
-        # Not fatal -- pick the fastest, matching the historical reading -- but say so, because the
-        # "a round is one chunk on a port" identity the whole band arithmetic rests on assumes the
-        # ports are interchangeable.
-        logging.warning(
-            "intra-cell links are not uniform (%s); the fine epoch is sized to the fastest, so a "
-            "round on a slower internal link takes more than one fine epoch", sorted(caps))
-    return max(caps)
-
-
-def derive_grid(scale: ChunkScale, fine_topology: Topology, coarse_epoch: float,
-                max_refinement: int = 128) -> Tuple[float, int]:
-    """The fine epoch duration and how many of them a coarse epoch holds.
-
-    Both are DERIVED from the live ChunkScale, never written down: refinement changes the chunk
-    size, and delta and m must move with it or the round count and the epoch grid silently desync.
-
-    m is FLOORED and delta then back-solved as Delta/m, rather than requiring Delta/delta to come
-    out whole. The fine grid must divide the coarse epoch exactly -- every band deadline is stated
-    in fine epochs -- but nothing requires the natural chunk-crossing time to be the divisor. The
-    old form asserted integrality and passed only because 1800/50 = 36 exactly on both current
-    topologies; it already failed for a coarse FASTEST_LINK epoch (0.0025/delta = 4.5). Flooring
-    makes delta >= the natural time, so an intra round still fits inside one fine epoch, and it
-    keeps m*K*delta == K*Delta exactly, so the network half of the makespan is unrounded.
-    """
-    if scale is None:
-        raise ValueError("IdentityResolution has no ChunkScale; cannot derive the fine epoch grid")
-    if scale.refinement_from_root > max_refinement:
-        raise ValueError(
-            f"cumulative chunk refinement {scale.refinement_from_root} exceeds the budget "
-            f"{max_refinement}: ncclize's chunk_up() would have to expand every chunk that finely. "
-            f"The budget is shared by every level of the recursion.")
-    natural = scale.epoch_duration(intra_link_bandwidth(fine_topology))
-    m = int(math.floor(coarse_epoch / natural + 1e-9))
-    if m < 1:
-        raise AssertionError(
-            f"a coarse epoch ({coarse_epoch}) is shorter than one intra round ({natural}): the "
-            f"inner fabric is not faster than the outer one, so intra work cannot hide under "
-            f"network time and the whole per-band timing premise fails here.")
-    return coarse_epoch / m, m
-
-
 def assert_native_ownership(res: IdentityResolution) -> None:
     """Every staged identity must be staged BY ITS OWN SOURCE.
 
@@ -179,7 +119,7 @@ def assert_native_ownership(res: IdentityResolution) -> None:
 
 
 # ----------------------------------------------------------------------------------------------
-# S1/S2/S3. Translate the levels' local schedules onto one absolute axis
+# Lay the assembled schedule on the absolute fine-epoch axis
 # ----------------------------------------------------------------------------------------------
 def prologue_width(intra_flows: Sequence[IntraFlow]) -> int:
     """How many fine epochs the pre-epoch-0 band needs.
@@ -189,27 +129,7 @@ def prologue_width(intra_flows: Sequence[IntraFlow]) -> int:
     the makespan (it has no network send to hide under), which is why it is measured in ROUNDS --
     the schedule the level actually produced -- rather than estimated from a dependency depth.
     """
-    return max((f.local_round + f.span for f in intra_flows if f.band == PROLOGUE_BAND), default=0)
-
-
-def assert_bands_fit(intra_flows: Sequence[IntraFlow], m: int, num_coarse_epochs: int) -> None:
-    """The feasibility certificate: a band aligned to a coarse epoch must fit inside it.
-
-    Bands 0..K-1 are pinned to the network sends at their leading edges, so their width is fixed at
-    m. If a cell needs more rounds than that, its intra work does NOT hide under network time and
-    the whole premise (inner fabric much faster than outer) fails for that band -- the windowed
-    intra solver would be the fallback. The prologue and epilogue are exempt: they have no send to
-    align to and are charged their true length instead.
-    """
-    used: Dict[Tuple[int, int], int] = defaultdict(int)
-    for f in intra_flows:
-        used[(f.cell, f.band)] = max(used[(f.cell, f.band)], f.local_round + f.span)
-    over = [(c, b, r) for (c, b), r in sorted(used.items())
-            if 0 <= b < num_coarse_epochs and r > m]
-    if over:
-        raise AssertionError(
-            f"intra-cell work does not fit the coarse epoch it runs under, on {len(over)} "
-            f"(cell, band) pairs [(cell, band, rounds)] with m={m}: {over[:6]}")
+    return rounds_in([f for f in intra_flows if f.band == PROLOGUE_BAND])
 
 
 def build_records(res: IdentityResolution, intra_flows: Sequence[IntraFlow],
@@ -502,21 +422,35 @@ def check_network_pacing(res: IdentityResolution, coarse_epoch: float) -> List[T
     return residual
 
 
-def stitch(res: IdentityResolution, intra_flows: Sequence[IntraFlow], fine_topology: Topology,
-           fine_demand, coarse_epoch: float, collective: str) -> Tuple[Dict, List[DeliveryRecord]]:
-    """Hierarchical solution -> flat schedule dict. Returns (flow_str_info, records)."""
-    delta, m = derive_grid(res.scale, fine_topology, coarse_epoch)
+def build_flat_schedule(res: IdentityResolution, intra_flows: Sequence[IntraFlow],
+                        fine_topology: Topology, fine_demand, coarse_epoch: float,
+                        collective: str, grid: Optional[Tuple[float, int]] = None
+                        ) -> Tuple[Dict, List[DeliveryRecord]]:
+    """The assembled hierarchical solution -> one flat schedule dict on the fine topology.
+
+    Runs ONCE, at the end, on flows that `flatten.rebase` has already folded into the ROOT's
+    `(band, local_round)`. Everything here is therefore two-level whatever the recursion's depth
+    was, which is the whole point of flattening on return.
+
+    `grid` is the root level's own `(delta, m)`. Pass it -- `solve_hierarchical` has it on the root
+    LevelSolution -- so the axis laid out here is the same one the recursion folded onto rather than
+    an independent recomputation. It defaults to re-deriving for callers replaying a schedule from
+    JSON, who have no LevelSolution to take it from.
+
+    Returns (flow_str_info, records).
+    """
+    delta, m = grid if grid is not None else derive_grid(res.scale, fine_topology, coarse_epoch)
     assert_native_ownership(res)
 
     # Network-layer pacing residuals (paced sends a P2 gap leaves firing early). Reported, not
     # fatal: the deferred P3 fallback is what closes them.
     residual = check_network_pacing(res, coarse_epoch)
     if residual:
-        print(f"[stitch] network pacing: {len(residual)} paced send(s) fire early -- no send on the "
+        print(f"[flat] network pacing: {len(residual)} paced send(s) fire early -- no send on the "
               f"same uplink finishes serializing at epoch k, so P2 cannot pin them to their coarse "
               f"epoch (deferred P3 territory) [(gpu, epoch)]: {residual[:8]}")
     else:
-        print("[stitch] network pacing: every paced send's uplink is freed by a send finishing at "
+        print("[flat] network pacing: every paced send's uplink is freed by a send finishing at "
               "its epoch; P2 pins them all to their coarse epoch")
 
     # Bands 0..K-1 are pinned to the network sends, so they must fit inside a coarse epoch.

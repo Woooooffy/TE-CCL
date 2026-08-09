@@ -1,5 +1,6 @@
 """
-Gurobi-free tests for PHASE 4, the stitch (teccl.hierarchy.stitch).
+Gurobi-free tests for the FINAL flatten (teccl.hierarchy.flat_schedule) and the
+per-layer grid it consumes (teccl.hierarchy.flatten).
 
 Two layers, deliberately separate:
 
@@ -42,8 +43,9 @@ from teccl.hierarchy.crossbar_solve import (PROLOGUE_BAND, IntraFlow, _assign_ba
 from teccl.hierarchy.reconstruct import (IdentityResolution, IntraCellDemand, ResolvedPiece,
                                          resolve_identities)
 from teccl.hierarchy.scale import ChunkScale
-from teccl.hierarchy.stitch import (NETWORK, PROLOGUE, DeliveryRecord, _chunk_label,
-                                    back_trace, build_records, derive_grid, stitch)
+from teccl.hierarchy.flat_schedule import (NETWORK, PROLOGUE, DeliveryRecord, _chunk_label,
+                                           back_trace, build_flat_schedule, build_records)
+from teccl.hierarchy.flatten import derive_grid
 from teccl.input_data import Collective, TopologyParams
 from teccl.solvers.demand import build_demand
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
@@ -249,7 +251,7 @@ def _replay_pipeline(tag, collective):
             flows += schedule_cell(cid, mapping.coarse_cells[cid], by_cell[cid], debug=False,
                                    subdivision=res.subdivision)
 
-    info, records = stitch(res, flows, topo, fine_demand, coarse_epoch, tag)
+    info, records = build_flat_schedule(res, flows, topo, fine_demand, coarse_epoch, tag)
     return topo, res, flows, info, records, fine_demand, coarse_epoch
 
 

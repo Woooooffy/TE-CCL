@@ -51,6 +51,12 @@ class LevelDemand:
     identities: Dict[Tuple[int, int], Identity]
     local_to_global: List[int]
     global_to_local: Dict[int, int] = field(default_factory=dict)
+    # identity -> the local node that HOLDS it at this level, which is what the tensor's axis 0
+    # encodes. Kept explicitly rather than recovered by reading axis 0 back out: `from_demands` had
+    # to decide it anyway (collapsing each staging chain to its root), and re-deriving it downstream
+    # is both redundant and lossy -- the tensor's chunk axis is sized to the busiest source, so a
+    # scan over every (s, c) coordinate visits slots that belong to no identity at all.
+    holders: Dict[Identity, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.global_to_local:
@@ -113,7 +119,8 @@ class LevelDemand:
             for t in targets:
                 if t != s:
                     demand[s][t][c] = 1
-        return cls(demand=demand, identities=identities, local_to_global=l2g, global_to_local=g2l)
+        return cls(demand=demand, identities=identities, local_to_global=l2g, global_to_local=g2l,
+                   holders=holder_of)
 
     def relabel(self, local_identity: Identity) -> Identity:
         """Translate a `(local source, slot)` label -- what `identity_sets` reads off the tensor --
@@ -191,12 +198,24 @@ class LevelSolution:
     flows: List[IntraFlow] = field(default_factory=list)
     pieces: List[ResolvedPiece] = field(default_factory=list)
     scale: Optional[ChunkScale] = None
-    # This level's own step-B output and epoch length. Only the ROOT's are consumed -- `stitch`
-    # needs the resolution (for the network pieces, the scale and the subdivision) and the coarse
-    # epoch it was solved against. Carrying them on the solution rather than reaching into the
-    # recursion for them is what keeps `solve_level` a pure function of its Subproblem.
+    # This level's own step-B output, its epoch length, and its TIME GRID.
+    #
+    # `rounds_per_epoch` is this level's `m` from `flatten.derive_grid`: how many rounds one of this
+    # level's epochs is worth. It is published because THE CALLER NEEDS IT -- it is the stride
+    # `rebase` folds this level's schedule with, and it is the one number that says how long one of
+    # this level's epochs actually takes. A caller cannot re-derive it (it depends on this level's
+    # own topology and epoch) and must not measure it from the flows (that gives the schedule's
+    # extent, which knows nothing about link speed). `delta` travels with it because a level whose
+    # fastest internal link differs from its child's needs the ratio, not the bare count.
+    #
+    # Only the ROOT's `resolution` and `epoch_duration` are consumed at the end -- the final
+    # schedule needs the network pieces, the scale, the subdivision, and the coarse epoch they were
+    # paced against. Carrying all of this on the solution rather than reaching back into the
+    # recursion is what keeps `solve_level` a pure function of its Subproblem.
     resolution: Optional[object] = None
     epoch_duration: Optional[float] = None
+    delta: Optional[float] = None
+    rounds_per_epoch: Optional[int] = None
 
     def pieces_as_flows(self, cell_id: int, band: int) -> List[IntraFlow]:
         """Re-read this level's inter-cell pieces as intra flows of the cell one level up.
