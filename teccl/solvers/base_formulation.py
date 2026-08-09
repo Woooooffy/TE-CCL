@@ -77,14 +77,26 @@ class BaseFormulation(ABC):
                     self.user_input.instance.alpha_epoch_duration_ratio_max
         if self.user_input.instance.epoch_duration != -1:
             self.epoch_duration = self.user_input.instance.epoch_duration
+        # Read through the GETTERS, not the cached attributes. Topology.__init__ populates both
+        # eagerly, so for a topology that is never re-expressed the two are the same value -- but a
+        # level of the hierarchical solve rescales its capacity matrix after construction
+        # (CoarseTopology.rescale_to_chunk), and only the getter recomputes. Reading the attribute
+        # there yielded 0 and tripped the assert below with a message about the epoch multiplier,
+        # which was not the problem.
         elif self.user_input.instance.epoch_type == EpochType.FASTEST_LINK:
-            self.epoch_duration = self.topology.epoch_duration_fast_link * \
+            self.epoch_duration = self.topology.get_epoch_duration_fast_link() * \
                 self.user_input.instance.epoch_multiplier
-            assert self.epoch_duration > 0, "Epoch Multiplier in the user input is not positive"
+            assert self.epoch_duration > 0, (
+                f"non-positive epoch duration {self.epoch_duration}: fastest-link epoch is "
+                f"{self.topology.get_epoch_duration_fast_link()} and epoch_multiplier is "
+                f"{self.user_input.instance.epoch_multiplier}; both must be positive")
         elif self.user_input.instance.epoch_type == EpochType.SLOWEST_LINK:
-            self.epoch_duration = self.topology.epoch_duration_slow_link * \
+            self.epoch_duration = self.topology.get_epoch_duration_slow_link() * \
                 self.user_input.instance.epoch_multiplier
-            assert self.epoch_duration > 0, "Epoch Multiplier in the user input is not positive"
+            assert self.epoch_duration > 0, (
+                f"non-positive epoch duration {self.epoch_duration}: slowest-link epoch is "
+                f"{self.topology.get_epoch_duration_slow_link()} and epoch_multiplier is "
+                f"{self.user_input.instance.epoch_multiplier}; both must be positive")
         else:
             raise ValueError(
                 f"Using epoch_type {EpochType.USER_INPUT} but epoch_duration is not set")

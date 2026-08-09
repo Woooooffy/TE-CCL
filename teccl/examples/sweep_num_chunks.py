@@ -87,7 +87,7 @@ def run_sweep(num_chunks_values, oversubscription: float = 4,
     # across the whole sweep so smaller chunks actually pack more tightly
     # into a fixed real-time epoch.
     baseline_topology = incast_switch.IncastSwitch(base.topology)
-    fixed_epoch_duration = baseline_topology.epoch_duration_fast_link
+    fixed_epoch_duration = baseline_topology.get_epoch_duration_fast_link()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     results = []

@@ -187,6 +187,39 @@ def test_rescale_topology():
           f"(x{g}), per-epoch link capacity invariant at 1 chunk, demand -> 1/pair OK")
 
 
+def test_rescaled_level_is_solver_ready():
+    """After set_level_chunk, the level must be handable to a formulation AS IS.
+
+    This reads the cached ATTRIBUTES, not the getters, because that is what
+    `BaseFormulation.set_epoch_duration` does -- it never calls
+    `get_epoch_duration_{fast,slow}_link`. `rescale_to_chunk` invalidates those caches, so a level
+    that only invalidates and waits for a lazy recompute hands the solver a 0 and dies on
+    `assert self.epoch_duration > 0, "Epoch Multiplier in the user input is not positive"` -- an
+    error message that points at the wrong thing entirely.
+
+    That is not hypothetical: it worked for months only because a driver's log line happened to
+    call the getter between the rescale and the solve, and it broke the moment that print was
+    removed. Every other test here goes through the getters and so cannot see it.
+    """
+    for topo in (RailOptimizedSpineLeaf(TopologyParams(name="RailOptimizedSpineLeaf", chunk_size=1)),
+                 HeteroTaperedCluster(TopologyParams(name="HeteroTaperedCluster", chunk_size=1))):
+        coarse, mapping = abstract(topo)
+        dem, _ = _all_gather_demand(topo)
+        _scaled, g, _level = set_level_chunk(coarse, coarsify_demand(dem, mapping))
+        assert coarse.epoch_duration_fast_link > 0, (
+            f"{type(topo).__name__} (g={g}): cached fast-link epoch is "
+            f"{coarse.epoch_duration_fast_link} after rescaling; a formulation reading the "
+            f"attribute would assert on a non-positive epoch")
+        assert coarse.epoch_duration_slow_link > 0, (
+            f"{type(topo).__name__} (g={g}): cached slow-link epoch is "
+            f"{coarse.epoch_duration_slow_link} after rescaling")
+        # and the cached value is the RESCALED one, not a stale pre-rescale leftover
+        assert abs(coarse.epoch_duration_slow_link
+                   - coarse.get_epoch_duration_slow_link()) < 1e-12
+    print("  [4] rescaled level is solver-ready: cached epoch attributes positive and current "
+          "(BaseFormulation reads them directly, never via the getter) OK")
+
+
 def test_g1_is_a_noop():
     """The whole change must be byte-identical when the GCD is 1 -- that is the flat-solve
     fallback and the coprime-volume path, and it is the only guarantee that this cannot regress a
@@ -207,7 +240,7 @@ def test_g1_is_a_noop():
     assert coarse.get_epoch_duration_slow_link() == slow
     assert coarse.get_epoch_duration_fast_link() == fast
     assert level.refinement_from_root == 1 and level.bytes_per_chunk == chunk
-    print("  [4] g == 1 is an exact no-op (topology, demand, scale all unchanged) OK")
+    print("  [5] g == 1 is an exact no-op (topology, demand, scale all unchanged) OK")
 
 
 def test_scale_is_serializable():
@@ -226,7 +259,7 @@ def test_scale_is_serializable():
         assert Fraction(back["num_chunks"]["num"],
                         back["num_chunks"]["den"]) == scale.num_chunks
         assert abs(back["payload_per_gpu"] - 1.0) < 1e-12, (scale, back)
-    print("  [5] every level-boundary scale round-trips through JSON exactly OK")
+    print("  [6] every level-boundary scale round-trips through JSON exactly OK")
 
 
 def main() -> None:
@@ -234,6 +267,7 @@ def main() -> None:
     test_scale_round_trip()
     test_gcd_rule()
     test_rescale_topology()
+    test_rescaled_level_is_solver_ready()
     test_g1_is_a_noop()
     test_scale_is_serializable()
     print("level-chunk tests OK")

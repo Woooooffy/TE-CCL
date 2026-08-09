@@ -76,10 +76,18 @@ class CoarseTopology(Topology):
         becomes "one chunk AT THIS LEVEL'S SIZE on the selected link" automatically, with no
         epoch-type or multiplier concept added anywhere.
 
-        Both cached epoch durations are reset, because Topology.__init__ computed them eagerly --
-        before this level's chunk could possibly be known (it depends on the coarse demand, which
-        depends on this topology existing). `alpha` is a propagation delay, a time, and does not
-        scale with the volume unit.
+        Both cached epoch durations must be REDERIVED, because Topology.__init__ computed them
+        eagerly -- before this level's chunk could possibly be known (it depends on the coarse
+        demand, which depends on this topology existing). `alpha` is a propagation delay, a time,
+        and does not scale with the volume unit.
+
+        Rederived EAGERLY, not merely invalidated. `get_epoch_duration_{fast,slow}_link` recompute
+        lazily when the cached value is 0, but `BaseFormulation.set_epoch_duration` reads the
+        ATTRIBUTE directly rather than calling the getter, so a level left holding 0 fails its
+        `assert self.epoch_duration > 0` with a message about the epoch multiplier -- which is not
+        the problem at all. Zeroing alone used to work only because a driver's log line happened to
+        call the getter before solving; the moment that print moved, the level broke. Recomputing
+        here removes the ordering dependency entirely.
 
         The demand MUST be divided by the same g at the same time or `capacity * epoch_duration`
         and the demand end up in different units; use `set_level_chunk`, which does both.
@@ -97,6 +105,12 @@ class CoarseTopology(Topology):
         self.chunk_size *= g
         self.epoch_duration_fast_link = 0.0
         self.epoch_duration_slow_link = 0.0
+        self.get_epoch_duration_fast_link()
+        self.get_epoch_duration_slow_link()
+        assert self.epoch_duration_fast_link > 0 and self.epoch_duration_slow_link > 0, (
+            f"rescaling to chunk {g} left this level with a non-positive epoch "
+            f"({self.epoch_duration_fast_link}, {self.epoch_duration_slow_link}); its capacity "
+            f"matrix has no usable link")
 
 
 def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
