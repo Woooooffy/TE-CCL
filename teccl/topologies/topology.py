@@ -35,6 +35,12 @@ class Topology(ABC):
         self.passive_indices: List[int] = list(topo_input.passive_node_indices)
         assert not set(self.passive_indices) & set(self.switch_indices), \
             "A node cannot be both a switch and a passive forwarding node"
+        self.programmable_switch_indices: List[int] = (
+            list(topo_input.programmable_switch_indices)
+            if topo_input.programmable_switch_indices is not None
+            else self.default_programmable_switch_indices())
+        assert set(self.programmable_switch_indices) <= set(self.switch_indices), \
+            "programmable_switch_indices must be a subset of switch_indices"
         self.build_hierarchy()
 
     @abstractmethod
@@ -44,6 +50,19 @@ class Topology(ABC):
     @abstractmethod
     def set_switch_indicies(self) -> None:
         pass
+
+    def default_programmable_switch_indices(self) -> List[int]:
+        """
+        Which of self.switch_indices are externally programmable, i.e. which ones ncclize may
+        emit a forwarding table for. Default: all of them.
+
+        A subclass overrides this when only some of its switches take an external program. The
+        canonical split is network switches (leaf/spine, programmed per route) vs intra-node
+        NVSwitches, which route on their own and must be left out of the emitted table even
+        though the solver freely routes through them. Overridable per-instance by
+        TopologyParams.programmable_switch_indices. Called after set_switch_indicies().
+        """
+        return list(self.switch_indices)
 
     def build_hierarchy(self) -> None:
         """

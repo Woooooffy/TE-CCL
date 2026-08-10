@@ -100,6 +100,13 @@ class RailOptimizedSpineLeaf(Topology):
             + [self._spine(s) for s in range(self.NUM_SPINE)]
         )
 
+    def default_programmable_switch_indices(self):
+        # Only the network fabric (leaf + spine) is programmed per route. The per-node NVSwitch
+        # is a self-routing crossbar: the solver routes GPU->NVSwitch->GPU hops through it, but
+        # no forwarding entry is ever installed on it, so it is excluded from the emitted table.
+        return ([self._leaf(r) for r in range(self.NUM_LEAF)]
+                + [self._spine(s) for s in range(self.NUM_SPINE)])
+
     def build_hierarchy(self) -> None:
         # One cell per host: its 8 rail GPUs plus the NVSwitch behind them collapse into a
         # single coarse (data-bearing) node. The NVSwitch is internal and dropped from the

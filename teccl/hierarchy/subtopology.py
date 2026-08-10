@@ -61,6 +61,16 @@ class InducedTopology(Topology):
         self.cells = self._c_subcells
 
 
+def _programmable(topology: Topology) -> set:
+    """The parent's externally-programmable switches, defaulting to all of them.
+
+    Written out rather than `getattr(...) or switch_indices` because an EMPTY programmable set is
+    meaningful ("every switch here self-routes") and must not fall back to "all".
+    """
+    declared = getattr(topology, "programmable_switch_indices", None)
+    return set(topology.switch_indices if declared is None else declared)
+
+
 def induce(topology: Topology, cell: Cell) -> InducedTopology:
     """Build the sub-topology of `cell`: the induced subgraph on its members, renumbered 0..n-1.
 
@@ -122,6 +132,11 @@ def induce(topology: Topology, cell: Cell) -> InducedTopology:
         chunk_size=topology.chunk_size,
         passive_node_indices=tuple(local[p] for p in getattr(topology, "passive_indices", [])
                                    if p in local),
+        # Which of this cell's internal switches take an external program is inherited from the
+        # parent, so an NVSwitch excluded up there stays excluded once induced.
+        programmable_switch_indices=tuple(
+            sorted(local[s] for s in cell.internal_switches
+                   if s in _programmable(topology))),
     )
     return InducedTopology(
         topo_input,

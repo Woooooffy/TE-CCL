@@ -239,11 +239,21 @@ def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
         cid for cid, f in coarse_passthrough.items() if f in topology.passive_indices
     )
 
+    # A coarse switch is programmable iff the fine switch it stands for is: collapsing the
+    # graph must not silently re-permit a self-routing fabric.
+    _declared = getattr(topology, "programmable_switch_indices", None)
+    fine_programmable = set(topology.switch_indices if _declared is None else _declared)
+    coarse_programmable = sorted(
+        cid for cid in coarse_switch_indices
+        if coarse_passthrough[cid] in fine_programmable
+    )
+
     topo_input = TopologyParams(
         name=f"{topology.__class__.__name__}_coarse",
         chassis=1,
         chunk_size=topology.chunk_size,
         passive_node_indices=tuple(coarse_passive),
+        programmable_switch_indices=tuple(coarse_programmable),
     )
     coarse = CoarseTopology(
         topo_input,

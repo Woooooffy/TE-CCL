@@ -609,7 +609,7 @@ def parse_flows_lp(schedule, collective_name):
             pacing_gates)
 
 
-def build_switch_routes(flow_manifest, switch_rank_map):
+def build_switch_routes(flow_manifest, switch_rank_map, programmable_switches=None):
     """Build a per-switch flow_id -> next-hop forwarding table.
 
     flow_manifest is the list of {'flow_id', 'step', 'src', 'dst', 'path_key'}
@@ -621,18 +621,52 @@ def build_switch_routes(flow_manifest, switch_rank_map):
     is a property of the route, not of when it is used, so a route-level entry
     has no single meaningful epoch.
 
-    Returns {'switches': {switch_id_str: {flow_id_str: {...}}}}, with switch
+    The table covers the PACED (network) routes only, because ncclize() emits a
+    flow id only for those. That is the intended scope, not a gap: an unpaced hop
+    is an intra-cell one crossing an NVSwitch, which routes on its own and is
+    never programmed from this table. A hierarchical schedule therefore yields
+    entries for its inter-cell switches and none for the per-cell NVSwitches.
+
+    programmable_switches, when given, is the set of RAW switch node ids that
+    accept an external forwarding program (Topology.programmable_switch_indices).
+    Only those get a table; every other switch on a route is treated as a
+    transparent self-routing hop and skipped, so a route
+    gpu -> nvswitch -> leaf -> spine -> leaf -> nvswitch -> gpu yields entries on
+    the three network switches only, chained leaf -> spine -> leaf -> dst gpu as
+    if the NVSwitches were not there. That is the correct program for such a
+    fabric: the NVSwitch delivers by its own addressing, so the last programmable
+    switch's next hop is the destination GPU. A route whose switches are all
+    non-programmable contributes nothing. None => every switch is programmable
+    (the previous behaviour).
+
+    Returns {'switch_id_map': {switch_id_str: raw_node_id},
+             'switches': {switch_id_str: {flow_id_str: {...}}}}, with switch
     and GPU ids both in the same dense 0-indexed numbering used elsewhere
-    (GPU ids matching the main XML's, switch ids via switch_rank_map) and an
-    explicit next_hop_type ('switch' or 'gpu') disambiguating the two, since
-    they are independently 0-indexed and can otherwise collide numerically.
+    (GPU ids matching the main XML's, switch ids ranked over the switches this
+    table covers) and an explicit next_hop_type ('switch' or 'gpu')
+    disambiguating the two, since they are independently 0-indexed and can
+    otherwise collide numerically. switch_id_map records the dense id -> raw
+    fine node id correspondence, which is no longer inferable from the schedule
+    alone once the table covers a subset of the switches.
     """
+    # Rank over the switches this table actually covers, so its ids stay dense
+    # 0..k-1 rather than inheriting holes where a filtered-out switch sat.
+    if programmable_switches is None:
+        rank_map = dict(switch_rank_map)
+    else:
+        programmable_switches = set(programmable_switches)
+        rank_map = {raw: idx for idx, raw in
+                    enumerate(sorted(s for s in switch_rank_map
+                                     if s in programmable_switches))}
+
     routes = defaultdict(dict)
     for record in flow_manifest:
         path_key = record['path_key']
         if not path_key:
             continue  # direct GPU-GPU link, no switch hop involved
-        switch_path = tuple(switch_rank_map[s] for s in path_key)
+        switch_path = tuple(rank_map[s] for s in path_key if s in rank_map)
+        if not switch_path:
+            continue  # entirely self-routing (e.g. an intra-node NVSwitch hop)
         flow_id, src, dst = (
             record['flow_id'], record['src'], record['dst'])
         for i, switch in enumerate(switch_path):
@@ -647,6 +681,8 @@ def build_switch_routes(flow_manifest, switch_rank_map):
             }
 
     return {
+        'switch_id_map': {str(dense): raw for raw, dense in sorted(
+            rank_map.items(), key=lambda kv: kv[1])},
         'switches': {
             str(switch): {str(flow_id): entry for flow_id, entry in flows.items()}
             for switch, flows in sorted(routes.items())
@@ -915,6 +951,12 @@ def main():
     p.add_argument('--scale-remote', type=int, default=1)
     p.add_argument('--switch-routing-output', default=None,
                     help='optional path to write per-switch flow_id -> next-hop routing table as JSON')
+    p.add_argument('--programmable-switches', default=None,
+                    help='comma-separated RAW switch node ids to emit forwarding entries for; '
+                         'switches outside the set are treated as transparent self-routing hops. '
+                         'Defaults to the --topology class\'s programmable_switch_indices (e.g. '
+                         'RailOptimizedSpineLeaf: leaf+spine only, no NVSwitches), or to every '
+                         'switch when no --topology is given.')
     p.add_argument('--epoch-debug-output', default=None,
                     help='optional path to write a human-readable per-GPU, '
                          'per-epoch schedule dump. The realizability feasibility '
@@ -997,7 +1039,15 @@ def main():
         print(f'Wrote {args.epoch_debug_output}')
 
     if args.switch_routing_output:
-        routes = build_switch_routes(flow_manifest, switch_rank_map)
+        # Explicit --programmable-switches wins; otherwise the topology declares it. With no
+        # topology at all there is nothing to filter by, so every switch stays programmable.
+        if args.programmable_switches is not None:
+            programmable = {int(s) for s in args.programmable_switches.split(',') if s.strip()}
+        elif real_topology is not None:
+            programmable = set(real_topology.programmable_switch_indices)
+        else:
+            programmable = None
+        routes = build_switch_routes(flow_manifest, switch_rank_map, programmable)
         with open(args.switch_routing_output, 'w') as f:
             json.dump(routes, f, indent=2)
         print(f'Wrote {args.switch_routing_output}')

@@ -467,6 +467,11 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     a hierarchical schedule interleaves flows solved at different levels, each with its own epoch duration and
     capacity model: the level that produced a flow computes its rate, and a flow it chose not to pace is simply
     absent from the map and emits no rate attribute. None disables the attribute entirely.
+
+    piece_rate also GATES the mscclflowid attribute and the flow_manifest, since both describe a network send
+    and a rate is the marker for one (see the flow-id assignment below). A caller that supplies no piece_rate at
+    all therefore gets no flow ids either -- which is the right answer for the callers that pass neither
+    flow_path_keys nor flow_manifest, as nothing downstream of them reads the id.
     '''
 
     if algorithm.is_pipelined():
@@ -595,8 +600,13 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     op_sets = []
     # (src, dst, path_key) route -> its flow id. A flow id is a bijection with a
     # physical route, so every send/recv on that route (across all epochs and
-    # chunks) shares one id (see the flow_id assignment below).
+    # chunks) shares one id (see the flow_id assignment below). Only PACED routes
+    # are entered here; see the assignment for why.
     route_flow_ids = {}
+    # (src, dst, path_key) route -> whether its ops carry a rate. A route must be
+    # uniformly paced or uniformly unpaced for the flow-id restriction below to be
+    # well defined; this records the first answer so the rest can be checked.
+    route_paced = {}
     # Track the latest op that wrote to each buffer index
     writers = defaultdict(list)
     # Track all the reads since the last write to each buffer index
@@ -723,23 +733,54 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             # The flow id is a bijection with the physical route (src -> switches
             # -> dst), keyed by (src, dst, path_key): every send/recv on that
             # route, in any epoch and for any chunk, shares one id. This gives the
-            # switch forwarding table and channel assignment exactly one entry per
-            # route. Per-op epoch ordering is recovered from send_epoch_manifest
-            # (populated at XML emission), not from the flow id, precisely because
-            # one flow id now spans multiple epochs.
+            # switch forwarding table exactly one entry per route. Per-op epoch
+            # ordering is recovered from send_epoch_manifest (populated at XML
+            # emission), not from the flow id, precisely because one flow id now
+            # spans multiple epochs.
+            #
+            # Flow ids are emitted ONLY for PACED (rate-bearing) ops, for the same
+            # reason the rate is: both are properties of a NETWORK send. A flow id
+            # exists to let a programmable inter-node switch forward by route, and
+            # a rate exists to hold that send to the epoch grid the level solved
+            # on. An intra-cell hop has neither -- it crosses an NVSwitch that
+            # forwards on its own and it was scheduled for ORDER, not for pacing
+            # (see reconstruct._piece_rate and flat_schedule._segment) -- so
+            # tagging it would put a phantom entry in the forwarding table for a
+            # switch that is never programmed from it.
+            #
+            # Both invariants survive the restriction:
+            #  * flow id <-> route stays a bijection, now over the paced routes
+            #    only: route_flow_ids is still keyed by route and still hands out
+            #    one dense id per distinct route.
+            #  * distinct paths still land on distinct channels: channel
+            #    allocation partitions each edge by op.path_key, never by flow id
+            #    (see _allocate_channels_match_topology), and path_key is set on
+            #    every op regardless of pacing.
+            # What the restriction does require is that a route not be paced in
+            # one epoch and unpaced in another -- that would tag only part of the
+            # route's traffic and leave the switch with packets it has an entry
+            # for but cannot match. Nothing structurally forbids it, so assert it.
             route = (src, dst, path_key)
-            flow_id = route_flow_ids.setdefault(route, len(route_flow_ids))
-            send_op.mscclflowid = flow_id
-            recv_op.mscclflowid = flow_id
+            paced = rate is not None
+            prev_paced = route_paced.setdefault(route, paced)
+            assert prev_paced == paced, (
+                f"route {src}->{dst} (path {path_key}) is paced in some epochs and "
+                f"unpaced in others; a route must be uniformly paced, since its "
+                f"flow id is emitted for the whole route or not at all")
 
-            if flow_manifest is not None:
-                flow_manifest.append({
-                    'flow_id': flow_id,
-                    'step': step_idx,
-                    'src': src,
-                    'dst': dst,
-                    'path_key': path_key,
-                })
+            if paced:
+                flow_id = route_flow_ids.setdefault(route, len(route_flow_ids))
+                send_op.mscclflowid = flow_id
+                recv_op.mscclflowid = flow_id
+
+                if flow_manifest is not None:
+                    flow_manifest.append({
+                        'flow_id': flow_id,
+                        'step': step_idx,
+                        'src': src,
+                        'dst': dst,
+                        'path_key': path_key,
+                    })
 
             # Record the send and receive as a set of operations that must happen on the same channel
             # if src_off == 0 or src_off == 1:
@@ -810,13 +851,21 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         assert False, 'Unhandled channel policy'
 
     if flow_path_keys:
-        # Sanity check: ops that were kept separate because they carry distinct
-        # mscclflowids (e.g. different switch paths) are only guaranteed to land
-        # in separate threadblocks if they also land on distinct channels here --
-        # threadblocks are grouped by (gpu, is_send, peer, channel) below, so two
-        # same-step ops sharing a channel get merged into one threadblock
-        # regardless of having different flow ids. This can happen if channel_policy
-        # doesn't separate same-step/same-edge ops (e.g. ChannelPolicy.One).
+        # Sanity check: ops that were kept separate because they take distinct
+        # physical paths (distinct path_keys, e.g. different switch routes) are
+        # only guaranteed to land in separate threadblocks if they also land on
+        # distinct channels here -- threadblocks are grouped by (gpu, is_send,
+        # peer, channel) below, so two same-step ops sharing a channel get merged
+        # into one threadblock regardless of taking different paths. This can
+        # happen if channel_policy doesn't separate same-step/same-edge ops (e.g.
+        # ChannelPolicy.One).
+        #
+        # Grouped by path_key rather than by mscclflowid: the flow id is now
+        # emitted only for paced ops (see its assignment above), but an UNPACED op
+        # is separated by its path_key just the same and needs the same guarantee,
+        # so keying on the flow id would silently stop checking intra-cell hops.
+        # path_key is what the allocator actually partitions on, so this also
+        # states the guard in the terms of the thing it is guarding.
         #
         # Under channel_policy=MatchTopology this should now be structurally
         # unreachable: _allocate_channels_match_topology() partitions every edge by
@@ -825,19 +874,19 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         # bug in that partitioning (e.g. a path_key not making it onto the op), not an
         # inherent limitation -- kept here as a cheap regression guard, and because
         # it's still a real limitation for other channel policies (e.g. One).
-        flow_chans = defaultdict(set)
+        path_chans = defaultdict(set)
         for chan, chan_ops in ops_by_channel.items():
             for op in chan_ops:
-                if op.mscclflowid is not None:
-                    flow_chans[(op.gpu, op.is_send, op.peer, op.step)].add((op.mscclflowid, chan))
-        for (gpu, is_send, peer, step), flowid_chan_pairs in flow_chans.items():
-            flow_ids = {f for f, _ in flowid_chan_pairs}
-            chans = {c for _, c in flowid_chan_pairs}
-            if len(chans) < len(flow_ids):
-                print(f'Warning: mscclflowids {sorted(flow_ids)} on gpu={gpu} is_send={is_send} '
-                      f'peer={peer} step={step} only got {len(chans)} distinct channel(s) under '
-                      f'channel_policy={channel_policy} -- they will be forced into the same '
-                      f'threadblock, losing the intended parallelism between switch paths.')
+                path_chans[(op.gpu, op.is_send, op.peer, op.step)].add((op.path_key, chan))
+        for (gpu, is_send, peer, step), path_chan_pairs in path_chans.items():
+            path_keys = {p for p, _ in path_chan_pairs}
+            chans = {c for _, c in path_chan_pairs}
+            if len(chans) < len(path_keys):
+                print(f'Warning: switch paths {sorted(path_keys, key=str)} on gpu={gpu} '
+                      f'is_send={is_send} peer={peer} step={step} only got {len(chans)} distinct '
+                      f'channel(s) under channel_policy={channel_policy} -- they will be forced '
+                      f'into the same threadblock, losing the intended parallelism between '
+                      f'switch paths.')
 
     # Group by which operations need to be in the same threadblock, then give each group its OWN
     # threadblock: one per (gpu, direction, peer, channel).
