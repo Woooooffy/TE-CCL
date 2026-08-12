@@ -9,8 +9,9 @@
 # solver actually targets, and it is where SIZE, not irregularity, is the risk. Read that script
 # for the phase-by-phase narration; only what differs is repeated here.
 #
-# Outputs: Schedules/coarse_rail_<coll>_{lp,identities,intra,flat}.json, xml/rail_<coll>.xml, and
-# the log in logs/teccl-<jobid>.out|.err.
+# Outputs: Schedules/coarse_rail_<coll>[_<algo>]_{lp,identities,intra,flat}.json,
+# xml/rail_<coll>[_<algo>].xml, and the log in logs/teccl-<jobid>.out|.err. The <algo> tag appears
+# only when the intra-cell solver is not the default, so a `ring` run never overwrites its baseline.
 #
 # What to look for in the .out log, beyond the hetero checks:
 #   "twin groups (symmetry): [[...8 leaves...], [...4 spines...]]"  -- symmetry is ON here. If the
@@ -56,11 +57,30 @@
 #   sbatch scripts/run_rail_phase3.sh                        # allgather (default)
 #   sbatch scripts/run_rail_phase3.sh alltoall               # alltoall (heavier: 256x256 fine demand)
 #   sbatch scripts/run_rail_phase3.sh allgather nocoarsen    # A/B: pre-coarsening behaviour (g=1)
+#   sbatch scripts/run_rail_phase3.sh allgather ring         # A/B: ring intra-cell solver
+#
+# THE RING A/B. `ring` swaps the intra-cell base case from the crossbar row (star fan-out, per-demand
+# tree-vs-direct density test, 7 inbound peers per GPU on an 8-GPU host) to the ring row (one inbound
+# and one outbound peer, so N:1 fan-in is structurally impossible). Run it against an unflagged
+# baseline of the same collective and compare, in the .out log:
+#   "intra fits coarse epoch: ... % of the budget"  -- the ring's link bound should land at the SAME
+#       round count on allgather (a star from one port and a ring spread one-per-port carry the same
+#       busiest-link load), and HIGHER on alltoall, where the ring pays distance(src,dst) hops for
+#       what the crossbar does in one. A large allgather regression means the ring lowering is not
+#       pipelining, not that rings are worse.
+#   "fine epoch delta=... x E epochs = T s"  -- the makespan is what the trade is actually paid in.
+# The two runs write to different files (see Outputs above), so both survive for comparison.
+# Equivalent, if you prefer the environment: `TECCL_INTRA_ALGO=ring sbatch scripts/run_rail_phase3.sh`
+# -- sbatch defaults to --export=ALL, so the submitting shell's value is inherited. The positional
+# argument WINS over an inherited one, so an explicit run cannot be flipped by a stale export.
 #
 # Run locally instead (needs a Gurobi license on this box):
 #   python -m teccl.examples.hierarchy_coarse_solve_rail allgather lp
+#   TECCL_INTRA_ALGO=ring python -m teccl.examples.hierarchy_coarse_solve_rail allgather lp
 # Extra args: `debug` turns phase-3's per-cell narration back on (off by default here: 32 identical
 # cells would each print a full derivation and bury the log); `nocoarsen` pins the level chunk to 1.
+# `ring`/`crossbar` are consumed by this script (they set TECCL_INTRA_ALGO) and not forwarded -- the
+# driver ignores unrecognised arguments, so passing `ring` through would look like it worked.
 #SBATCH --job-name=teccl-rail
 #SBATCH --output=logs/teccl-%j.out
 #SBATCH --error=logs/teccl-%j.err
@@ -86,9 +106,35 @@ if ! pip install .; then
 fi
 
 COLL="${1:-allgather}"
-# Any extra args (e.g. `nocoarsen`, `debug`) pass straight through to the driver.
 shift || true
-EXTRA=("$@")
+
+# `ring` / `crossbar` select the intra-cell base-case solver (teccl/hierarchy/ring_solve.py). It is
+# read from the environment rather than from argv -- the flag has to reach the ring row itself, and
+# an env var is the one channel that works identically for `sbatch`, a bare `srun`, and a local
+# `python -m` run. It is pulled out of the argument list here rather than passed through because the
+# driver ignores arguments it does not recognise, so `... allgather ring` would otherwise look like
+# it worked and silently produce a crossbar run.
+#
+# An explicit argument WINS over an inherited value, so a submitted job cannot be quietly flipped by
+# whatever was exported in the submitting shell.
+EXTRA=()
+for arg in "$@"; do
+    # `tr` rather than ${arg,,}: that expansion needs bash 4+, and this script is edited and
+    # smoke-tested on a mac whose /bin/bash is 3.2.
+    lower=$(printf '%s' "$arg" | tr '[:upper:]' '[:lower:]')
+    case "$lower" in
+        ring|crossbar) export TECCL_INTRA_ALGO="$lower" ;;
+        *)             EXTRA+=("$arg") ;;
+    esac
+done
+: "${TECCL_INTRA_ALGO:=crossbar}"
+export TECCL_INTRA_ALGO
+echo "intra-cell algorithm: ${TECCL_INTRA_ALGO}"
+# Outputs are tagged with the algorithm unless it is the default, so a ring run and a crossbar run
+# do not overwrite each other (the driver derives this from the same flag -- see
+# hierarchy_coarse_solve_rail.main).
+SUFFIX=""
+[ "$TECCL_INTRA_ALGO" != "crossbar" ] && SUFFIX="_${TECCL_INTRA_ALGO}"
 
 # Gurobi-free structural tests first: seconds, and they cover the whole lower half (identity
 # resolution, phase-3 scheduler, stitch epoch layout, ncclize pacing gates). They run against the
@@ -123,8 +169,8 @@ srun python -m teccl.examples.hierarchy_stitch_test
 # `--no-rate` is NOT wanted here: stripping it would discard the coarse level's pacing.
 echo "=== [5/5] ncclize round trip: flat schedule -> MSCCL XML (runs check_implements) ==="
 srun python teccl/ncclize/teccl_ncclize.py \
-    --schedule "Schedules/coarse_rail_${COLL}_flat.json" \
+    --schedule "Schedules/coarse_rail_${COLL}${SUFFIX}_flat.json" \
     --hierarchical \
     --topology RailOptimizedSpineLeaf \
-    -o "xml/rail_${COLL}.xml" \
-    --epoch-debug-output "logs/rail_${COLL}_epochs.txt"
+    -o "xml/rail_${COLL}${SUFFIX}.xml" \
+    --epoch-debug-output "logs/rail_${COLL}${SUFFIX}_epochs.txt"

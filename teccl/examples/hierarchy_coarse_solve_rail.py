@@ -42,6 +42,7 @@ import sys
 import traceback
 
 from teccl.examples.hierarchy_pipeline import make_reporter, print_solve_summary
+from teccl.hierarchy import ring_solve
 from teccl.hierarchy.abstract import abstract, lift_demand
 from teccl.hierarchy.solve import solve_hierarchical
 from teccl.input_data import (
@@ -117,7 +118,15 @@ def main() -> None:
           f"{num_participating // len(mapping.coarse_cells)} gpus), collective={coll_arg}, "
           f"which={which}")
 
-    tag = coll_arg
+    # The intra-cell algorithm goes in the OUTPUT NAME whenever it is not the default, so an A/B
+    # cannot silently overwrite its own baseline. Keyed off the live flag rather than off a CLI
+    # argument, so it is right however the flag was set (env var, or a caller assigning
+    # ring_solve.INTRA_ALGO) -- the failure this prevents is a ring run and a crossbar run leaving
+    # one indistinguishable set of Schedules/ and xml/ files behind.
+    algo = ring_solve.intra_algo()
+    tag = coll_arg if algo == ring_solve.ALGO_CROSSBAR else f"{coll_arg}_{algo}"
+    print(f"intra-cell algorithm: {algo}"
+          f"{'' if algo == ring_solve.ALGO_CROSSBAR else '  (outputs tagged _' + algo + ')'}")
     prefix = f"coarse_rail_{tag}"
     milp_out = f"Schedules/{prefix}_milp.json"
     lp_out = f"Schedules/{prefix}_lp.json"
