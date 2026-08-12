@@ -306,6 +306,23 @@ def _build_slots(pieces: Sequence["_CoarsePiece"], U: int, V: int,
     slots: List[_Slot] = []
     for p in pieces:
         egress_gws = mapping.boundary_gpu[(U, p.egress_neighbor)]
+        for side, nb in (("egress", p.egress_neighbor), ("ingress", p.ingress_neighbor)):
+            if nb not in mapping.coarse_passthrough:
+                # A CURRENT, GENERAL limitation of the piece/slot machinery, not a property of
+                # whichever solver routed this hop: a piece is placed onto real GPUs by splitting
+                # the coarse link across the boundary GPUs that own it, and that split reads
+                # `capacity[gpu][fine_neighbor]` -- which needs the coarse neighbor to be an
+                # un-collapsed fine node (a leaf, a spine, an NVSwitch). A DIRECT cell-to-cell
+                # coarse link has no such node between the two cells, so there is nothing to
+                # measure the split against and the gateway choice is undetermined. Deliberately
+                # deferred: every topology solved so far reaches its peers through a switch.
+                raise NotImplementedError(
+                    f"piece {U} -> {V} uses coarse node {nb} as its {side} neighbor, but {nb} is a "
+                    f"collapsed CELL rather than an un-collapsed passthrough node -- i.e. this is a "
+                    f"direct cell-to-cell coarse link. Placing such a hop onto fine GPUs is not "
+                    f"implemented (see _build_slots): the boundary split needs a fine neighbor node "
+                    f"to measure link capacity against. Topologies whose cells reach each other "
+                    f"through a switch are unaffected.")
         fine_egress_nb = mapping.coarse_passthrough[p.egress_neighbor]
         caps = [fine_topology.capacity[g][fine_egress_nb] for g in egress_gws]
         cap_sum = sum(caps) or 1.0

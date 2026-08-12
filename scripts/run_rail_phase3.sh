@@ -98,7 +98,8 @@ EXTRA=("$@")
 echo "=== [1/5] Gurobi-free structural tests (shared machinery, hetero fixtures) ==="
 srun python -m teccl.examples.hierarchy_level_chunk_test
 srun python -m teccl.examples.hierarchy_identity_resolution_test
-srun python -m teccl.examples.hierarchy_intra_solve_test
+srun python -m teccl.examples.hierarchy_crossbar_solve_test
+srun python -m teccl.examples.hierarchy_ring_solve_test
 srun python teccl/ncclize/pacing_gates_test.py
 
 echo "=== [2/5] rail coarse solve -> identity resolution -> phase-3 -> phase-4 stitch: collective=${COLL}, LP arm ==="

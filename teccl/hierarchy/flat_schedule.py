@@ -151,7 +151,12 @@ def build_records(res: IdentityResolution, intra_flows: Sequence[IntraFlow],
         for identity in f.identities:
             records.append(DeliveryRecord(
                 identity=identity, sender=f.sender, receiver=f.receiver,
-                via_switches=(f.via_switch,), volume=f.volume / len(f.identities), epoch=epoch,
+                # A hop over a DIRECT link has no switch to name (a physical ring cell), and
+                # `_segment` omits the "via switches" clause for an empty tuple. `(None,)` would
+                # instead emit the literal text "via switches None", which ncclize's
+                # PATH_SEGMENT_RE would then fail to parse.
+                via_switches=() if f.via_switch is None else (f.via_switch,),
+                volume=f.volume / len(f.identities), epoch=epoch,
                 # The transfer occupies its whole span and the receiver holds it once it finishes,
                 # which is what lets a flow ending at round r feed one starting at r+1 -- the
                 # precedence _schedule_band already enforced.

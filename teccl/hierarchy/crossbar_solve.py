@@ -550,13 +550,18 @@ def _assign_bands(jobs: Sequence[_Job]) -> Dict[int, List[_Job]]:
 def schedule_cell(cell_id: int, cell: Cell, demands: Sequence[IntraCellDemand],
                   switch_copy: bool = False, ring_hint: Optional[Callable] = None,
                   port_cap: float = 1.0, debug: Optional[bool] = None,
-                  subdivision: int = 1) -> List[IntraFlow]:
+                  subdivision: int = 1, topology=None) -> List[IntraFlow]:
     """Schedule every intra-cell demand of one cell onto its internal NVSwitch and return the fine
     IntraFlows. The switch is the cell's single internal switch (the memoized full-mesh case).
 
     ring_hint(src, dst) -> comparable, optional override of the default ring-distance tiebreak (the
     home for a phase-2-supplied ordering knob). Flows carry (band, local_round) -- this level's
     complete fine schedule, in units the stitch can place without rescaling.
+
+    `topology` is accepted and unused: this row reads everything it needs off the `Cell` (its gpu
+    order and its one internal switch). It is in the signature so the closed-form rows are
+    interchangeable at the dispatch point -- the ring row does need the capacity view, to tell a
+    physical ring from a logical one.
 
     debug: None -> honor the TECCL_INTRA_DEBUG env var; True/False -> force. Debug narrates every
     step (job build, fan-out density, dedup, per-round matching, optimality-vs-bound)."""

@@ -43,12 +43,12 @@ than the outer one, and where that premise holds the deadline is met with 6-25x 
 import copy
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
-from teccl.hierarchy import crossbar_solve
+from teccl.hierarchy import crossbar_solve, ring_solve
 from teccl.hierarchy.abstract import (abstract, coarsify_demand, lift_demand, set_level_chunk)
 from teccl.hierarchy.bands import assign_bands
-from teccl.hierarchy.crossbar_solve import IntraFlow, schedule_cell
+from teccl.hierarchy.crossbar_solve import IntraFlow
 from teccl.hierarchy.problem import CoarseSolution, LevelDemand, LevelSolution, Subproblem
 from teccl.hierarchy.reconstruct import (IdentityResolution, IntraCellDemand,
                                          assign_identities_free, assign_identities_preserving,
@@ -120,7 +120,64 @@ def _memo_key(problem: Subproblem) -> Tuple:
     shape = tuple(sorted((d.src_gpu, tuple(sorted(d.dst_gpus)), d.identity, d.kind,
                           round(d.volume, 9), d.deadline_epoch - problem.band)
                          for d in problem.demands))
-    return (cap, tuple(sorted(topo.switch_indices)), shape, problem.band, problem.cell_id)
+    # The base-case ALGORITHM is part of the fingerprint. The same cell with the same demands has a
+    # different schedule under the crossbar row than under the ring row, so a key without it would
+    # serve one row's flows to the other -- which is exactly what an in-process A/B does (solve
+    # once, flip `ring_solve.INTRA_ALGO`, solve again).
+    return (cap, tuple(sorted(topo.switch_indices)), shape, problem.band, problem.cell_id,
+            ring_solve.intra_algo())
+
+
+# ------------------------------------------------------------------------------------------------
+# The memoized rows of the base-case dispatch table
+# ------------------------------------------------------------------------------------------------
+class _MemoRow(NamedTuple):
+    """One shape whose optimal schedule is known in closed form.
+
+    A row owns BOTH halves of what a memoized level owes, because they are the same solver seen from
+    the two dispatch points and must never disagree about which shape they claim:
+
+        routing        this level's own piece + epoch decision, for step A (`solve_flat` / `_lower`)
+        schedule_cell  the fine schedule for a BOTTOM cell's interior      (`_solve_base`)
+
+    Rows are peers. Neither is "the general one" and neither is restricted to a particular depth: a
+    row is picked purely by the shape of the graph in front of it, at whichever dispatch point asks.
+    Where the lowering half cannot yet express what a row routed -- a hop over a direct cell-to-cell
+    coarse link, or a delivery that has to be relayed onward by an intermediate cell -- that is a
+    general limitation of the piece/slot machinery (deliberately deferred, see
+    `reconstruct._build_slots` and `bands.band_of`), and it raises the same way whichever row
+    produced the routing.
+    """
+    name: str
+    matches: Callable[..., bool]          # (topology, cell_fabric: bool) -> bool
+    routing: Callable[..., object]
+    schedule_cell: Callable[..., List[IntraFlow]]
+
+
+# ORDER IS SIGNIFICANT, and only for one case: with the algorithm flag set, `should_use_ring` claims
+# a single-switch CELL that `is_crossbar` would claim too, so ring is tested first and the flag can
+# take effect. On every other shape the two predicates are disjoint -- a crossbar has exactly one
+# switch, a ring has none -- so the order is immaterial there.
+_MEMOIZED_ROWS: Tuple[_MemoRow, ...] = (
+    _MemoRow("ring", ring_solve.should_use_ring, ring_solve.ring_routing,
+             ring_solve.schedule_cell),
+    _MemoRow("crossbar", lambda topo, cell_fabric=False: crossbar_solve.is_crossbar(topo),
+             crossbar_solve.crossbar_routing, crossbar_solve.schedule_cell),
+)
+
+
+def _memoized_row(topology, cell_fabric: bool = False) -> Optional[_MemoRow]:
+    """Which closed-form row serves this graph, or None if it needs a real solver.
+
+    `cell_fabric` distinguishes the two dispatch points -- a bottom cell's INTERIOR versus a LEVEL's
+    graph -- and is passed to every row rather than interpreted here, so a row that does not care
+    (the crossbar) simply ignores it. Both rows are offered both kinds of graph; neither is
+    restricted to a depth.
+    """
+    for row in _MEMOIZED_ROWS:
+        if row.matches(topology, cell_fabric):
+            return row
+    return None
 
 
 # ------------------------------------------------------------------------------------------------
@@ -134,7 +191,7 @@ def solve_flat(problem: Subproblem, ctx: LevelContext,
     -- only whether the solver kept chunk identity, which decides the step-A variant.
     """
     topo = problem.topology
-    if crossbar_solve.is_crossbar(topo):
+    if _memoized_row(topo) is not None:
         return CoarseSolution(per_chunk_flow_paths=None, topology=topo,
                               epoch_duration=topo.get_epoch_duration_fast_link(),
                               preserves_identity=True)
@@ -223,23 +280,27 @@ def _solve_base(problem: Subproblem, ctx: LevelContext) -> LevelSolution:
             f"level depth={problem.depth} reached the base case without a Cell view; the crossbar "
             f"solver needs the cell's gpu order and internal switch, so bottom cells must be "
             f"presented through _CellView")
-    if not crossbar_solve.is_crossbar(problem.topology):
+    row = _memoized_row(problem.topology, cell_fabric=True)
+    if row is None:
         # Not a shape with a closed form: this is where a real formulation would run on the cell's
         # own interior. It needs the tensor adapter and a second lowering pass, which is the one
         # branch the current topologies never reach.
         raise NotImplementedError(
-            f"cell {problem.cell_id} at depth {problem.depth} has a non-crossbar internal fabric "
-            f"({len(problem.topology.capacity)} nodes, {len(problem.topology.switch_indices)} "
-            f"switches) and declares no subcells, so it would need a formulation solve of its own "
-            f"interior. Declare its structure with Cell.subcells so the recursion can decompose it.")
+            f"cell {problem.cell_id} at depth {problem.depth} has an internal fabric matching no "
+            f"closed-form row ({[r.name for r in _MEMOIZED_ROWS]}): "
+            f"{len(problem.topology.capacity)} nodes, {len(problem.topology.switch_indices)} "
+            f"switches, and it declares no subcells, so it would need a formulation solve of its "
+            f"own interior. Declare its structure with Cell.subcells so the recursion can "
+            f"decompose it.")
 
     hard = sum(1 for d in problem.demands if d.kind == "egress_stage")
     if hard and problem.depth > 1:
         ctx.warn_unmodelled_deadlines(problem, hard)
 
-    flows = schedule_cell(problem.cell_id, cell, problem.demands,
-                          switch_copy=False, debug=ctx.debug,
-                          subdivision=_subdivision_of(problem.scale))
+    flows = row.schedule_cell(problem.cell_id, cell, problem.demands,
+                              switch_copy=False, debug=ctx.debug,
+                              subdivision=_subdivision_of(problem.scale),
+                              topology=problem.topology)
     ctx.memo[key] = flows
     return LevelSolution(flows=flows, scale=problem.scale)
 
@@ -352,8 +413,16 @@ def _lower(solution: CoarseSolution, problem: Subproblem, coarse, mapping, fine_
             solution, mapping, fine_tensor, problem.topology, level_chunk=g,
             relabel=relabel, holder_of=holder)
     else:
+        # The same row `solve_flat` picked, asked for the other half of what it owes. Re-deriving it
+        # from `coarse` rather than threading it through keeps `_lower` a pure function of its
+        # arguments, and the two calls cannot disagree because they test the identical predicate on
+        # the identical graph.
+        row = _memoized_row(coarse)
+        assert row is not None, (
+            "a solution claiming preserves_identity came from a graph that matches no closed-form "
+            "row; only a memoized row sets that flag")
         id_sets, targets = identity_sets(fine_tensor, mapping, relabel=relabel)
-        carried = crossbar_solve.crossbar_routing(coarse, mapping, id_sets)
+        carried = row.routing(coarse, mapping, id_sets)
         assignments = assign_identities_preserving(
             carried, holder or {}, targets, mapping, problem.topology, solution.epoch_duration)
         epoch = solution.epoch_duration
