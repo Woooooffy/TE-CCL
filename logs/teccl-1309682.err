@@ -1,5 +1,0 @@
-cpu-bind=MASK - lanka26, task  0  0 [3480627]: mask 0xffffffffffff set
-cpu-bind=MASK - lanka26, task  0  0 [3481624]: mask 0xff0000ff set
-cpu-bind=MASK - lanka26, task  0  0 [3482142]: mask 0xff0000ff set
-cpu-bind=MASK - lanka26, task  0  0 [3482303]: mask 0xff0000ff set
-cpu-bind=MASK - lanka26, task  0  0 [3482657]: mask 0xff0000ff set

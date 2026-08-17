@@ -25,15 +25,15 @@
         "collective": 1,
         "formulation": 2,
         "switch_copy": false,
-        "num_chunks": 3,
+        "num_chunks": 1,
         "epoch_type": 2,
         "epoch_multiplier": 1,
         "epoch_duration": -1,
         "num_epochs": -1,
         "alpha_threshold": 0.1,
         "switch_pipeline": true,
-        "symmetry": false,
-        "objective_type": 3,
+        "symmetry": true,
+        "objective_type": 2,
         "solution_method": 1,
         "schedule_output_file": "Schedules/two_pod_rail_allgather_flatsolve.json"
     }

@@ -247,7 +247,7 @@
     "InstanceParams": {
         "collective": 2,
         "num_chunks": 1,
-        "epoch_type": 1,
+        "epoch_type": 2,
         "epoch_duration": -1,
         "num_epochs": -1,
         "alpha_threshold": 0.1,

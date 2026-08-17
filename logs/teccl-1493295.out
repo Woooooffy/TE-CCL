@@ -24,7 +24,7 @@ Requirement already satisfied: six>=1.5 in /data/commit/graphit/wangyj05/minicon
 Building wheels for collected packages: teccl
   Building wheel for teccl (pyproject.toml): started
   Building wheel for teccl (pyproject.toml): finished with status 'done'
-  Created wheel for teccl: filename=teccl-1.0.0-py3-none-any.whl size=125126 sha256=88d90e94435a45d1db5a55111be44f751095dce2b29a0c04b9c2444669fc7da4
+  Created wheel for teccl: filename=teccl-1.0.0-py3-none-any.whl size=206612 sha256=659cedb92de96b2ebab52d6853b1b9426c422ffc23222c0070a1901da97adb41
   Stored in directory: /tmp/home/wangyj05/.cache/pip/wheels/2d/31/f1/88ef48e0a336b237a128de3fcf8e52662d1ed0bfbd5a678f6e
 Successfully built teccl
 Installing collected packages: teccl
@@ -33,50 +33,13 @@ Installing collected packages: teccl
     Uninstalling teccl-1.0.0:
       Successfully uninstalled teccl-1.0.0
 Successfully installed teccl-1.0.0
-=== [1/5] Gurobi-free structural tests (shared machinery, hetero fixtures) ===
-level-chunk boundary tests (ascending half of the recursion)
-  [1] ChunkScale coarsen/refine round-trip, payload conserved, budget is a ratio OK
-  [2] GCD rule: rail AG=8, hetero AG=2 (cells are 4/4/6), hetero A2A=8, coprime/empty -> 1 OK
-  [3] rescale_to_chunk: epoch 0.02 -> 0.16 (x8), per-epoch link capacity invariant at 1 chunk, demand -> 1/pair OK
-  [4] g == 1 is an exact no-op (topology, demand, scale all unchanged) OK
-  [5] every level-boundary scale round-trips through JSON exactly OK
-level-chunk tests OK
-  [1] identity_sets counts == coarsify_demand (AllGather + AllToAll) OK
-  [2] Host B forced-relay oracle (3 coalesced egress relays, native exempt; self_distribution disjoint from staging) OK
-  [3] symmetric case: zero egress relay OK
-  [4] AllToAll single-GPU ingress target OK
-  [1a] Host-B _to_jobs: 3 hard relays (redundant self-twins deduped) + 9 soft OK
-  [1b] isolated fan-out -> binomial tree (7 edges, depth 3, precedence) OK
-  [2a] ring recovery: 7 rounds, each a distance-(r+1) permutation OK
-  [2b] relay priority: far-distance hard job pulled to round 0 OK
-  [2c] fractional 0.5+0.5 packs into one round, ports safe OK
-  [2d] tree fan-out respects precedence, 3 rounds (log2 depth) OK
-  [3] schedule_cell Host-B combined: B gaps [0], 12 B-flows / 12 A-flows / 20 C-flows, relays land + fan-out delivered, ports & deadlines OK
-intra-solve step-1/2/3 tests OK
-send-pacing gate derivation tests
-  [OK] concern1a: multi-peer, same epoch, not serialized
-  [OK] concern1b: multipath channels, same epoch, not serialized
-  [OK] contiguous chain: gate on the send that frees the link
-  [OK] concern2: multi-epoch send does not serialize a later one
-  [OK] gap: pin to the latest finishing predecessor
-  [OK] cross-gpu: independent uplinks, no edges
-  [OK] multi-uplink: different first switch, independent, no edges
-  [OK] same uplink, different downstream path, still chains
-pacing gate tests OK
-=== [2/5] rail coarse solve -> identity resolution -> phase-3 -> phase-4 stitch: collective=allgather, LP arm ===
-coarse topology: 44 nodes (32 cells x 8 gpus + 12 switches), collective=allgather, which=lp
-twin groups (symmetry): [[32, 33, 34, 35, 36, 37, 38, 39], [40, 41, 42, 43]]
-level chunk: g=8 fine chunks -> ChunkScale(bytes=8, chunks=1/8, refined x1/8), coarse epoch 0.16s (SLOWEST_LINK)
-coarse demand: 992 nonzero (U->V) pairs, distinct volumes [1]
-
-=== LP (switch_copy=False, unicast) ===
 Set parameter WLSAccessID
 Set parameter WLSSecret
 Set parameter LicenseID to value 2766017
 Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
-Set parameter LogFile to value "Logs/ALLGATHER_LP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_40-epochs_176.00077-epoch_duration_ObjectiveType.PAPER.log"
+Set parameter LogFile to value "Logs/ALLGATHER_LP_RailOptimizedSpineLeaf_44-nodes_1-chunks_40-epochs_176.00077-epoch_duration_ObjectiveType.PAPER.log"
 Set parameter LogToConsole to value 0
-Set parameter LogFile to value "Logs/ALLGATHER_LP_RailOptimizedSpineLeaf_coarse_44-nodes_1-chunks_14-epochs_0.16-epoch_duration_ObjectiveType.PAPER.log"
+Set parameter LogFile to value "Logs/ALLGATHER_LP_RailOptimizedSpineLeaf_44-nodes_1-chunks_14-epochs_0.16-epoch_duration_ObjectiveType.PAPER.log"
 Set parameter LogToConsole to value 0
 
 ==============================================================================
@@ -10106,65 +10069,6 @@ RAW CONSUMED VARS  T_s_d_k = consumed_at_k[source s][dest d][epoch k]
    dest 31:  from source 30  epoch 2  consumed = 1.0
 ==============================================================================
 
-Schedule written to Schedules/coarse_rail_allgather_lp.json
-
---- identity resolution (coarse_rail_allgather) ---
-resolved inter-cell pieces: 7936
-intra-cell demands: 0 egress_stage, 7936 ingress_distribution, 256 self_distribution
-  chunk scale: ChunkScale(bytes=1, chunks=1, refined x1)  (subdivision Q=1)
-  fine-link occupancy: egress peak 100%, ingress peak 100% of per-epoch capacity; violations: 0
-  egress: 0/7936 pieces leave via a non-native gateway (lexicographic tier 1 minimizes this; the ingress tier never trades against it)
-identity resolution written to Schedules/coarse_rail_allgather_identities.json
-
-=== phase-3 intra-cell scheduling (coarse_rail_allgather) ===
-
-phase-3 intra schedule: 57344 fine flows written to Schedules/coarse_rail_allgather_intra.json
-  intra fits coarse epoch: fine epoch delta=5.556e-04s, m=288.0 rounds per coarse epoch; peak 56 rounds at cell/gap (0, 1) -> 19.4% of the budget
-
-=== phase-4 stitch (allgather) ===
-[stitch] network pacing: every paced send's uplink is freed by a send finishing at its epoch; P2 pins them all to their coarse epoch
-  65280 delivery records {'self_distribution': 1792, 'ingress_distribution': 55552, 'network': 7936}; 65280 demands traced (causality + coverage verified)
-  fine epoch delta=5.5556e-04s x 1202 epochs = 0.6678s, algo bw=383.36, chunk=1
-  paced network sends: 7936 at rate(s) [6.25] GB/s; 57344 intra sends unpaced
-  flat schedule written to Schedules/coarse_rail_allgather_flat.json
-
-LP: epochs=4 finish=0.64 bw=400.0 solver_time=48.16248965263367
-=== [3/5] pipeline replay invariants (resolution + phase-3, hetero fixture) ===
-hierarchical pipeline replay (identity resolution + phase-3, Gurobi-free)
-  allgather: Q=1 ChunkScale(bytes=1, chunks=1, refined x1)
-    28 pieces, 58 intra demands, 154 fine intra flows
-    fine-link peak occupancy: egress 100%, ingress 100%  (no violations)
-    ingress gateways used: {0: 6, 1: 4, 4: 10, 8: 4, 11: 4}
-    delivery coverage: all 154 (identity, gpu) pairs satisfied
-    intra fits epoch: peak 14 rounds vs m=72 (19% of budget) at cell/gap (2, 1)
-    non-native egress: 20/28 pieces
-  alltoall: Q=2 ChunkScale(bytes=0.5, chunks=28, refined x2)
-    256 pieces, 524 intra demands, 233 fine intra flows
-    fine-link peak occupancy: egress 100%, ingress 100%  (no violations)
-    ingress gateways used: {0: 56, 1: 24, 4: 80, 8: 60, 11: 18, 13: 18}
-    delivery coverage: all 442 (identity, gpu) pairs satisfied
-    intra fits epoch: peak 66 rounds vs m=72 (92% of budget) at cell/gap (1, 0)
-    ingress landing on target: 82/256 (32%)
-    non-native egress: 160/256 pieces
-pipeline replay OK
-=== [4/5] stitch replay + epoch-layout oracles (hetero fixture) ===
-stitch (phase 4) tests
-  [1] _assign_bands: readiness placement, prologue only when forced, empty when not OK
-  [2] epoch layout: prologue[0, 1] < stage(2) < send(18) -> held(26) <= fan-out[26, 27] OK
-  [3] back_trace rejects undelivered + send-before-hold, accepts the relay chain OK
-  [4] chunk labels: src-major passthrough, dst-major keeps the destination OK
-  --- end-to-end replay on the real coarse schedules ---
-[stitch] network pacing: 3 paced send(s) fire early -- no send on the same uplink finishes serializing at epoch k, so P2 cannot pin them to their coarse epoch (deferred P3 territory) [(gpu, epoch)]: [(0, 1), (0, 4), (8, 2)]
-  allgather: Q=1, delta=5.556e-04s, m=72, 368 epochs -> 0.2044s, bw=68.5
-    scale-invariant: finish at m x1/x2/x4 = 0.2044/0.2022/0.2011s -> residual halves (2.22e-03 then 1.11e-03), converging to the coarse-grid time
-    28 network + 154 intra records, 182 demands traced, chunk=1
-    ncclize: check_implements OK, 42 steps, 28 paced flows (0 unpaced), 6 pacing gates
-[stitch] network pacing: 11 paced send(s) fire early -- no send on the same uplink finishes serializing at epoch k, so P2 cannot pin them to their coarse epoch (deferred P3 territory) [(gpu, epoch)]: [(0, 9), (0, 12), (0, 16), (0, 22), (0, 24), (0, 35), (8, 11), (8, 14)]
-  alltoall: Q=2, delta=2.778e-04s, m=72, 2883 epochs -> 0.8008s, bw=244.7
-    scale-invariant: finish at m x1/x2/x4 = 0.8008/0.8004/0.8002s -> residual halves (4.17e-04 then 2.08e-04), converging to the coarse-grid time
-    256 network + 442 intra records, 364 demands traced, chunk=0.5
-    ncclize: check_implements OK, 90 steps, 256 paced flows (0 unpaced), 112 pacing gates
-stitch tests OK
-=== [5/5] ncclize round trip: flat schedule -> MSCCL XML (runs check_implements) ===
-Wrote xml/rail_allgather.xml
-Wrote logs/rail_allgather_epochs.txt
+Schedule written to Schedules/coarse_rail_allgather_coarse.json
+[flat] network pacing: every paced send's uplink is freed by a send finishing at its epoch; P2 pins them all to their coarse epoch
+Schedule written to Schedules/coarse_rail_allgather_flat.json
