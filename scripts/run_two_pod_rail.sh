@@ -1,11 +1,11 @@
 #!/bin/bash
 # Launch the hierarchical pipeline for TwoPodRail (16 GPUs / 8 nodes / 4 leaves / 2 UNEQUAL
-# spines, 22 fine nodes -> 14 coarse) on the remote (lanka/SLURM), plus the FLAT ground-truth
+# spines, 30 fine nodes -> 14 coarse) on the remote (lanka/SLURM), plus the FLAT ground-truth
 # solve of the same problem, and diff them.
 #
 # This is the CONTRIVED sibling of run_rail_phase3.sh and run_hetero_phase3.sh. The hetero
 # cluster is the irregularity stress test and the rail topology is the at-scale target; this one
-# is the CORRECTNESS ORACLE. It is deliberately small enough (22 nodes) that the flat solve is
+# is the CORRECTNESS ORACLE. It is deliberately small enough (30 nodes) that the flat solve is
 # tractable, so for the first time the hierarchical answer can be compared against a real
 # optimum instead of only against its own invariants.
 #

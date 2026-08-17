@@ -10,21 +10,38 @@ class TwoPodRail(Topology):
     16-GPU / 8-node / 2-pod rail-optimized topology, CONTRIVED so that the optimal schedule is
     forced to (1) split a flow across multiple paths and (2) pace some flows below link rate.
 
-    It is small enough (22 nodes) that the FLAT solve is tractable, so it doubles as the
+    It is small enough (30 nodes) that the FLAT solve is tractable, so it doubles as the
     ground truth the hierarchical stitch can be validated against -- which neither
     RailOptimizedSpineLeaf (too big) nor HeteroTaperedCluster (no flat reference computed)
     provides.
 
-        Pod A = nodes 0-3, Pod B = nodes 4-7. Each node holds 2 GPUs joined by a direct NVLink.
+        Pod A = nodes 0-3, Pod B = nodes 4-7. Each node holds 2 GPUs behind one NVSwitch.
         Leaf(pod p, rail r) serves the rail-r GPU of every node in pod p -> 4 leaves.
         Every leaf reaches BOTH spines. Cross-pod traffic must therefore cross a spine; the
         two spines are deliberately UNEQUAL (50 vs 25 GB/s), which is what makes the split
         forced and non-dyadic instead of a symmetric tie.
 
-    Node indexing (22 nodes):
+    Node indexing (30 nodes):
         GPU(node n, rail r) = n * 2 + r        n in [0,8), r in [0,2)   -> [0,16)
-        Leaf(pod p, rail r) = 16 + p * 2 + r   p in [0,2), r in [0,2)   -> [16,20)
-        Spine(s)            = 20 + s           s in [0,2)               -> [20,22)
+        NVSwitch(node n)    = 16 + n           n in [0,8)               -> [16,24)
+        Leaf(pod p, rail r) = 24 + p * 2 + r   p in [0,2), r in [0,2)   -> [24,28)
+        Spine(s)            = 28 + s           s in [0,2)               -> [28,30)
+
+    WHY THE TWO GPUs SIT BEHIND AN NVSWITCH RATHER THAN A DIRECT LINK
+    Physically a direct GPU<->GPU NVLink would be the honest model of a 2-GPU node, and it is what
+    this topology had first. It does not work, for a reason that has nothing to do with the fine
+    graph: a bottom cell's interior is scheduled by a CLOSED-FORM ROW, and a switchless 2-node
+    fabric matches neither row on offer. `crossbar_solve.is_crossbar` requires exactly one switch;
+    `ring_solve.ring_topology_order` requires at least three data nodes each with two undirected
+    neighbours -- and its >= 3 guard is substantive, not incidental, because in a 2-cycle a node's
+    clockwise and counter-clockwise neighbours are the same node over the SAME link, so the
+    `bidirectional=True` it would infer would double-count that GPU's egress. With one NVSwitch the
+    cell is an ordinary crossbar, exactly as in every other topology here.
+
+    The extra hop costs nothing that this topology measures: at 900 GB/s the two-hop
+    GPU->NVSwitch->GPU path is as far from binding as the direct link was, and neither the spine
+    cut nor the GPU->leaf cut involves an intra-node link at all. Every number below is unchanged
+    from the direct-link version.
 
     WHY THE SPINES ARE UNEQUAL
     A symmetric pair of spines makes the two spine paths exactly interchangeable: the aggregate
@@ -107,7 +124,7 @@ class TwoPodRail(Topology):
     NUM_SPINE = 2
 
     # Bandwidths in GB/s (divided by chunk_size below, per the codebase convention).
-    NVLINK_BW = 900.0                   # intra-node, direct GPU<->GPU
+    NVLINK_BW = 900.0                   # intra-node, per GPU<->NVSwitch link
     GPU_LEAF_BW = 50.0                  # H -- the swept knob; see the class docstring
     LEAF_SPINE_BW = (50.0, 25.0)        # per spine; unequal ON PURPOSE
 
@@ -130,28 +147,36 @@ class TwoPodRail(Topology):
     def _pod(self, node: int) -> int:
         return node // self.NODES_PER_POD
 
+    def _nvswitch(self, node: int) -> int:
+        return self._num_gpus() + node
+
     def _leaf(self, pod: int, rail: int) -> int:
-        return self._num_gpus() + pod * self.GPUS_PER_NODE + rail
+        return self._num_gpus() + self.NUM_NODES + pod * self.GPUS_PER_NODE + rail
 
     def _spine(self, s: int) -> int:
-        return self._num_gpus() + self.NUM_LEAF + s
+        return self._num_gpus() + self.NUM_NODES + self.NUM_LEAF + s
 
     def construct_topology(self, topo_input: TopologyParams) -> None:
-        total_nodes = self._num_gpus() + self.NUM_LEAF + self.NUM_SPINE
+        total_nodes = (self._num_gpus() + self.NUM_NODES + self.NUM_LEAF + self.NUM_SPINE)
 
         nvlink_cap = self.NVLINK_BW / self.chunk_size
         gpu_leaf_cap = self.GPU_LEAF_BW / self.chunk_size
 
         edges = {}  # (i, j) -> (capacity, alpha); mirrored symmetrically below
 
-        # Intra-node: the two GPUs of a node are joined directly (no NVSwitch -- with 2 GPUs a
-        # crossbar would add a hop without adding a routing choice).
+        # Intra-node: both GPUs hang off the node's NVSwitch, and there is deliberately NO direct
+        # GPU<->GPU link. Both halves of that matter to `crossbar_solve.is_crossbar`, which claims
+        # this cell's interior: it requires exactly one switch with every data node attached, AND
+        # no data-to-data link (one the crossbar schedule would leave unused, making the closed
+        # form silently pessimistic). Adding the switch while keeping the direct link would still
+        # fail to match. See the class docstring for why a switchless pair matches no row at all.
         for n in range(self.NUM_NODES):
-            edges[(self._gpu(n, 0), self._gpu(n, 1))] = (nvlink_cap, self.NVLINK_ALPHA)
+            for r in range(self.GPUS_PER_NODE):
+                edges[(self._gpu(n, r), self._nvswitch(n))] = (nvlink_cap, self.NVLINK_ALPHA)
 
         # Rail-optimized within a pod: GPU(n, r) reaches only leaf(pod(n), r). This is the
         # constraint that makes the rail a real routing decision -- to inject on the other rail
-        # a chunk must first cross the NVLink.
+        # a chunk must first cross the node's NVSwitch to its sibling.
         for n in range(self.NUM_NODES):
             for r in range(self.GPUS_PER_NODE):
                 edges[(self._gpu(n, r), self._leaf(self._pod(n), r))] = (
@@ -183,29 +208,41 @@ class TwoPodRail(Topology):
             ]
 
     def set_switch_indicies(self) -> None:
-        # Leaves and spines only. There is no intra-node switch to exclude, so the base class's
-        # default_programmable_switch_indices (every switch) is already correct here.
+        # Per-node NVSwitches plus the network fabric: all three are forwarding switches with no
+        # collective demand of their own.
         self.switch_indices = (
-            [self._leaf(p, r) for p in range(self.PODS) for r in range(self.GPUS_PER_NODE)]
+            [self._nvswitch(n) for n in range(self.NUM_NODES)]
+            + [self._leaf(p, r) for p in range(self.PODS) for r in range(self.GPUS_PER_NODE)]
             + [self._spine(s) for s in range(self.NUM_SPINE)]
         )
 
+    def default_programmable_switch_indices(self):
+        # Only the network fabric (leaf + spine) takes an external program. The per-node NVSwitch
+        # is a self-routing crossbar: the solver freely routes GPU->NVSwitch->GPU through it, but
+        # no forwarding entry is ever installed, so it stays out of the emitted table -- same split
+        # as RailOptimizedSpineLeaf.
+        return ([self._leaf(p, r) for p in range(self.PODS) for r in range(self.GPUS_PER_NODE)]
+                + [self._spine(s) for s in range(self.NUM_SPINE)])
+
     def build_hierarchy(self) -> None:
-        # One cell per node: its 2 GPUs collapse to a single coarse node. There is no internal
-        # switch, so the cell's internal fabric is the bare NVLink. The rail constraint is
-        # carried by `boundary`: the coarse host<->leaf(pod, r) link is owned by gpu(n, r).
-        # Coarse graph = 8 hosts + 4 leaves + 2 spines = 14 nodes.
+        # One cell per node: its 2 GPUs plus the NVSwitch behind them collapse to a single coarse
+        # node, and the NVSwitch is internal so it is dropped from the coarse graph. The rail
+        # constraint is carried by `boundary`: the coarse host<->leaf(pod, r) link is owned by
+        # gpu(n, r). Coarse graph = 8 hosts + 4 leaves + 2 spines = 14 nodes, unchanged by the
+        # NVSwitch. The cell's interior is a one-switch crossbar, which is the shape
+        # `crossbar_solve.is_crossbar` claims -- see the class docstring.
         self.cells = []
         for n in range(self.NUM_NODES):
             gpus = [self._gpu(n, r) for r in range(self.GPUS_PER_NODE)]
+            nvswitch = self._nvswitch(n)
             boundary = {
                 self._leaf(self._pod(n), r): [self._gpu(n, r)]
                 for r in range(self.GPUS_PER_NODE)
             }
             self.cells.append(Cell(
-                members=gpus,
+                members=gpus + [nvswitch],
                 gpus=gpus,
-                internal_switches=[],
+                internal_switches=[nvswitch],
                 boundary=boundary,
             ))
 
