@@ -499,6 +499,15 @@ MAX_SUBDIVISION = 128
 # a rate is in GB/s and spans orders of magnitude across a heterogeneous fabric, so one absolute
 # epsilon is either meaningless on a 900 GB/s NVLink or punitive on a 25 GB/s uplink.
 RATE_REL_TOL = 1e-6
+# How much the reconstruction chain amplifies the coarse solver's declared tolerance by the time a
+# volume reaches _snap_volumes. The coarse LP's feasibility_tol bounds ITS constraint violation;
+# what gets snapped has since been through the proportional slot split, the `len(identities) /
+# total_cap` rescale, and a whole second LP (`_solve_assignment`, scipy/HiGHS). Measured on the
+# TwoPodRailHostBound runs at feasibility_tol=1e-5: allgather tops out at 3.3e-06, alltoall at
+# 2.3e-05 -- so the chain costs about 2.3x, and 4x leaves margin while staying well inside
+# grid_resolution (1.22e-04 at MAX_DENOM=64). Sourcing the tolerance verbatim from the coarse
+# solver, as this did first, rejected 20 of alltoall's 1024 assignment volumes.
+RECONSTRUCTION_NOISE_FACTOR = 4.0
 
 
 def grid_resolution(max_denom: int = MAX_DENOM) -> float:
@@ -524,10 +533,13 @@ def snap_tolerance(coarse_solver=None, max_denom: int = MAX_DENOM) -> float:
     and the disagreement GREW with q, so any solution with non-dyadic volumes and a moderate q
     failed a check that the snap had already accepted.
 
-    The tolerance comes from the solver that produced the volumes, because that is the only place
-    the numeric error is actually known: Gurobi's `feasibility_tol` bounds constraint violation and
-    is the dominant term (the downstream scipy assignment LP is tighter by orders of magnitude, and
-    the slot split / rescale contribute relative error only).
+    The tolerance comes from the COARSE solver, because that is the only place a numeric error is
+    actually declared: Gurobi's `feasibility_tol` bounds its constraint violation. Treat it as a
+    FLOOR rather than the true bound on what reaches `_snap_volumes` -- the volumes snapped there
+    are emitted by `_solve_assignment` (scipy) running on slot capacities that already carry the
+    coarse error, so that chain can produce residue larger than this number. Near-zero residue is
+    handled by `dust_threshold`, which is sized independently for exactly that reason; what remains
+    under this tolerance is the genuine "is a SUBSTANTIAL volume on the grid" question.
 
     Raises if the requested tolerance is COARSER than the grid can resolve -- with error that large
     the nearest grid point is not necessarily the right one, and snapping would silently invent a
@@ -535,7 +547,7 @@ def snap_tolerance(coarse_solver=None, max_denom: int = MAX_DENOM) -> float:
     feasibility_tol = 1e-4 lands (grid resolution 1.22e-4): compatible, but only by 20%.
     """
     resolution = grid_resolution(max_denom)
-    tol = getattr(coarse_solver, "feasibility_tol", None)
+    raw = tol = getattr(coarse_solver, "feasibility_tol", None)
     if tol is None:
         gurobi = getattr(getattr(coarse_solver, "user_input", None), "gurobi", None)
         tol = getattr(gurobi, "feasibility_tol", None)
@@ -544,6 +556,12 @@ def snap_tolerance(coarse_solver=None, max_denom: int = MAX_DENOM) -> float:
         # exactly, so demand the comfortable margin rather than inventing a solver tolerance.
         return resolution / 4.0
     tol = float(tol)
+    if tol < resolution:
+        # Amplify for the reconstruction chain (see RECONSTRUCTION_NOISE_FACTOR), but never past
+        # what the grid can resolve -- and never below the raw tolerance, so this can only ever be
+        # more permissive than the solver's own declared bound, not less.
+        amplified = min(tol * RECONSTRUCTION_NOISE_FACTOR, resolution * 0.9)
+        tol = max(tol, amplified)
     if tol >= resolution:
         raise ValueError(
             f"solver feasibility_tol={tol:g} is coarser than the identity grid can resolve "
@@ -554,9 +572,11 @@ def snap_tolerance(coarse_solver=None, max_denom: int = MAX_DENOM) -> float:
             f"{int((1.0 / (2.0 * tol)) ** 0.5)}.")
     if tol > resolution / 4.0:
         logging.warning(
-            "identity-grid margin is thin: feasibility_tol=%g against a snap radius of %g "
-            "(MAX_DENOM=%d). Volumes will snap, but a slightly noisier solve would not. Consider "
-            "feasibility_tol <= %g.", tol, resolution, max_denom, resolution / 4.0)
+            "identity-grid margin is thin: snap tolerance %g (feasibility_tol %g amplified %gx for "
+            "the reconstruction chain) against a snap radius of %g (MAX_DENOM=%d). Volumes will "
+            "snap, but a slightly noisier solve would not. Consider feasibility_tol <= %g.",
+            tol, raw, RECONSTRUCTION_NOISE_FACTOR, resolution, max_denom,
+            resolution / 4.0 / RECONSTRUCTION_NOISE_FACTOR)
     return tol
 
 
@@ -600,6 +620,36 @@ def _ingress_epoch_capacity(slot: _Slot, mapping: HierarchyMapping,
             for h in slot.ingress_candidates}
 
 
+# A volume below this fraction of the FINEST representable one (1/MAX_DENOM) is not a small share
+# of an identity -- no point on the grid is that close to zero -- it is solver residue. 1% leaves
+# two orders of magnitude between "residue" and the smallest real slot, so the two can never be
+# confused whichever way the arithmetic drifts.
+DUST_FRACTION_OF_GRID = 0.01
+
+
+def dust_threshold(snap_tol: float, max_denom: int = MAX_DENOM) -> float:
+    """Below this, a volume is solver residue rather than a share of the identity.
+
+    Distinct from `snap_tol`, and deliberately larger, because it answers a different question.
+    `snap_tol` asks "is this value ON the grid?" and its consequence is a hard error. This asks
+    "is this value ZERO?" and its consequence is that the value's share is handed to a sibling
+    slot -- the identity still reaches the same cell, just on a different piece -- so being
+    slightly generous here is cheap while being strict is not.
+
+    It also covers a gap in how `snap_tol` is sourced: that comes from the COARSE solver, but the
+    volumes being snapped are produced downstream by `_solve_assignment` (scipy) on slot capacities
+    that already carry the coarse solver's error. The residue that chain emits can exceed the
+    coarse tolerance -- an observed 2.3e-05 against a 1e-05 coarse feasibility_tol -- and it is
+    near-zero residue, not a genuinely off-grid volume, so it belongs here rather than in an error.
+
+    This threshold may exceed `grid_resolution`, and that is not a contradiction: it measures
+    distance from ZERO, whose nearest nonzero neighbour is 1/max_denom, not the interior spacing
+    between two adjacent grid points. `_snap_group` separately caps the TOTAL residue it will
+    absorb at `grid_resolution`, so residue large enough to make the grid ambiguous still raises.
+    """
+    return max(snap_tol, DUST_FRACTION_OF_GRID / max_denom)
+
+
 def _snap_group(vols: Sequence[float], snap_tol: float, key) -> List[Fraction]:
     """Snap ONE (identity, dst_cell) group's volumes onto a shared rational grid summing to 1.
 
@@ -612,6 +662,13 @@ def _snap_group(vols: Sequence[float], snap_tol: float, key) -> List[Fraction]:
     The grid G is the LCM of the per-volume `limit_denominator(MAX_DENOM)` denominators, so every
     volume that really is on the 1/MAX_DENOM grid is exactly representable on G, and the
     post-repair check below is a genuine test of that -- not a rounding allowance.
+
+    Two failure modes are kept apart, because they call for opposite responses and conflating them
+    turned solver residue into a crash (see dust_threshold):
+      * DUST -- a volume whose nearest grid point is zero. Dropped; the largest-remainder repair
+        hands its share to a sibling slot of the same identity.
+      * OFF-GRID -- a substantial volume far from every grid point. Raised; this is the real
+        "the coarse solution is split more finely than MAX_DENOM admits" signal.
     """
     n = len(vols)
     total = sum(vols)
@@ -624,49 +681,75 @@ def _snap_group(vols: Sequence[float], snap_tol: float, key) -> List[Fraction]:
             f"(tolerance {snap_tol * max(1, n):g} over {n} assignments). They must partition the "
             f"identity; this is an assignment defect, not rounding.")
 
+    dust_tol = dust_threshold(snap_tol)
+    live = [i for i, v in enumerate(vols) if abs(v) >= dust_tol]
+    dust_total = sum(vols[i] for i in range(n) if i not in set(live))
+    if not live:
+        raise AssertionError(
+            f"identity {key[0]} -> cell {key[1]}: every one of its {n} assignment volumes is below "
+            f"the {dust_tol:g} dust threshold, so nothing carries it. This is an assignment defect.")
+
+    # The budget for "is this value on the grid". Solver noise PLUS the dropped residue: the group
+    # sums to 1, so whatever the dust holds was taken from its siblings, and each of them sits off
+    # its own grid point by up to that much. Using snap_tol alone here rejects the very siblings
+    # that make dust droppable -- the residue has to come from somewhere.
+    budget = snap_tol + abs(dust_total)
+    resolution = grid_resolution(MAX_DENOM)
+    if budget >= resolution:
+        raise AssertionError(
+            f"identity {key[0]} -> cell {key[1]}: {abs(dust_total):g} of residue across "
+            f"{n - len(live)} dust entries pushes the snap budget to {budget:g}, at or beyond the "
+            f"{resolution:g} radius within which a grid point is unambiguous. There is too much "
+            f"residue to snap safely -- tighten the solver or regularize the coarse LP.")
+
     dens = []
-    for v in vols:
+    for i in live:
+        v = vols[i]
         frac = Fraction(v).limit_denominator(MAX_DENOM)
-        if abs(float(frac) - v) > snap_tol:
+        if abs(float(frac) - v) > budget:
             raise AssertionError(
-                f"identity {key[0]} -> cell {key[1]}: volume {v!r} is not within {snap_tol:g} of "
+                f"identity {key[0]} -> cell {key[1]}: volume {v!r} is not within {budget:g} of "
                 f"any rational with denominator <= {MAX_DENOM} (nearest is {frac} = "
-                f"{float(frac)!r}). The coarse solution is off the declared grid: either it is "
-                f"split more finely than MAX_DENOM admits (regularize the coarse LP) or the solver "
-                f"tolerance is looser than the grid can resolve (see snap_tolerance).")
+                f"{float(frac)!r}), and it is too large ({dust_tol:g}) to be solver residue. The "
+                f"coarse solution is off the declared grid: either it is split more finely than "
+                f"MAX_DENOM admits (regularize the coarse LP) or the solver tolerance is looser "
+                f"than the grid can resolve (see snap_tolerance).")
         dens.append(frac.denominator)
 
     G = 1
     for d in dens:
         G = lcm(G, d)
 
-    scaled = [v * G for v in vols]
+    # Only the live entries take sub-chunks; dust gets exactly zero. Their volumes sum to
+    # 1 - dust_total, so the residual below absorbs the dropped dust as well as the floor loss and
+    # largest-remainder hands it back to whichever entry the dust was taken from.
+    scaled = [vols[i] * G for i in live]
     counts = [floor(x) for x in scaled]
     residual = G - sum(counts)
-    if abs(residual) > n:
+    if abs(residual) > len(live):
         # Each entry can absorb at most one unit, so a residual this large is not floor loss.
         raise AssertionError(
             f"identity {key[0]} -> cell {key[1]}: cannot place {residual} residual sub-chunks on a "
-            f"grid of {G} across {n} assignments; the volumes are not a partition of the identity.")
+            f"grid of {G} across {len(live)} assignments; the volumes are not a partition of the "
+            f"identity.")
     # Largest fractional remainder first, so the repair lands where the floor lost the most.
-    order = sorted(range(n), key=lambda i: scaled[i] - counts[i], reverse=True)
+    order = sorted(range(len(live)), key=lambda i: scaled[i] - counts[i], reverse=True)
     for i in order[:residual] if residual > 0 else order[::-1][:-residual]:
         counts[i] += 1 if residual > 0 else -1
 
-    fracs = []
-    for i, c in enumerate(counts):
+    # Same budget as the grid check above: an entry that gave up residue may take it back.
+    fracs = [Fraction(0)] * n
+    for i, c in zip(live, counts):
         if c < 0:
             raise AssertionError(
                 f"identity {key[0]} -> cell {key[1]}: assignment {i} snapped to a negative volume "
                 f"{c}/{G} from {vols[i]!r}")
-        # The repair budget. A volume genuinely on the grid lands on its own grid point, so any
-        # movement beyond solver noise means it was not on the grid to begin with.
-        if abs(c / G - vols[i]) > snap_tol:
+        if abs(c / G - vols[i]) > budget:
             raise AssertionError(
                 f"identity {key[0]} -> cell {key[1]}: snapping volume {vols[i]!r} to {c}/{G} moved "
-                f"it by {abs(c / G - vols[i]):g}, beyond the {snap_tol:g} budget. The group does "
+                f"it by {abs(c / G - vols[i]):g}, beyond the {budget:g} budget. The group does "
                 f"not lie on a common 1/{MAX_DENOM} grid.")
-        fracs.append(Fraction(c, G))
+        fracs[i] = Fraction(c, G)
     return fracs
 
 
