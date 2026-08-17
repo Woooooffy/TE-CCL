@@ -260,7 +260,7 @@ class TwoPodRailHostBound(TwoPodRail):
     See TwoPodRail for the full derivation and for what this configuration gives up (the 2:1
     spine split stops being the unique optimum).
     """
-    GPU_LEAF_BW = 30.0
+    GPU_LEAF_BW = 25.0
 
 
 def two_pod_rail_variant(name: str = "TwoPodRailVariant",

@@ -10,12 +10,12 @@
     },
     "GurobiParams": {
         "time_limit": 2,
-        "feasibility_tol": 1e-4,
-        "intfeas_tol": 1e-4,
-        "optimality_tol": 1e-4,
+        "feasibility_tol": 1e-5,
+        "intfeas_tol": 1e-5,
+        "optimality_tol": 1e-5,
         "output_flag": 1,
         "log_to_console": 0,
-        "mip_gap": 1e-4
+        "mip_gap": 1e-5
     },
     "InstanceParams": {
         "collective": 1,
