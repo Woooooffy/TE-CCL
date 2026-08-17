@@ -12,30 +12,19 @@ chunk, intra work that did not fit the coarse epoch it ran under -- so they are 
 every remote run. They stay OUT of the solver because which of them a driver wants, and under what
 name, is a driver's business; the recursion should not grow a reporting policy.
 
-`solve_on_topology` also stays: it is how a level reaches TECCLSolver with an already-built
-Topology object, which `get_topology` cannot do (it only knows the named built-ins).
+`solve_on_topology` has MOVED to teccl.scheduler and is only re-exported here for the drivers that
+import it from this module. It is how a level reaches TECCLSolver with an already-built Topology
+object, which `get_topology` cannot do (it only knows the named built-ins) -- so `hierarchy.solve`
+needs it on every level that takes a formulation, and it cannot live in a package that is not
+shipped: teccl/examples has no __init__.py, so find_packages() leaves it out of an install and an
+installed teccl died with ModuleNotFoundError the first time a level needed Gurobi.
 """
-import copy
 import json
 from collections import defaultdict
 
 from teccl.hierarchy.crossbar_solve import band_rounds
 from teccl.hierarchy.flatten import aligned_band, derive_grid
-from teccl.input_data import UserInputParams
-from teccl.scheduler import TECCLSolver
-from teccl.topologies.topology import Topology
-
-
-def solve_on_topology(user_input: UserInputParams, topology: Topology) -> TECCLSolver:
-    """Run TECCLSolver.solve() against an already-built Topology (bypassing get_topology, which
-    only knows the named built-ins, not CoarseTopology). Returns the TECCLSolver so the caller
-    can reach the solved formulation (teccl_solver.best_solver) for post-processing."""
-    solver = TECCLSolver.__new__(TECCLSolver)
-    solver.user_input = user_input
-    solver.topology_obj = topology
-    solver.solver = solver.get_solver(copy.deepcopy(user_input), topology)
-    solver.solve()
-    return solver
+from teccl.scheduler import TECCLSolver, solve_on_topology  # noqa: F401  (re-exported)
 
 
 def make_reporter(prefix: str, tag: str):

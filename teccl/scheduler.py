@@ -30,6 +30,24 @@ from teccl.topologies.nested_cluster import NestedCluster
 from teccl.topologies.topology import Topology
 
 
+def solve_on_topology(user_input: UserInputParams, topology: Topology) -> "TECCLSolver":
+    """Run TECCLSolver.solve() against an already-built Topology (bypassing get_topology, which
+    only knows the named built-ins, not the CoarseTopology a hierarchical level constructs).
+    Returns the TECCLSolver so the caller can reach the solved formulation
+    (teccl_solver.best_solver) for post-processing.
+
+    This lives in the core rather than beside the drivers because `hierarchy.solve` calls it on
+    every level that needs a real formulation: teccl/examples has no __init__.py, so
+    find_packages() never ships it and an INSTALLED teccl could not solve a level at all.
+    """
+    solver = TECCLSolver.__new__(TECCLSolver)
+    solver.user_input = user_input
+    solver.topology_obj = topology
+    solver.solver = solver.get_solver(copy.deepcopy(user_input), topology)
+    solver.solve()
+    return solver
+
+
 class TECCLSolver(object):
     def __init__(self, user_input: UserInputParams):
         self.user_input = user_input

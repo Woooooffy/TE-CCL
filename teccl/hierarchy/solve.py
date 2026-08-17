@@ -211,7 +211,7 @@ def gurobi_level_solver(problem: Subproblem, ctx: LevelContext, mapping, demand_
     Imported lazily and used only when the shape needs it, so every Gurobi-free path -- which is all
     of them below the root on today's topologies -- stays Gurobi-free and locally testable.
     """
-    from teccl.examples.hierarchy_pipeline import solve_on_topology
+    from teccl.scheduler import solve_on_topology
 
     if ctx.user_input is None:
         raise RuntimeError(
