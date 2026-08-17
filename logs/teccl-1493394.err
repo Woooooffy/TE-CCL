@@ -1,0 +1,41 @@
+cpu-bind=MASK - lanka27, task  0  0 [1638768]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka27, task  0  0 [1639066]: mask 0xff0000ff set
+WARNING:root:Not_Optimal_ALLGATHER_LP_Status-10_TwoPodRailHostBound_14-nodes_1-chunks_80-epochs_0.17500153125000004-epoch_duration
+WARNING:root:Not_Optimal_ALLGATHER_LP_Status-10_TwoPodRailHostBound_14-nodes_1-chunks_80-epochs_0.08750076562500002-epoch_duration
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/bin/teccl", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/__main__.py", line 21, in main
+    if handler(args, args.command):
+       ~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/cli/solve.py", line 38, in handler
+    solver.solve()
+    ~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/scheduler.py", line 359, in solve
+    self.solve_hierarchy(start)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/scheduler.py", line 327, in solve_hierarchy
+    info, solution = solve_hierarchical(
+                     ~~~~~~~~~~~~~~~~~~^
+        topology, level_input, instance.collective, num_chunks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        prefix=prefix, debug=instance.debug, level_chunk=instance.level_chunk)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/solve.py", line 576, in solve_hierarchical
+    solution = solve_level(root, ctx)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/solve.py", line 258, in solve_level
+    return _solve_recursive(problem, ctx)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/solve.py", line 337, in _solve_recursive
+    res = _lower(solution, problem, coarse, mapping, fine_tensor, g, level_demand)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/solve.py", line 430, in _lower
+    return build_child_problems(assignments, targets, mapping, fine_tensor, problem.topology,
+                                epoch, scale=problem.scale, relabel=relabel)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/reconstruct.py", line 845, in build_child_problems
+    result = _emit_refined(assignments, targets, q, refined, epoch_duration)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/reconstruct.py", line 632, in _emit_refined
+    raise AssertionError(
+        f"volume {a.volume} is not a whole number of 1/{q} sub-chunks "
+        f"(identity {identity} -> cell {V})")
+AssertionError: volume 0.466666 is not a whole number of 1/120 sub-chunks (identity (0, 0) -> cell 1)
+srun: error: lanka27: task 0: Exited with exit code 1
