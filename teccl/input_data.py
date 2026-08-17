@@ -116,7 +116,30 @@ class InstanceParams:
     lower: bool = False # If true will use the lowering code from Meghan to lower the input.
     lower_xml: str = "" # If not empty, the XML is written to this file. Default is "Topology-Chunks-chunksize-timestamp.xml"
     warmstart: str = "" # If not empty, the warmstart file is used to warmstart the optimization.
-    symmetry: bool = False # If true, nodes that are given as symmetric are constrainted to have same number of total flows. 
+    symmetry: bool = False # If true, nodes that are given as symmetric are constrainted to have same number of total flows.
+    # --- Hierarchical solve (teccl.hierarchy.solve.solve_hierarchical) -------------------------
+    # If True, the topology is solved LEVEL BY LEVEL (abstract -> solve -> lower -> recurse) instead
+    # of as one flat problem. Requires a topology that declares cells (Topology.build_hierarchy).
+    # The output is still an ordinary flat schedule on the fine topology, written to
+    # schedule_output_file exactly as in the flat mode, so everything downstream (ncclize) is
+    # unchanged. Every other InstanceParams field keeps its meaning and is applied at each level:
+    # formulation/objective_type/symmetry/switch_copy configure the per-level solve, and num_chunks
+    # is still per source per destination on the FINE topology.
+    hierarchical: bool = False
+    # Base-case algorithm for a crossbar cell: "crossbar" (default) or "ring". None leaves
+    # teccl.hierarchy.ring_solve.INTRA_ALGO alone, i.e. honors $TECCL_INTRA_ALGO.
+    intra_algo: str = None
+    # Force the root level's chunk unit g instead of taking the GCD of its coarse demands. Set it
+    # to 1 to reproduce the pre-coarsening behaviour (the drivers' `nocoarsen` A/B); None = derive.
+    level_chunk: int = None
+    # Base name for the hierarchy's side artifacts under Schedules/ (_coarse, _identities, _intra).
+    # Empty => "{topology name}_{collective}", plus an "_{algo}" tag when the intra-cell algorithm
+    # is not the default, so a ring run never overwrites its crossbar baseline.
+    hierarchy_prefix: str = ""
+    # If True, also write Schedules/{prefix}_{identities,intra}.json: the resolved inter-cell
+    # traffic and the assembled sub-level schedule. Nothing consumes them; they are how a bad run
+    # is diagnosed without re-running the (expensive) coarse solve.
+    hierarchy_side_outputs: bool = False
     
 @dataclass
 class UserInputParams:

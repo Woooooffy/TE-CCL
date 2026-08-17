@@ -1,0 +1,48 @@
+{
+    "_comment": "Hierarchical AllGather on the 22-node TwoPodRail (16 GPUs / 8 nodes / 4 leaves / 2 UNEQUAL spines). This is the MULTIPATH configuration: the spine cut binds, both spine links out of every leaf are saturated end to end, and the optimal split is forced to 2/3 via spine0 and 1/3 via spine1. Copy-free LP AllGather, matching the semantics the topology's cut analysis assumes. Run: python -m teccl solve -i teccl/examples/sample_inputs/two_pod_rail_hierarchical_allgather.json",
+
+    "_expected": "T* = 0.4267 (chunk_size 1 GB), spine-bound; GPU->leaf at 65.6%; per-GPU cross-pod 18.75 GB/s splitting 12.5 / 6.25 across the two spines, intra-pod 14.06 GB/s. An equal-split router would land at 0.64, i.e. 1.50x. See the TwoPodRail docstring for the derivation.",
+
+    "_notes": {
+        "collective/formulation": "1 = ALLGATHER, 2 = LP. The LP is required: the whole cut analysis is LP semantics (no replication, so every destination needs its own delivery across the spine cut). The MILP with switch copy solves a different problem and its makespan is NOT comparable to the numbers above.",
+        "switch_copy": "false is mandatory with LP AllGather -- get_solver rejects the combination outright.",
+        "num_chunks": "3 so the forced 2:1 spine split is expressible in whole chunks. The level-boundary sub-chunk refinement Q may derive this anyway; num_chunks 1 is the A/B that tells you whether it did.",
+        "symmetry": "false, deliberately. TwoPodRail declares NO equivalent_node_indices: the spines differ in capacity (that asymmetry is the entire point of the topology) and no two leaves share a neighbor set, so there is nothing for symmetry to constrain.",
+        "objective_type": "3 = PAPER, matching the other hierarchical samples. Option 5 (TOTAL_DEMAND_MIN_SWITCH_HOPS) is worth an A/B here: it tie-breaks toward fewer switch->switch hops, which is the intra-pod cross-rail choice this analysis assumes goes over NVLink rather than detouring through a spine.",
+        "flat ground truth": "The fine topology is only 22 nodes, so the FLAT solve of the same problem is tractable and is what the hierarchical result should be validated against -- see two_pod_rail_flat_allgather.json."
+    },
+
+    "TopologyParams": {
+        "name": "TwoPodRail",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 2,
+        "feasibility_tol": 1e-4,
+        "intfeas_tol": 1e-4,
+        "optimality_tol": 1e-4,
+        "output_flag": 1,
+        "log_to_console": 0,
+        "mip_gap": 1e-4
+    },
+    "InstanceParams": {
+        "collective": 1,
+        "formulation": 2,
+        "switch_copy": false,
+        "num_chunks": 3,
+        "epoch_type": 2,
+        "epoch_multiplier": 1,
+        "epoch_duration": -1,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": false,
+        "objective_type": 3,
+        "solution_method": 1,
+        "hierarchical": true,
+        "hierarchy_prefix": "two_pod_rail_allgather",
+        "hierarchy_side_outputs": true,
+        "schedule_output_file": "Schedules/two_pod_rail_allgather_flat.json"
+    }
+}

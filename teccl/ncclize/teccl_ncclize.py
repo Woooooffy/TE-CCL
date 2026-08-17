@@ -915,6 +915,9 @@ def load_topology(name, chunk_size=1.0):
     registry = {
         'HeteroTaperedCluster': 'hetero_tapered_cluster:HeteroTaperedCluster',
         'RailOptimizedSpineLeaf': 'rail_optimized_spine_leaf:RailOptimizedSpineLeaf',
+        'TwoPodRail': 'two_pod_rail:TwoPodRail',
+        'TwoPodRailHostBound': 'two_pod_rail:TwoPodRailHostBound',
+        'NestedCluster': 'nested_cluster:NestedCluster',
         'FatTreePod': 'fat_tree_pod:FatTreePod',
         'FatTreePodSingleSpine': 'fat_tree_pod_single_spine:FatTreePodSingleSpine',
         'DGX1': 'dgx1:DGX1',
