@@ -22,7 +22,7 @@
         "formulation": 2,
         "switch_copy": false,
         "num_chunks": 1,
-        "epoch_type": 2,
+        "epoch_type": 1,
         "epoch_multiplier": 1,
         "epoch_duration": -1,
         "num_epochs": -1,
@@ -32,8 +32,8 @@
         "objective_type": 2,
         "solution_method": 1,
         "hierarchical": true,
-        "hierarchy_prefix": "two_pod_rail_hostbound_allgather",
+        "hierarchy_prefix": "two_pod_rail_hostbound_allgather_fast_epoch",
         "hierarchy_side_outputs": true,
-        "schedule_output_file": "Schedules/two_pod_rail_hostbound_allgather_flat.json"
+        "schedule_output_file": "Schedules/two_pod_rail_hostbound_allgather_fast_epoch_flat.json"
     }
 }

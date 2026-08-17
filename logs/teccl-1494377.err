@@ -1,0 +1,5 @@
+cpu-bind=MASK - lanka27, task  0  0 [1770358]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka27, task  0  0 [1770829]: mask 0xff0000ff set
+WARNING:root:Not_Optimal_ALLGATHER_LP_Status-10_TwoPodRailHostBound_14-nodes_1-chunks_80-epochs_0.17500153125000004-epoch_duration
+WARNING:root:Not_Optimal_ALLGATHER_LP_Status-10_TwoPodRailHostBound_14-nodes_1-chunks_80-epochs_0.08750076562500002-epoch_duration
+WARNING:root:Not_Optimal_ALLGATHER_LP_Status-10_TwoPodRailHostBound_14-nodes_1-chunks_80-epochs_0.04375038281250001-epoch_duration
