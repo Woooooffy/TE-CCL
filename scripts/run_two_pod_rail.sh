@@ -98,6 +98,7 @@ run_flat()      { [ "$WHICH" = all ] || [ "$WHICH" = flat ]; }
 # are the irregular cases -- so this is a regression gate on shared machinery.
 echo "=== [1/4] Gurobi-free structural tests (shared machinery, hetero fixtures) ==="
 srun python -m teccl.examples.hierarchy_level_chunk_test
+srun python -m teccl.examples.hierarchy_volume_snap_test
 srun python -m teccl.examples.hierarchy_identity_resolution_test
 srun python -m teccl.examples.hierarchy_crossbar_solve_test
 srun python -m teccl.examples.hierarchy_ring_solve_test

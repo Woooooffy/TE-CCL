@@ -31,14 +31,20 @@ Which fine GPU a piece LANDS on is then chosen under a global per-epoch fine dow
 unbounded, one fine downlink can be oversubscribed while a sibling idles, making the fine schedule
 infeasible against the very coarse solution it implements.
 
-Finally the chunk is REFINED so that every emitted volume is a whole sub-chunk
-(_subdivision_factor / _emit_refined). Fractional volumes are intrinsic here -- they come from the
+Finally the chunk is REFINED so that every emitted volume is a whole sub-chunk (_snap_volumes ->
+_subdivision_factor / _emit_refined). Fractional volumes are intrinsic here -- they come from the
 coarse LP relaxation splitting a commodity across parallel paths, and from the abstraction summing
 several fine links into one coarse link -- and refining at this boundary is what keeps every
 downstream volume-merging step (this module's _coalesce_egress, crossbar_solve's _add_direct) from
 having to reason about disjoint byte ranges it cannot represent. The resulting granularity is
 reported on IdentityResolution.scale; see teccl/hierarchy/scale.py for why it must be threaded
 rather than read off the topology.
+
+_snap_volumes is the float -> exact BOUNDARY of that refinement, and the only tolerant step in the
+lowering half: above it everything is float and noisy (the coarse LP, the slot split, the scipy
+assignment), below it everything is exact `Fraction` arithmetic. The tolerance is sized against the
+solver that produced the volumes rather than hardcoded (see snap_tolerance and grid_resolution --
+MAX_DENOM and the solver's feasibility_tol are coupled, not independent constants).
 
 Output (pure data, no Gurobi handles): resolved inter-cell pieces carrying a concrete fine chunk
 identity on real GPUs/links, plus intra-cell demand descriptors (egress staging, ingress
@@ -47,10 +53,11 @@ phase-3 intra-cell solve and the final flat stitching.
 
 See the design note hierarchical_lp_identity_resolution / hierarchical_phase3_forward_plan.
 """
+import logging
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
-from math import gcd
+from math import floor, gcd, lcm
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -488,6 +495,69 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
 # HERE, at the recursion boundary, rather than at the ncclize boundary -- see _subdivision_factor.
 MAX_DENOM = 64
 MAX_SUBDIVISION = 128
+# Relative slack when re-checking a paced rate against a link bandwidth. Relative, not absolute:
+# a rate is in GB/s and spans orders of magnitude across a heterogeneous fabric, so one absolute
+# epsilon is either meaningless on a 900 GB/s NVLink or punitive on a 25 GB/s uplink.
+RATE_REL_TOL = 1e-6
+
+
+def grid_resolution(max_denom: int = MAX_DENOM) -> float:
+    """Smallest possible gap between two DISTINCT rationals with denominator <= max_denom.
+
+    |p/d - p'/d'| = |p d' - p' d| / (d d') >= 1 / (d d') >= 1 / max_denom^2 whenever the two are
+    distinct, so half that is the radius within which a snap to the 1/max_denom grid is
+    UNAMBIGUOUS -- i.e. within which the nearest grid point is the true value rather than a
+    neighbour. This is the quantity that couples MAX_DENOM to the solver's tolerance; see
+    snap_tolerance.
+    """
+    return 1.0 / (2.0 * max_denom * max_denom)
+
+
+def snap_tolerance(coarse_solver=None, max_denom: int = MAX_DENOM) -> float:
+    """How far a solved volume may sit from the 1/max_denom grid and still be snapped to it.
+
+    THE ONE PLACE A NUMERIC TOLERANCE IS NAMED in the lowering half. Everything downstream of
+    `_snap_volumes` holds exact `Fraction`s, so no other step here has -- or needs -- an epsilon.
+    That is deliberate: the previous arrangement snapped with `limit_denominator(64)` (tolerating
+    ~1.2e-4) and then re-checked the raw float against `volume * q` with a fixed 1e-6, which is a
+    tolerance of 1e-6/q ~ 8e-9 on the volume itself. The two disagreed by four orders of magnitude
+    and the disagreement GREW with q, so any solution with non-dyadic volumes and a moderate q
+    failed a check that the snap had already accepted.
+
+    The tolerance comes from the solver that produced the volumes, because that is the only place
+    the numeric error is actually known: Gurobi's `feasibility_tol` bounds constraint violation and
+    is the dominant term (the downstream scipy assignment LP is tighter by orders of magnitude, and
+    the slot split / rescale contribute relative error only).
+
+    Raises if the requested tolerance is COARSER than the grid can resolve -- with error that large
+    the nearest grid point is not necessarily the right one, and snapping would silently invent a
+    volume. Warns when the margin is under 4x, which is where MAX_DENOM = 64 against the default
+    feasibility_tol = 1e-4 lands (grid resolution 1.22e-4): compatible, but only by 20%.
+    """
+    resolution = grid_resolution(max_denom)
+    tol = getattr(coarse_solver, "feasibility_tol", None)
+    if tol is None:
+        gurobi = getattr(getattr(coarse_solver, "user_input", None), "gurobi", None)
+        tol = getattr(gurobi, "feasibility_tol", None)
+    if tol is None:
+        # No solver to ask (a closed-form row, or a test shim). Its volumes are constructed
+        # exactly, so demand the comfortable margin rather than inventing a solver tolerance.
+        return resolution / 4.0
+    tol = float(tol)
+    if tol >= resolution:
+        raise ValueError(
+            f"solver feasibility_tol={tol:g} is coarser than the identity grid can resolve "
+            f"(MAX_DENOM={max_denom} -> two distinct grid points can be only {2 * resolution:g} "
+            f"apart, so the snap radius is {resolution:g}). Snapping would pick a grid point that "
+            f"is not necessarily the true volume. Tighten GurobiParams.feasibility_tol to below "
+            f"{resolution:g} (ideally {resolution / 4.0:g}) or lower MAX_DENOM to "
+            f"{int((1.0 / (2.0 * tol)) ** 0.5)}.")
+    if tol > resolution / 4.0:
+        logging.warning(
+            "identity-grid margin is thin: feasibility_tol=%g against a snap radius of %g "
+            "(MAX_DENOM=%d). Volumes will snap, but a slightly noisier solve would not. Consider "
+            "feasibility_tol <= %g.", tol, resolution, max_denom, resolution / 4.0)
+    return tol
 
 
 @dataclass(frozen=True)
@@ -507,6 +577,11 @@ class _Assignment:
     # identity below the root silently emits a staging relay from a node id that means something
     # else entirely at this level.
     holder: int = -1
+    # `volume` snapped onto a rational grid, set by _snap_volumes at the float->exact boundary.
+    # None until then. Every step from _subdivision_factor onward reads THIS, never `volume`: the
+    # float is the solver's noisy answer, this is the answer on the grid the recursion contract
+    # requires. Keeping both means a diagnostic can still show what was solved vs what was emitted.
+    exact: Optional[Fraction] = None
 
     @property
     def native(self) -> int:
@@ -523,6 +598,95 @@ def _ingress_epoch_capacity(slot: _Slot, mapping: HierarchyMapping,
     fine_nb = mapping.coarse_passthrough[slot.piece.ingress_neighbor]
     return {h: fine_topology.capacity[fine_nb][h] * epoch_duration
             for h in slot.ingress_candidates}
+
+
+def _snap_group(vols: Sequence[float], snap_tol: float, key) -> List[Fraction]:
+    """Snap ONE (identity, dst_cell) group's volumes onto a shared rational grid summing to 1.
+
+    Group-aware on purpose. Snapping each volume independently would be simpler, but the group's
+    volumes PARTITION the identity -- `_emit_refined`'s `cursor == q` check is exactly that -- and
+    independent rounding perturbs a sum of 1.0 off 1.0, turning a float-noise problem into a hard
+    failure at the partition check. Here the sum is exact by construction: floor onto the shared
+    grid, then hand the remaining units to the largest fractional remainders.
+
+    The grid G is the LCM of the per-volume `limit_denominator(MAX_DENOM)` denominators, so every
+    volume that really is on the 1/MAX_DENOM grid is exactly representable on G, and the
+    post-repair check below is a genuine test of that -- not a rounding allowance.
+    """
+    n = len(vols)
+    total = sum(vols)
+    # The group must already partition the identity to within solver noise. If it does not, no
+    # rounding scheme can fix it and the largest-remainder repair below would quietly paper over a
+    # real assignment bug, so say so here instead.
+    if abs(total - 1.0) > snap_tol * max(1, n):
+        raise AssertionError(
+            f"identity {key[0]} -> cell {key[1]}: assignment volumes sum to {total!r}, not 1 "
+            f"(tolerance {snap_tol * max(1, n):g} over {n} assignments). They must partition the "
+            f"identity; this is an assignment defect, not rounding.")
+
+    dens = []
+    for v in vols:
+        frac = Fraction(v).limit_denominator(MAX_DENOM)
+        if abs(float(frac) - v) > snap_tol:
+            raise AssertionError(
+                f"identity {key[0]} -> cell {key[1]}: volume {v!r} is not within {snap_tol:g} of "
+                f"any rational with denominator <= {MAX_DENOM} (nearest is {frac} = "
+                f"{float(frac)!r}). The coarse solution is off the declared grid: either it is "
+                f"split more finely than MAX_DENOM admits (regularize the coarse LP) or the solver "
+                f"tolerance is looser than the grid can resolve (see snap_tolerance).")
+        dens.append(frac.denominator)
+
+    G = 1
+    for d in dens:
+        G = lcm(G, d)
+
+    scaled = [v * G for v in vols]
+    counts = [floor(x) for x in scaled]
+    residual = G - sum(counts)
+    if abs(residual) > n:
+        # Each entry can absorb at most one unit, so a residual this large is not floor loss.
+        raise AssertionError(
+            f"identity {key[0]} -> cell {key[1]}: cannot place {residual} residual sub-chunks on a "
+            f"grid of {G} across {n} assignments; the volumes are not a partition of the identity.")
+    # Largest fractional remainder first, so the repair lands where the floor lost the most.
+    order = sorted(range(n), key=lambda i: scaled[i] - counts[i], reverse=True)
+    for i in order[:residual] if residual > 0 else order[::-1][:-residual]:
+        counts[i] += 1 if residual > 0 else -1
+
+    fracs = []
+    for i, c in enumerate(counts):
+        if c < 0:
+            raise AssertionError(
+                f"identity {key[0]} -> cell {key[1]}: assignment {i} snapped to a negative volume "
+                f"{c}/{G} from {vols[i]!r}")
+        # The repair budget. A volume genuinely on the grid lands on its own grid point, so any
+        # movement beyond solver noise means it was not on the grid to begin with.
+        if abs(c / G - vols[i]) > snap_tol:
+            raise AssertionError(
+                f"identity {key[0]} -> cell {key[1]}: snapping volume {vols[i]!r} to {c}/{G} moved "
+                f"it by {abs(c / G - vols[i]):g}, beyond the {snap_tol:g} budget. The group does "
+                f"not lie on a common 1/{MAX_DENOM} grid.")
+        fracs.append(Fraction(c, G))
+    return fracs
+
+
+def _snap_volumes(assignments: Sequence[_Assignment], snap_tol: float) -> List[_Assignment]:
+    """Populate `_Assignment.exact` for every assignment: the float -> rational boundary.
+
+    This is the seam the whole integerization rests on. Above it everything is float and tolerant
+    (the coarse LP, the slot split, the scipy assignment); below it everything is exact Fraction
+    arithmetic and no step carries an epsilon. Grouping is by (identity, dst_cell) because that is
+    the set `_emit_refined` requires to partition the identity.
+    """
+    by_id_dst: Dict[Tuple[Identity, int], List[int]] = defaultdict(list)
+    for i, a in enumerate(assignments):
+        by_id_dst[(a.identity, a.dst_cell)].append(i)
+
+    out = list(assignments)
+    for key, idxs in sorted(by_id_dst.items()):
+        for i, frac in zip(idxs, _snap_group([assignments[i].volume for i in idxs], snap_tol, key)):
+            out[i] = replace(assignments[i], exact=frac)
+    return out
 
 
 def _subdivision_factor(assignments: Sequence[_Assignment]) -> int:
@@ -542,10 +706,20 @@ def _subdivision_factor(assignments: Sequence[_Assignment]) -> int:
     DISJOINT byte ranges of one identity. Sub-chunk identities make such a merge unrepresentable,
     because the two ranges are distinct commodities with distinct keys. Integerizing at the ncclize
     boundary instead -- where it used to happen -- is structurally too late for that.
+
+    Reads the SNAPPED volume, not the float: `_snap_volumes` already chose the grid (and already
+    checked that the solver's answer lies on it), so the LCM here is over denominators that are
+    settled rather than re-derived. That is what makes `_emit_refined` exact -- q is by
+    construction a multiple of every `exact.denominator`, so `exact * q` is an integer identically
+    and there is no tolerance left to get wrong.
     """
     q = 1
     for a in assignments:
-        den = Fraction(a.volume).limit_denominator(MAX_DENOM).denominator
+        if a.exact is None:
+            raise AssertionError(
+                "assignment volumes must be snapped by _snap_volumes before the subdivision "
+                "factor is computed; build_child_problems does this on entry")
+        den = a.exact.denominator
         q = q * den // gcd(q, den)
         if q > MAX_SUBDIVISION:
             raise RuntimeError(
@@ -597,7 +771,9 @@ def _assert_rate_within_capacity(result: IdentityResolution, fine_topology: Topo
     over = []
     for (a, b, k), rate in sorted(egress.items()) + sorted(ingress.items()):
         bw = fine_topology.capacity[a][b]
-        if rate > bw + 1e-6:
+        # Relative, not absolute: rates here span a 900 GB/s NVLink and a 25 GB/s spine uplink in
+        # the same schedule, and one absolute epsilon cannot be meaningful on both.
+        if rate > bw * (1.0 + RATE_REL_TOL):
             over.append((a, b, k, round(rate, 4), round(bw, 4)))
     if over:
         raise AssertionError(
@@ -621,17 +797,27 @@ def _emit_refined(assignments: Sequence[_Assignment],
         by_id_dst[(a.identity, a.dst_cell)].append(a)
 
     for (identity, V), group in sorted(by_id_dst.items()):
+        # Tie-break on the SNAPPED volume, not the float: sub-chunk indices are allocated in this
+        # order, so two runs that snap to the same grid must order identically even if the solver
+        # returned volumes differing in the last bits.
         group.sort(key=lambda a: (a.piece.send_epoch, a.egress_gpu, a.ingress_gpu,
-                                  a.piece.via_switches, a.volume))
+                                  a.piece.via_switches, a.exact))
         s, ci = identity
         cursor = 0
         for a in group:
             native = a.native
-            count = int(round(a.volume * q))
-            if abs(a.volume * q - count) > 1e-6:
+            # Exact by construction: q is the LCM of every assignment's snapped denominator, so
+            # `exact * q` has denominator 1. No tolerance is involved or wanted -- the float
+            # volume's error was spent once, at _snap_volumes, and never again. (The guard is kept
+            # because it is free and because it pins the invariant for anyone who changes how q is
+            # derived.)
+            scaled = a.exact * q
+            if scaled.denominator != 1:
                 raise AssertionError(
-                    f"volume {a.volume} is not a whole number of 1/{q} sub-chunks "
-                    f"(identity {identity} -> cell {V})")
+                    f"identity {identity} -> cell {V}: snapped volume {a.exact} is not a whole "
+                    f"number of 1/{q} sub-chunks. q must be a multiple of every snapped "
+                    f"denominator -- see _subdivision_factor.")
+            count = int(scaled)
             for _ in range(count):
                 sub: Identity = (s, ci * q + cursor)
                 cursor += 1
@@ -819,7 +1005,8 @@ def build_child_problems(assignments: Sequence[_Assignment],
                          mapping: HierarchyMapping, fine_demand, fine_topology: Topology,
                          epoch_duration: float,
                          scale: Optional[ChunkScale] = None,
-                         relabel=None) -> IdentityResolution:
+                         relabel=None,
+                         snap_tol: Optional[float] = None) -> IdentityResolution:
     """STEP B: turn this level's `_Assignment`s into its flows plus THE NEXT LEVEL'S PROBLEM.
 
     This runs at EVERY level, whatever produced the assignments, and it is not optional plumbing:
@@ -835,7 +1022,15 @@ def build_child_problems(assignments: Sequence[_Assignment],
 
     scale: granularity the incoming volumes are expressed in; defaults to the root
            (fine_topology.chunk_size, one chunk per fine chunk index).
+    snap_tol: how far a solved volume may sit off the rational grid and still be snapped onto it.
+           None => snap_tolerance()'s no-solver default. A caller holding the solver that produced
+           these volumes should pass snap_tolerance(solver) so the grid is checked against the
+           tolerance the volumes were actually computed to.
     """
+    # The float -> exact boundary, and the only tolerant step below this line. Everything after it
+    # is Fraction arithmetic, which is what lets the refinement and the partition check be exact.
+    assignments = _snap_volumes(
+        assignments, snap_tolerance() if snap_tol is None else snap_tol)
     q = _subdivision_factor(assignments)
     root = scale or ChunkScale(bytes_per_chunk=fine_topology.chunk_size,
                                num_chunks=_num_fine_chunks(fine_demand))
@@ -866,7 +1061,8 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
     assignments, targets, epoch_duration = assign_identities_free(
         coarse_solver, mapping, fine_demand, fine_topology, level_chunk=level_chunk)
     return build_child_problems(assignments, targets, mapping, fine_demand, fine_topology,
-                                epoch_duration, scale=scale)
+                                epoch_duration, scale=scale,
+                                snap_tol=snap_tolerance(coarse_solver))
 
 
 def _num_fine_chunks(fine_demand) -> int:
