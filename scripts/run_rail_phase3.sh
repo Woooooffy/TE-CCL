@@ -173,4 +173,11 @@ srun python teccl/ncclize/teccl_ncclize.py \
     --hierarchical \
     --topology RailOptimizedSpineLeaf \
     -o "xml/rail_${COLL}${SUFFIX}.xml" \
-    --epoch-debug-output "logs/rail_${COLL}${SUFFIX}_epochs.txt"
+    --epoch-debug-output "logs/rail_${COLL}${SUFFIX}_epochs.txt" \
+    --switch-routing-output "json/rail_${COLL}${SUFFIX}.json"
+srun python teccl/ncclize/teccl_ncclize.py \
+    --schedule "Schedules/coarse_rail_${COLL}${SUFFIX}_flat.json" \
+    --hierarchical \
+    --topology RailOptimizedSpineLeaf \
+    -o "xml/rail_${COLL}${SUFFIX}_no_rate.xml" \
+    --no-rate
