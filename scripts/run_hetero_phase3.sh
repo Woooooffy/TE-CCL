@@ -80,6 +80,7 @@ EXTRA=("$@")
 # means not burning solver time on a broken lower half.
 echo "=== [1/5] Gurobi-free structural tests ==="
 srun python -m teccl.examples.hierarchy_level_chunk_test
+srun python -m teccl.examples.hierarchy_volume_snap_test
 srun python -m teccl.examples.hierarchy_identity_resolution_test
 srun python -m teccl.examples.hierarchy_intra_solve_test
 srun python teccl/ncclize/pacing_gates_test.py
