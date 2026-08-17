@@ -23,9 +23,9 @@
     },
     "InstanceParams": {
         "collective": 1,
-        "formulation": 2,
+        "formulation": 1,
         "switch_copy": false,
-        "num_chunks": 1,
+        "num_chunks": 2,
         "epoch_type": 2,
         "epoch_multiplier": 1,
         "epoch_duration": -1,
@@ -35,6 +35,6 @@
         "symmetry": true,
         "objective_type": 2,
         "solution_method": 1,
-        "schedule_output_file": "Schedules/two_pod_rail_allgather_flatsolve.json"
+        "schedule_output_file": "Schedules/two_pod_rail_allgather_flatsolve_2chunks.json"
     }
 }
