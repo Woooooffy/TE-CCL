@@ -30,7 +30,10 @@ def make_handle_solve(cmd_parsers):
                 elif k == 'formulation':
                     user_input.instance.__setattr__(k, Formulation(v))
                 elif k == 'epoch_type':
-                    user_input.instance.__setattr__(k, EpochType(v))
+                    # May be a per-level list (see input_data.resolve_epoch_policy); coerce each
+                    # entry so the list carries EpochType, not raw ints.
+                    user_input.instance.__setattr__(
+                        k, [EpochType(x) for x in v] if isinstance(v, list) else EpochType(v))
                 else:
                     user_input.instance.__setattr__(k, v)
 

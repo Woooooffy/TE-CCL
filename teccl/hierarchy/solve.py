@@ -180,6 +180,51 @@ def _memoized_row(topology, cell_fabric: bool = False) -> Optional[_MemoRow]:
     return None
 
 
+
+def level_epoch_duration(topo, ctx: LevelContext, depth: int) -> float:
+    """This level's epoch, honouring the per-level epoch policy (input_data.resolve_epoch_policy).
+
+    A level that reaches a real formulation gets this for free -- BaseFormulation.set_epoch_duration
+    resolves the same policy at the same depth. A CLOSED-FORM level does not go through a
+    formulation at all, so without this it would silently take the fastest-link epoch no matter what
+    the user asked for, and on a topology whose every level is a crossbar (NestedCluster) the policy
+    would reach nothing. That is a per-LEVEL setting quietly not applying to some levels, which is
+    the one failure mode the list form exists to prevent.
+
+    Falls back to the fastest-link epoch when there is no user input to consult (the structural
+    tests build a LevelContext without one), which is exactly what this returned before.
+    """
+    from teccl.input_data import EpochType, resolve_epoch_policy
+
+    instance = getattr(getattr(ctx, "user_input", None), "instance", None)
+    floor = topo.get_epoch_duration_fast_link()
+    if instance is None:
+        return floor
+    epoch_type, duration = resolve_epoch_policy(instance, depth)
+    multiplier = getattr(instance, "epoch_multiplier", 1) or 1
+    if duration == -1:
+        if epoch_type == EpochType.SLOWEST_LINK:
+            return topo.get_epoch_duration_slow_link() * multiplier
+        return floor * multiplier
+    # A pinned epoch is only safe here if it is at least the level's own fastest-link epoch.
+    # Unlike an LP -- which reacts to a shorter epoch by using more of them -- a closed-form ROUND
+    # moves one whole chunk across a link, so the epoch is not a free parameter: the implied rate is
+    # chunk / epoch, and pinning below chunk / link_bw makes the row emit a send the link cannot
+    # carry. That surfaces far downstream as reconstruct._assert_rate_within_capacity ("the coarse
+    # solve's capacity guarantee did not survive the split onto fine links"), which describes the
+    # symptom and not the cause, so refuse it here where the cause is still visible. A LONGER pinned
+    # epoch is fine (it only lowers the implied rate) and is the direction a cut-aware epoch wants.
+    if duration < floor * (1 - 1e-9):
+        raise ValueError(
+            f"epoch_duration {duration:g} pinned at hierarchy depth {depth} is shorter than that "
+            f"level's fastest-link epoch {floor:g}, and this level is solved by a CLOSED-FORM row "
+            f"whose rounds move one chunk per link. At {duration:g} a chunk implies "
+            f"{1.0 / duration:g} GB/s where the level's fastest link carries {1.0 / floor:g} GB/s, "
+            f"so the schedule would exceed link capacity. Pin it to >= {floor:g}, or leave this "
+            f"depth on FASTEST_LINK/SLOWEST_LINK (per-level lists let you pin only the depths that "
+            f"reach a real formulation, where a shorter epoch is answered with more epochs).")
+    return duration
+
 # ------------------------------------------------------------------------------------------------
 # The base case: solve one level's routing, by whichever solver its shape calls for
 # ------------------------------------------------------------------------------------------------
@@ -193,7 +238,7 @@ def solve_flat(problem: Subproblem, ctx: LevelContext,
     topo = problem.topology
     if _memoized_row(topo) is not None:
         return CoarseSolution(per_chunk_flow_paths=None, topology=topo,
-                              epoch_duration=topo.get_epoch_duration_fast_link(),
+                              epoch_duration=level_epoch_duration(topo, ctx, problem.depth),
                               preserves_identity=True)
     if ctx.solve_flat_hook is not None:
         return ctx.solve_flat_hook(problem, ctx, mapping, demand_tensor)
@@ -225,6 +270,10 @@ def gurobi_level_solver(problem: Subproblem, ctx: LevelContext, mapping, demand_
     # tensor and sets num_chunks from it -- but a level below the root must not inherit the root's
     # output path, or each one would overwrite the last.
     ui.instance.num_chunks = 1
+    # How the per-level list forms of epoch_type / epoch_duration select their entry
+    # (input_data.resolve_epoch_policy). Without this every level would read the root's epoch
+    # policy, which is exactly the thing the list form exists to avoid.
+    ui.instance.level_depth = problem.depth
     if problem.depth > 0:
         ui.instance.schedule_output_file = ""
     solver = solve_on_topology(ui, topo)

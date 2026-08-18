@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import List, Tuple, Union
 
 
 @dataclass
@@ -101,6 +102,43 @@ class EpochType(Enum):
     SLOWEST_LINK = 2    
     USER_INPUT = 3
 
+
+def resolve_epoch_policy(instance: "InstanceParams", depth: int = 0) -> Tuple["EpochType", float]:
+    """
+        The (epoch_type, epoch_duration) pair that applies at hierarchy level `depth`.
+
+        Both fields accept either a SCALAR -- the same policy at every level, which is what every
+        flat solve and every pre-existing input file uses -- or a LIST indexed by level depth, so a
+        hierarchical solve can size each level's epoch differently. Depths past the end of a list
+        take its LAST entry, so `[a, b]` means "a at the root, b everywhere below", and a 1-element
+        list is identical to the scalar.
+
+        WHY A LEVEL WANTS ITS OWN EPOCH. The epoch is the model's time quantum, and the makespan is
+        always a whole number of them, so the epoch decides how much is lost to the final ceiling.
+        FASTEST_LINK/SLOWEST_LINK size it from a LINK, which on a tapered topology is unrelated to
+        the CUT that actually binds: on TwoPodRail the fastest coarse link is a 50 GB/s spine
+        uplink while the binding constraint is the 4-leaf spine cut, and the mismatch costs a
+        whole ceiling epoch (5.33 -> 6, 11%). Pinning the root's epoch so the cut bound lands on
+        an integer recovers that -- but the same value would be badly wrong one level down, where
+        the fabric is a 900 GB/s NVSwitch. Hence per-level, not global.
+
+        The two fields are resolved TOGETHER at one depth: mixing a scalar epoch_type with a list
+        epoch_duration is allowed (the scalar simply applies at every depth), but the pair handed
+        back always comes from the same level.
+    """
+    def at(value, name):
+        if not isinstance(value, (list, tuple)):
+            return value
+        if not value:
+            raise ValueError(f"InstanceParams.{name} is an empty list; give a scalar or at least "
+                             f"one entry")
+        return value[min(depth, len(value) - 1)]
+    epoch_type = at(instance.epoch_type, "epoch_type")
+    epoch_duration = at(instance.epoch_duration, "epoch_duration")
+    if not isinstance(epoch_type, EpochType):
+        epoch_type = EpochType(epoch_type)
+    return epoch_type, float(epoch_duration)
+
 class SolutionMethod(Enum):
     """
         1 - One shot - The optimization is run till the time limit is reached or it finds a solution within the specified mip gap
@@ -115,8 +153,14 @@ class InstanceParams:
     formulation: Formulation = None # Solver formulation (None = per-collective default: ALLGATHER->MILP, everything else->LP)
     root: int = 0 # Root GPU index for rooted collectives (GATHER destination / BROADCAST source); ignored otherwise
     num_chunks: int = 1 # Number of chunks to be transferred from each node to each other node
-    epoch_type: EpochType = EpochType.FASTEST_LINK 
-    epoch_duration: float = -1
+    # Scalar (one policy for the whole solve) or a LIST indexed by hierarchy level depth, so each
+    # level can size its own epoch; depths past the end take the last entry. See
+    # resolve_epoch_policy, which is the ONLY place either field should be read. Note epoch_duration
+    # still WINS over epoch_type at a given level: a level whose resolved duration is not -1 uses it
+    # and its epoch_type is ignored, so the list form of both is normally written in step, e.g.
+    # epoch_type [USER_INPUT, FASTEST_LINK] with epoch_duration [0.0133, -1].
+    epoch_type: Union[EpochType, List[EpochType]] = EpochType.FASTEST_LINK
+    epoch_duration: Union[float, List[float]] = -1
     epoch_multiplier: int = 1   # Multiplier for epoch duration (helpful for epoch_type != -1)
     num_epochs:int = -1         # Number of epochs to be run (-1 to automatically figure out the number of epochs)
     epsilon: float = pow(10, -1)
@@ -163,6 +207,11 @@ class InstanceParams:
     # traffic and the assembled sub-level schedule. Nothing consumes them; they are how a bad run
     # is diagnosed without re-running the (expensive) coarse solve.
     hierarchy_side_outputs: bool = False
+    # Which hierarchy level this instance is being solved at, 0 = root. Set by the hierarchy
+    # (hierarchy.solve.gurobi_level_solver) from Subproblem.depth, NOT by users -- it is how the
+    # per-level list forms of epoch_type / epoch_duration select their entry. A flat solve leaves
+    # it at 0, where a list of length 1 and a scalar behave identically.
+    level_depth: int = 0
     
 @dataclass
 class UserInputParams:
