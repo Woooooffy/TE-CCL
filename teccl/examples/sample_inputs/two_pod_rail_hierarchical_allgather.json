@@ -31,7 +31,7 @@
         "formulation": 2,
         "switch_copy": false,
         "num_chunks": 1,
-        "epoch_type": 2,
+        "epoch_type": 1,
         "epoch_multiplier": 1,
         "epoch_duration": -1,
         "num_epochs": -1,
