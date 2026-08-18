@@ -1,0 +1,45 @@
+cpu-bind=MASK - lanka26, task  0  0 [2284399]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka26, task  0  0 [2284823]: mask 0xff0000ff set
+WARNING:root:identity-grid margin is thin: snap tolerance 4e-05 (feasibility_tol 1e-05 amplified 4x for the reconstruction chain) against a snap radius of 0.00012207 (MAX_DENOM=64). Volumes will snap, but a slightly noisier solve would not. Consider feasibility_tol <= 7.62939e-06.
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/bin/teccl", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/__main__.py", line 21, in main
+    if handler(args, args.command):
+       ~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/cli/solve.py", line 38, in handler
+    solver.solve()
+    ~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/scheduler.py", line 359, in solve
+    self.solve_hierarchy(start)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/scheduler.py", line 327, in solve_hierarchy
+    info, solution = solve_hierarchical(
+                     ~~~~~~~~~~~~~~~~~~^
+        topology, level_input, instance.collective, num_chunks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        prefix=prefix, debug=instance.debug, level_chunk=instance.level_chunk)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/solve.py", line 581, in solve_hierarchical
+    solution = solve_level(root, ctx)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/solve.py", line 262, in solve_level
+    return _solve_recursive(problem, ctx)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/solve.py", line 341, in _solve_recursive
+    res = _lower(solution, problem, coarse, mapping, fine_tensor, g, level_demand)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/solve.py", line 434, in _lower
+    return build_child_problems(assignments, targets, mapping, fine_tensor, problem.topology,
+                                epoch, scale=problem.scale, relabel=relabel,
+                                snap_tol=snap_tolerance(solution))
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/reconstruct.py", line 1115, in build_child_problems
+    assignments = _snap_volumes(
+        assignments, snap_tolerance() if snap_tol is None else snap_tol)
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/reconstruct.py", line 770, in _snap_volumes
+    for i, frac in zip(idxs, _snap_group([assignments[i].volume for i in idxs], snap_tol, key)):
+                             ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages/teccl/hierarchy/reconstruct.py", line 710, in _snap_group
+    raise AssertionError(
+    ...<5 lines>...
+        f"than the grid can resolve (see snap_tolerance).")
+AssertionError: identity (0, 0) -> cell 1: volume 0.09333409333409337 is not within 4e-05 of any rational with denominator <= 64 (nearest is 4/43 = 0.09302325581395349), and it is too large (0.00015625) to be solver residue. The coarse solution is off the declared grid: either it is split more finely than MAX_DENOM admits (regularize the coarse LP) or the solver tolerance is looser than the grid can resolve (see snap_tolerance).
+srun: error: lanka26: task 0: Exited with exit code 1

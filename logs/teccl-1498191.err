@@ -1,0 +1,3 @@
+cpu-bind=MASK - lanka26, task  0  0 [2283339]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka26, task  0  0 [2283765]: mask 0xff0000ff set
+WARNING:root:identity-grid margin is thin: snap tolerance 0.000109863 (feasibility_tol 0.0001 amplified 4x for the reconstruction chain) against a snap radius of 0.00012207 (MAX_DENOM=64). Volumes will snap, but a slightly noisier solve would not. Consider feasibility_tol <= 7.62939e-06.

@@ -29,7 +29,7 @@
         "alpha_threshold": 0.1,
         "switch_pipeline": true,
         "symmetry": true,
-        "objective_type": 2,
+        "objective_type": 6,
         "solution_method": 1,
         "hierarchical": true,
         "hierarchy_prefix": "two_pod_rail_hostbound_allgather_fast_epoch",
