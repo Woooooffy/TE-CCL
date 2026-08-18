@@ -2,10 +2,11 @@ import logging
 import math
 from abc import ABC, abstractmethod
 from itertools import product
-from typing import List
+from typing import List, Tuple
 
 import gurobipy as gp
 import numpy as np
+from gurobipy import GRB
 from teccl.gurobi_env import get_gurobi_env
 from teccl.input_data import *
 from teccl.solvers.demand import build_demand
@@ -199,6 +200,79 @@ class BaseFormulation(ABC):
             raise ValueError(f"root {root} is a switch index and cannot source/sink demand")
         if root in self.topology.passive_indices:
             raise ValueError(f"root {root} is a passive index and cannot source/sink demand")
+
+    # ---------------------------------------------------------------------------------
+    # Objective wiring
+    # ---------------------------------------------------------------------------------
+
+    def host_indices(self) -> List[int]:
+        """
+            The nodes that are hosts (GPUs): everything that is not a switch. Traffic a host
+            carries for a source other than itself is *relay* traffic -- see
+            hierarchical_objective_tiers.
+
+            Passive nodes are deliberately INCLUDED. "Passive" only means the node originates
+            and consumes no demand of its own; on real hardware it is still a GPU, so relaying
+            through it costs the same local copy, kernel launches and link occupancy as
+            relaying through any other GPU. Only a switch relays for free (in the sense the
+            relay tier cares about), which is why switches are the sole exclusion.
+        """
+        switches = set(self.topology.switch_indices)
+        return [n for n in self.nodes if n not in switches]
+
+    def switch_ingress_links(self) -> List[Tuple[int, int]]:
+        """
+            Every link that ENTERS a switch -- gpu->switch and switch->switch alike. One unit of
+            flow here is one hop of a switch chain, so summing flow over these links measures
+            chain LENGTH: a direct gpu->gpu route scores 0, gpu->switch->gpu scores 1, and
+            gpu->leaf->spine->leaf->gpu scores 3. (Counting only switch->switch links would
+            score the first two identically, and a chain of one switch is still a chain.)
+        """
+        switches = set(self.topology.switch_indices)
+        return [
+            (i, j)
+            for i in self.nodes
+            for j in switches
+            if self.topology.capacity[i][j] > 0
+        ]
+
+    def hierarchical_objective_tiers(self) -> List[Tuple[str, gp.LinExpr, float]]:
+        """
+            The tiers of ObjectiveType.LEXICOGRAPHIC, HIGHEST priority first, as
+            (name, expression-to-MINIMIZE, relative tolerance the next tiers may degrade it by).
+            Implemented per formulation because the flow/demand variables differ in shape
+            (the MILP carries a chunk index the LP does not).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement ObjectiveType.LEXICOGRAPHIC")
+
+    def apply_objective(self) -> None:
+        """
+            Install the objective selected by InstanceParams.objective_type on self.model.
+
+            Every objective except LEXICOGRAPHIC is a single weighted LinExpr built by the
+            formulation's objective_formulation(). LEXICOGRAPHIC instead installs one Gurobi
+            objective per tier with strictly decreasing priority, so Gurobi optimizes them in
+            order and only ever breaks ties of the higher tiers -- no cross-tier weight
+            calibration, which is what a single blended objective (e.g.
+            TOTAL_DEMAND_MIN_SWITCH_HOPS's GAMMA) has to get right by hand.
+        """
+        objective_type = self.user_input.instance.objective_type
+        if objective_type != ObjectiveType.LEXICOGRAPHIC:
+            self.model.setObjective(self.objective_formulation(objective_type))
+            return
+
+        tiers = self.hierarchical_objective_tiers()
+        self.model.ModelSense = GRB.MINIMIZE
+        self.model.NumObj = len(tiers)
+        for index, (name, expr, rel_tol) in enumerate(tiers):
+            # priority is highest-first; the last tier keeps no slack of its own.
+            self.model.setObjectiveN(
+                expr, index=index, priority=len(tiers) - index,
+                reltol=rel_tol, name=name)
+        logging.debug(
+            "Lexicographic objective installed: " +
+            " > ".join(f"{name} (reltol {rel_tol})" for name, _, rel_tol in tiers))
 
     def set_gurobi_params(self) -> None:
         self.model.Params.OutputFlag = self.user_input.gurobi.output_flag

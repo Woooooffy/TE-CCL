@@ -463,6 +463,68 @@ class LPFormulation(BaseFormulation):
                         self.flow[s][i][d][k], 10 * (pow(10, -1) / (self.num_epochs + 1)) * 2)
         return objective
 
+    def hierarchical_objective_tiers(self) -> List[Tuple[str, gp.LinExpr, float]]:
+        """
+        The three tiers of ObjectiveType.LEXICOGRAPHIC (highest priority first). Each is a
+        pure linear expression to MINIMIZE, so the model stays an LP -- no auxiliary
+        indicator/max_ variables, unlike the TOTAL_DEMAND completion reward.
+
+        tier 1, latency: sum over epochs of the demand still OUTSTANDING at the end of that
+            epoch, = sum_k (all_demand - sum_{s,d} total_demand_sat[s][d][k]). Dropping the
+            constant, minimizing it is maximizing -sum_k sum_{s,d} total_demand_sat, i.e. the
+            demand-weighted completion time: every unit of demand contributes one unit of cost
+            per epoch it is late by, so the tier is 0 iff everything lands in epoch 0 and it
+            strictly decreases whenever any unit of demand arrives earlier. Compared with the
+            makespan-style TOTAL_DEMAND reward this needs no binaries and, being finer grained,
+            also rewards early progress inside the final epoch.
+
+        tier 2, host relay: every unit of flow LEAVING a host n that did not originate there
+            (n != s). A relayed byte costs the relaying GPU twice -- once on its ingress link
+            and once on its egress link -- plus a local copy, and it is exactly the traffic a
+            direct source->destination route would avoid, so among equally fast schedules we
+            want as little of it as possible. Flow out of a source itself, and flow through
+            switches, is not relay and carries no cost here.
+
+        tier 3, switch chain: every unit of flow ENTERING a switch, i.e. the length of the
+            switch chain each unit traverses, weighted by its volume: a direct gpu->gpu link
+            pays 0, gpu->switch->gpu pays 1, a leaf->spine->leaf detour pays 3. Minimizing it
+            prefers the shortest chain among routes the higher tiers already tied on. This
+            generalizes TOTAL_DEMAND_MIN_SWITCH_HOPS's hand-weighted switch->switch term (which
+            cannot tell a direct link from a one-switch path) and makes it a separate, strictly
+            lower-priority objective instead of a calibrated GAMMA.
+
+        The flow variables are per-source aggregates (no chunk index in the LP), so tiers 2
+        and 3 sum over sources, links and epochs only.
+        """
+        instance = self.user_input.instance
+
+        latency = gp.LinExpr(0.0)
+        for s, d, k in product(self.sources, self.nodes, self.epochs):
+            latency.add(self.total_demand_sat[s][d][k], -1.0)
+
+        relay = gp.LinExpr(0.0)
+        for n in self.host_indices():
+            for j in self.nodes:
+                if self.topology.capacity[n][j] <= 0:
+                    continue
+                for s in self.sources:
+                    if s == n:
+                        continue
+                    for k in self.epochs:
+                        relay.add(self.flow[s][n][j][k], 1.0)
+
+        switch_chain = gp.LinExpr(0.0)
+        for (i, j) in self.switch_ingress_links():
+            for s in self.sources:
+                for k in self.epochs:
+                    switch_chain.add(self.flow[s][i][j][k], 1.0)
+
+        return [
+            ("latency", latency, instance.objective_latency_rel_tol),
+            ("host_relay", relay, instance.objective_relay_rel_tol),
+            ("switch_chain", switch_chain, 0.0),
+        ]
+
     def _compute_alpha_signature(self) -> Tuple[int, ...]:
         """
         The per-link alpha_num_back values are the ONLY thing that changes the
@@ -506,7 +568,7 @@ class LPFormulation(BaseFormulation):
         self.capacity_constraints()
         if self.user_input.instance.symmetry:
             self.add_symmetry_constraints()
-        self.model.setObjective(self.objective_formulation(self.user_input.instance.objective_type))
+        self.apply_objective()
         self._alpha_signature = self._compute_alpha_signature()
 
         self._log_file = f'Logs/{self.solver_name}_{self.user_input.topology.name}_{self.num_nodes}-nodes_' \

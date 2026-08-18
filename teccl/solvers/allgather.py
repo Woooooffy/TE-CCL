@@ -453,6 +453,53 @@ class AllGatherFormulation(BaseFormulation):
         logging.debug(f'Finished adding objective in {time.time() - start}')
         return objective
 
+    def hierarchical_objective_tiers(self) -> List[Tuple[str, gp.LinExpr, float]]:
+        """
+        The three tiers of ObjectiveType.LEXICOGRAPHIC (highest priority first), the MILP
+        counterpart of LPFormulation.hierarchical_objective_tiers -- same three quantities,
+        summed over the extra chunk index this formulation carries:
+
+          tier 1, latency:      -sum over (s, d, c, k) of total_demand_sat, i.e. every chunk
+                                pays one unit for every epoch it has not landed yet.
+          tier 2, host relay:   flow leaving a host that did not originate there (s != n).
+          tier 3, switch chain: flow entering a switch, one unit per hop, so the term is the
+                                length of the switch chain a unit traverses: 0 for a direct
+                                link, 1 for gpu->switch->gpu, 3 for leaf->spine->leaf.
+
+        Only variables that were actually created are read; the sparse flow container returns
+        0.0 for the (s, i, j, c, k) combinations initialize_variables skipped, which add into
+        a LinExpr as a constant exactly as the single-objective code above does.
+        """
+        instance = self.user_input.instance
+
+        latency = gp.LinExpr(0.0)
+        for s, d, c, k in product(self.sources, self.nodes, self.chunks, self.epochs):
+            if not self.demand[s][d][c]:
+                continue
+            latency.add(self.total_demand_sat[s][d][c][k], -1.0)
+
+        relay = gp.LinExpr(0.0)
+        for n in self.host_indices():
+            for j in self.nodes:
+                if self.topology.capacity[n][j] <= 0:
+                    continue
+                for s in self.sources:
+                    if s == n:
+                        continue
+                    for c, k in product(self.chunks, self.epochs):
+                        relay.add(self.flow[s][n][j][c][k], 1.0)
+
+        switch_chain = gp.LinExpr(0.0)
+        for (i, j) in self.switch_ingress_links():
+            for s, c, k in product(self.sources, self.chunks, self.epochs):
+                switch_chain.add(self.flow[s][i][j][c][k], 1.0)
+
+        return [
+            ("latency", latency, instance.objective_latency_rel_tol),
+            ("host_relay", relay, instance.objective_relay_rel_tol),
+            ("switch_chain", switch_chain, 0.0),
+        ]
+
     def encode_problem(self, use_one_less_epoch: bool = False, previous_buffers: List[List[int]] = []) -> int:
         setup_start = time.time()
         self.model = gp.Model('AllGather_MILP', env=get_gurobi_env())
@@ -464,8 +511,7 @@ class AllGatherFormulation(BaseFormulation):
             self.use_one_less_epoch()
         if self.user_input.instance.symmetry:
             self.add_symmetry_constraints()
-        self.model.setObjective(self.objective_formulation(
-            self.user_input.instance.objective_type))
+        self.apply_objective()
 
         log_file = f'Logs/{self.solver_name}_{self.user_input.topology.name}_{self.num_nodes}-nodes_' \
             f'{self.num_chunks}-chunks_{self.num_epochs}-epochs_{self.epoch_duration}-epochduration_{self.user_input.instance.objective_type}'

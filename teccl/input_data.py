@@ -48,12 +48,28 @@ class ObjectiveType(Enum):
             solver prefer routes with fewer switch relays -- e.g. a direct leaf hop over a spine
             detour. The penalty is scaled far below the completion reward so it acts purely as a
             tie-breaker and never trades completion time for fewer hops.
+        6 - LEXICOGRAPHIC - A three-tier hierarchical (lexicographic) objective solved with
+            Gurobi's multi-objective support, in strictly decreasing priority:
+              tier 1 (latency)      minimize the demand-weighted completion time,
+              tier 2 (host relay)   among the tier-1 optima, minimize the volume that a GPU
+                                    forwards on behalf of another GPU (relay through a host
+                                    burns that host's link bandwidth and its copy engines),
+              tier 3 (switch chain) among those, minimize the number of switch hops the volume
+                                    takes (flow entering a switch), i.e. prefer the shortest
+                                    switch chain: a direct link over a one-switch path, and a
+                                    one-switch path over a leaf->spine->leaf detour.
+            Unlike option 5 -- which folds the switch-hop term into ONE objective with a hand
+            tuned GAMMA and so depends on that constant being small enough -- the tiers here
+            are enforced by the solver: a lower tier can never degrade a higher one by more
+            than the tolerance you allow it (InstanceParams.objective_latency_rel_tol /
+            objective_relay_rel_tol, both 0 by default = pure lexicographic).
     """
     BINARY_USED_EPOCHS = 1
     TOTAL_DEMAND = 2
     PAPER = 3
     ASTAR = 4
     TOTAL_DEMAND_MIN_SWITCH_HOPS = 5
+    LEXICOGRAPHIC = 6
 
 class Collective(Enum):
     ALLGATHER = 1
@@ -111,6 +127,13 @@ class InstanceParams:
     debug: bool = False # If True, prints debug information
     debug_output_file: str = "" # If debug is True, prints debug information to this file
     objective_type: ObjectiveType = ObjectiveType.PAPER # The objective function to be used (3 - The objective function used in the paper)
+    # Only used by ObjectiveType.LEXICOGRAPHIC: how much a LOWER priority tier is allowed to
+    # degrade a HIGHER one, as a fraction of that tier's optimal value (Gurobi ObjNRelTol).
+    # 0.0 == pure lexicographic (a tier is fixed at its exact optimum before the next is
+    # optimized). Give latency a small slack (e.g. 0.01) when you would accept 1% more
+    # completion time to buy a materially less relay-heavy / shorter-chained routing.
+    objective_latency_rel_tol: float = 0.0   # slack on tier 1 (latency) for tiers 2-3
+    objective_relay_rel_tol: float = 0.0     # slack on tier 2 (host relay) for tier 3
     solution_method: SolutionMethod = SolutionMethod.ONE_SHOT
     schedule_output_file: str = "" # If not empty, the schedule is written to this file. Default is "Topology-Chunks-chunksize-timestamp.json"
     lower: bool = False # If true will use the lowering code from Meghan to lower the input.
