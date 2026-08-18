@@ -72,7 +72,7 @@
 #SBATCH --partition=lanka-v3
 
 cd "$SLURM_SUBMIT_DIR"
-mkdir -p logs Schedules xml
+mkdir -p logs Schedules xml Logs logs/gurobi
 
 source /data/commit/graphit/wangyj05/workspace/setup.sh
 
@@ -92,6 +92,37 @@ run_multipath() { [ "$WHICH" = all ] || [ "$WHICH" = multipath ]; }
 run_rate()      { [ "$WHICH" = all ] || [ "$WHICH" = rate ]; }
 run_flat()      { [ "$WHICH" = all ] || [ "$WHICH" = flat ]; }
 
+# Gurobi writes ONE auto-named log per solve into Logs/ -- capital L, a DIFFERENT directory from
+# logs/ on Linux (the same one on a case-insensitive mac, which is its own trap when reading these
+# back locally). Three things about that path are easy to get wrong:
+#   * GurobiParams.log_file is a SUFFIX appended to the auto-generated name, NOT a path. The inputs
+#     set it to _multipath_lex / _hostbound_lex so a run's logs are separable from every other solve
+#     sharing the same topology/nodes/chunks/epochs fields.
+#   * GurobiParams.log_to_console is a DEAD field -- no solver reads it, and the LP hard-codes
+#     LogToConsole=0 whenever it writes the log file. Gurobi output can never reach this .out on its
+#     own, which is why it has to be collected explicitly.
+#   * The hierarchical path solves MANY models (feasible search + per level), so expect several logs
+#     per run, one per (epoch_duration, level).
+# What to read them for: WHICH algorithm actually ran. "Solved with barrier" without a crossover
+# phase means the solution is the analytic center of the optimal face -- maximally smeared, which is
+# the leading suspect for the host-bound config's off-grid volumes. "Solved with dual simplex" (or a
+# barrier run followed by crossover) means a vertex, and a smear would then be a genuine degenerate
+# vertex, not a solver artifact -- a different problem needing a different fix.
+collect_gurobi_logs() {
+    local tag="$1"
+    mkdir -p logs/gurobi
+    cp -f Logs/*"${tag}"*.log logs/gurobi/ 2>/dev/null
+    echo "--- Gurobi algorithm summary (${tag}) ---"
+    local found=0
+    for f in Logs/*"${tag}"*.log; do
+        [ -f "$f" ] || continue
+        found=1
+        echo "== $(basename "$f")"
+        grep -inE "Solved with|Barrier|Crossover|Push phase|simplex|iterations and|Optimal objective|Model fingerprint" "$f" | head -15
+    done
+    [ "$found" = 1 ] || echo "  (no Logs/*${tag}*.log -- check that output_flag=1 and log_file are set in the input)"
+}
+
 # Structural checks first: seconds, no Gurobi, and they cover the whole lower half (identity
 # resolution, phase-3, stitch epoch layout, ncclize pacing gates). Failing here means not burning
 # solver time on a broken lower half. These run against the HETERO fixtures -- deliberately, they
@@ -108,6 +139,8 @@ if run_multipath; then
     echo "=== [2/4] MULTIPATH config (H=50): hierarchical solve -> flat schedule ==="
     srun python -m teccl solve -i "${SAMPLES}/two_pod_rail_hierarchical_allgather.json"
 
+    collect_gurobi_logs "_multipath_lex"
+
     echo "--- ncclize round trip -> MSCCL XML (runs check_implements on all 16 GPUs) ---"
     # The per-op `rate` comes from the schedule itself (the level that solved each flow supplied
     # it), so `--no-rate` is NOT wanted here: stripping it would discard the coarse level's
@@ -123,6 +156,8 @@ fi
 if run_rate; then
     echo "=== [3/4] RATE config (H=30, host-bound): hierarchical solve -> flat schedule ==="
     srun python -m teccl solve -i "${SAMPLES}/two_pod_rail_hostbound_allgather.json"
+
+    collect_gurobi_logs "_hostbound_lex"
 
     echo "--- ncclize round trip -> MSCCL XML (the pacing-sensitive arm) ---"
     srun python teccl/ncclize/teccl_ncclize.py \

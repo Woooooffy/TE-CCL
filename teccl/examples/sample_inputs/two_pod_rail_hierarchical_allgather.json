@@ -3,12 +3,15 @@
 
     "_expected": "T* = 0.4267 (chunk_size 1 GB), spine-bound; GPU->leaf at 65.6%; per-GPU cross-pod 18.75 GB/s splitting 12.5 / 6.25 across the two spines, intra-pod 14.06 GB/s. An equal-split router would land at 0.64, i.e. 1.50x. See the TwoPodRail docstring for the derivation.",
 
+    "_log_file": "A SUFFIX on the auto-generated Gurobi log name, not a path. The LP always writes Logs/{solver}_{topology}_{n}-nodes_{chunks}-chunks_{epochs}-epochs_{duration}-epoch_duration_{objective}[suffix].log whenever output_flag=1; this tag is what makes THIS run's logs separable from the many others that share those fields. Note Logs/ (capital L) is a different directory from logs/ on Linux -- scripts/run_two_pod_rail.sh collects them into logs/gurobi/. GurobiParams.log_to_console is a DEAD field: no solver reads it, and the LP hard-codes LogToConsole=0 whenever it writes the file, so Gurobi output can never reach the sbatch .out.",
+
     "_notes": {
         "collective/formulation": "1 = ALLGATHER, 2 = LP. The LP is required: the whole cut analysis is LP semantics (no replication, so every destination needs its own delivery across the spine cut). The MILP with switch copy solves a different problem and its makespan is NOT comparable to the numbers above.",
         "switch_copy": "false is mandatory with LP AllGather -- get_solver rejects the combination outright.",
         "num_chunks": "3 so the forced 2:1 spine split is expressible in whole chunks. The level-boundary sub-chunk refinement Q may derive this anyway; num_chunks 1 is the A/B that tells you whether it did.",
         "symmetry": "false, deliberately. TwoPodRail declares NO equivalent_node_indices: the spines differ in capacity (that asymmetry is the entire point of the topology) and no two leaves share a neighbor set, so there is nothing for symmetry to constrain.",
         "objective_type": "3 = PAPER, matching the other hierarchical samples. Option 5 (TOTAL_DEMAND_MIN_SWITCH_HOPS) is worth an A/B here: it tie-breaks toward fewer switch->switch hops, which is the intra-pod cross-rail choice this analysis assumes goes over NVLink rather than detouring through a spine.",
+        "feasibility_tol": "1e-5, not the 1e-4 default. At 1e-4 the reconstruction chain's snap tolerance is 1.1e-4 against a grid radius of 1.22e-4 (MAX_DENOM=64) and the run logs 'identity-grid margin is thin' -- it passes with 11% to spare. 1e-5 gives 3x margin.",
         "flat ground truth": "The fine topology is only 30 nodes, so the FLAT solve of the same problem is tractable and is what the hierarchical result should be validated against -- see two_pod_rail_flat_allgather.json."
     },
 
@@ -19,10 +22,11 @@
     },
     "GurobiParams": {
         "time_limit": 2,
-        "feasibility_tol": 1e-4,
+        "feasibility_tol": 1e-5,
         "intfeas_tol": 1e-4,
         "optimality_tol": 1e-4,
         "output_flag": 1,
+        "log_file": "_multipath_lex",
         "log_to_console": 0,
         "mip_gap": 1e-4
     },

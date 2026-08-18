@@ -1,7 +1,11 @@
 {
-    "_comment": "Hierarchical AllGather on TwoPodRailHostBound -- the SAME graph as two_pod_rail_hierarchical_allgather.json with GPU_LEAF_BW lowered from 50 to 30 GB/s. That moves the binding cut from the spine layer onto the GPU->leaf link, which is the RATE configuration: both streams on that link are pinned with zero slack, so a rate-oblivious emitter cannot hide in headroom. Run it as an A/B against the multipath config; every other setting is identical.",
+    "_comment": "Hierarchical AllGather on TwoPodRailHostBound -- the SAME graph as two_pod_rail_hierarchical_allgather.json with GPU_LEAF_BW lowered from 50 to 25 GB/s. That moves the binding cut from the spine layer onto the GPU->leaf link, which is the RATE configuration: both streams on that link are pinned with zero slack, so a rate-oblivious emitter cannot hide in headroom. Run it as an A/B against the multipath config.",
 
-    "_expected": "T* = 0.4667 (chunk_size 1 GB), host-bound; GPU->leaf at 100%; per-GPU cross-pod 17.14 + intra-pod 12.86 = 30.00 = exactly line rate. The trade: the leaf uplink now runs at 91%, so the 2:1 spine split is no longer the UNIQUE optimum (~9% slack) -- though an equal-split router still loses, at 1.37x, since spine1's 25 GB/s is overrun either way.",
+    "_log_file": "A SUFFIX on the auto-generated Gurobi log name, not a path (see the multipath input for the full naming rule). Set here specifically to read back WHICH algorithm ran and whether crossover happened -- the open question behind method=1/crossover=1 above.",
+
+    "_solver_settings": "method=1 (dual simplex) and crossover=1 are LOAD-BEARING here, not tuning. Saturating every host uplink in every epoch imposes 224 tight equalities, and LEXICOGRAPHIC tier 1 sums FRACTIONAL demand satisfied so it cannot rank the enormous family of compositions that satisfy them. Left on the barrier default the solver returns that degenerate face's analytic center -- 83 distinct smeared volumes, most off reconstruct.MAX_DENOM = 64 -- and the identity snap rejects them (job 1498195). A basic/vertex solution has minimal support and lands on the natural grid.",
+
+    "_expected": "Coarse level, VERIFIED on job 1498195: 7 epochs / 0.28 s, which is exactly the bound (8 hosts x 7 chunks = 56 sends over 8 chunks/epoch of aggregate host egress); all 224 host-uplink link-epochs at 100%; zero host relay; spine cut carrying exactly its 32-chunk minimum. Fine level: T* = 0.56 s at chunk_size 1 GB, per-GPU cross-pod 14.29 + intra-pod 10.71 = 25.00 = exactly line rate. The trade: the leaf uplink runs at 76%, so the 2:1 spine split is not the unique optimum here (ECMP loses by only 1.14x vs 1.50x in the multipath config) -- rest a multipath claim on that config, not this one.",
 
     "TopologyParams": {
         "name": "TwoPodRailHostBound",
@@ -14,8 +18,11 @@
         "intfeas_tol": 1e-5,
         "optimality_tol": 1e-5,
         "output_flag": 1,
+        "log_file": "_hostbound_lex",
         "log_to_console": 0,
-        "mip_gap": 1e-5
+        "mip_gap": 1e-5,
+        "method": 1,
+        "crossover": 1
     },
     "InstanceParams": {
         "collective": 1,

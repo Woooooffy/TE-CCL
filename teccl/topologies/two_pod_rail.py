@@ -98,13 +98,19 @@ class TwoPodRail(Topology):
             links are saturated end to end, so the 2:1 split is strictly forced and the ECMP
             signal is at full 1.50x. The host layer has headroom, so a greedy emitter that
             over-drives local traffic is partly absorbed. This is the MULTIPATH configuration.
-        H = 30 (U/H = 2.5): HOST-BOUND (14/H = 0.4667 > 0.4267). The GPU->leaf link becomes the
-            binding cut and both streams on it are pinned with ZERO slack -- cross-pod 17.14 +
-            intra-pod 12.86 = 30.00 = exactly line rate -- so any misallocation inflates the
+        H = 25 (U/H = 3.0): HOST-BOUND (14/H = 0.56 > 0.4267). The GPU->leaf link becomes the
+            binding cut and both streams on it are pinned with ZERO slack -- cross-pod 14.29 +
+            intra-pod 10.71 = 25.00 = exactly line rate -- so any misallocation inflates the
             makespan immediately. This is the RATE configuration. Note the trade: the leaf
-            uplink now runs at 91%, not 100%, so the 2:1 spine split is no longer strictly
-            forced (it has ~9% slack). ECMP still loses, at 1.37x, because spine1's 25 GB/s is
-            overrun either way -- but the split is no longer the unique optimum.
+            uplink now runs at 76%, not 100%, so the 2:1 spine split is no longer strictly
+            forced. ECMP still loses, at 1.14x, because spine1's 25 GB/s is overrun either way
+            -- but the split is no longer the unique optimum, and the margin is thin enough
+            that this configuration should NOT be the one a multipath claim rests on.
+
+            H is also chosen to keep the capacity ratios grid-friendly: 25:50:25 = 1:2:1, so
+            flow splits land on halves and fifths. A value like 30 gives 6:10:5, whose splits
+            land on /75 and /150 -- past reconstruct.MAX_DENOM = 64, which the identity snap
+            rejects outright.
 
     Both cuts can only bind at once at the knife edge U/H = 2.286, which hands the LP a
     degenerate vertex -- so sweep H rather than trying to tune a single value that does both.
@@ -249,13 +255,27 @@ class TwoPodRail(Topology):
 
 class TwoPodRailHostBound(TwoPodRail):
     """
-    The RATE configuration: identical graph, GPU_LEAF_BW lowered to 30 GB/s.
+    The RATE configuration: identical graph, GPU_LEAF_BW lowered to 25 GB/s.
 
-    This moves the binding cut from the spine layer to the GPU->leaf link (14/H = 0.4667 >
-    0.4267), which pins BOTH streams on that link with zero slack -- cross-pod 17.14 +
-    intra-pod 12.86 = 30.00 = exactly line rate -- so a rate-oblivious emitter cannot hide in
+    This moves the binding cut from the spine layer to the GPU->leaf link (14/H = 0.56 >
+    0.4267), which pins BOTH streams on that link with zero slack -- cross-pod 14.29 +
+    intra-pod 10.71 = 25.00 = exactly line rate -- so a rate-oblivious emitter cannot hide in
     headroom. It exists as a named class, rather than only as a two_pod_rail_variant() call, so
     it is reachable by name from a JSON input file and from ncclize's --topology.
+
+    CONFIRMED on the coarse solve (job 1498195, LEXICOGRAPHIC objective): every one of the 224
+    host-uplink link-epochs runs at exactly its capacity, and the 7-epoch makespan is exactly
+    the bound (8 hosts x 7 chunks = 56 sends over 8 chunks/epoch of aggregate host egress).
+    Zero host relay, and a spine cut carrying exactly its 32-chunk minimum.
+
+    That total saturation is also this configuration's one hazard: 224 tight equality
+    constraints admit an enormous family of equally-optimal compositions, and LEXICOGRAPHIC's
+    tier 1 sums FRACTIONAL demand satisfied, so it cannot tell them apart. Left to the barrier
+    solver's analytic center that degenerate face comes back as smeared volumes (83 distinct
+    values, most off the MAX_DENOM = 64 identity grid) and the identity snap rejects them. Ask
+    for a BASIC solution -- GurobiParams method=1 (dual simplex) or crossover=1 -- so the solve
+    lands on a vertex, whose minimal support sits on the natural grid. The sample input
+    two_pod_rail_hostbound_allgather.json sets both.
 
     See TwoPodRail for the full derivation and for what this configuration gives up (the 2:1
     spine split stops being the unique optimum).
@@ -275,7 +295,8 @@ def two_pod_rail_variant(name: str = "TwoPodRailVariant",
         from teccl.topologies.two_pod_rail import TwoPodRail, two_pod_rail_variant
 
         multipath_cfg = TwoPodRail                                   # H = 50, spine-bound
-        rate_cfg      = two_pod_rail_variant("TwoPodRail_h30", gpu_leaf_bw=30.0)  # host-bound
+        rate_cfg      = TwoPodRailHostBound                          # H = 25, host-bound
+        other_cfg     = two_pod_rail_variant("TwoPodRail_h40", gpu_leaf_bw=40.0)
 
     See the TwoPodRail docstring for which cut binds at which H and why that decides what the
     configuration actually tests.
