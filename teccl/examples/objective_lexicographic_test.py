@@ -111,6 +111,27 @@ def link_volume(solver):
     return volume
 
 
+def objective_report(solver):
+    """
+    What objective the SOLVED model actually carried: the number of Gurobi objectives and,
+    for a multi-objective model, each tier's name and optimal value straight from Gurobi
+    (ObjNVal), not recomputed from the flows.
+
+    This is the check that the formulation really installed the hierarchy: a single-objective
+    run reports NumObj == 1, a LEXICOGRAPHIC run reports 3 named tiers. Cross-read the tier
+    values against the metrics below -- host_relay and switch_chain must match exactly, and
+    latency is the negated sum of total_demand_sat.
+    """
+    model = solver.model
+    num_obj = model.NumObj
+    tiers = []
+    if num_obj > 1:
+        for index in range(num_obj):
+            model.params.ObjNumber = index
+            tiers.append((model.ObjNName, model.ObjNVal))
+    return {"num_obj": num_obj, "tiers": tiers}
+
+
 def metrics(solver):
     """The three tier quantities plus the epoch count, read back off the solved model."""
     volume = link_volume(solver)
@@ -127,12 +148,42 @@ def metrics(solver):
                     continue
                 relay += _link_flow(solver, s, n, j)
 
+    report = objective_report(solver)
     return {
         "epochs": solver.find_demand_satisfied_k() + 1,
         "switch_hops": switch_hops,
         "host_relay": relay if relay > TOL else 0.0,
         "volume": volume,
+        "num_obj": report["num_obj"],
+        "tiers": report["tiers"],
     }
+
+
+def _tier_str(m):
+    """Gurobi's per-tier optimal values, e.g. "latency=-2 host_relay=0 switch_chain=0"."""
+    return " ".join(f"{name}={value:g}" for name, value in m["tiers"]) or f"NumObj={m['num_obj']}"
+
+
+def assert_hierarchy_installed(m):
+    """
+    The tests below assert routing OUTCOMES, which a formulation could also produce by
+    accident (or by its single-objective flow penalty). This asserts the mechanism: the
+    solved model carried three named objectives, and Gurobi's own optimal value for the
+    relay/chain tiers equals what we measured off the flow variables.
+    """
+    assert m["num_obj"] == 3, \
+        f"expected 3 lexicographic objectives on the solved model, found {m['num_obj']}: " \
+        f"the formulation did not install the hierarchy"
+    names = [name for name, _ in m["tiers"]]
+    assert names == ["latency", "host_relay", "switch_chain"], \
+        f"tiers installed in the wrong order: {names}"
+    by_name = dict(m["tiers"])
+    assert abs(by_name["host_relay"] - m["host_relay"]) <= TOL, \
+        f"Gurobi's host_relay tier ({by_name['host_relay']:g}) disagrees with the flows " \
+        f"({m['host_relay']:g}) -- the tier is not measuring what the test measures"
+    assert abs(by_name["switch_chain"] - m["switch_hops"]) <= TOL, \
+        f"Gurobi's switch_chain tier ({by_name['switch_chain']:g}) disagrees with the flows " \
+        f"({m['switch_hops']:g})"
 
 
 def _used(metrics_dict, links):
@@ -149,13 +200,14 @@ def test_direct_vs_switch(formulation=Formulation.MILP):
     topo = build_topology(DirectVsSwitch)
     m = metrics(solve(topo, ObjectiveType.LEXICOGRAPHIC, formulation))
 
+    assert_hierarchy_installed(m)
     assert m["switch_hops"] <= TOL, \
         f"expected the direct link only, but {m['switch_hops']:g} chunk-hops entered the switch: {m['volume']}"
     assert m["volume"].get((0, 1), 0) >= 1 - TOL and m["volume"].get((1, 0), 0) >= 1 - TOL, \
         f"both directions should ride the direct link in full: {m['volume']}"
     assert m["host_relay"] <= TOL, f"a 2-GPU direct exchange relays nothing: {m['volume']}"
     print(f"    [1] direct_vs_switch      OK  epochs={m['epochs']} switch_hops={m['switch_hops']:g} "
-          f"links={sorted(m['volume'])}")
+          f"tiers={_tier_str(m)} links={sorted(m['volume'])}")
     return m
 
 
@@ -164,6 +216,7 @@ def test_one_vs_two_switch(formulation=Formulation.MILP):
     topo = build_topology(OneVsTwoSwitch)
     m = metrics(solve(topo, ObjectiveType.LEXICOGRAPHIC, formulation))
 
+    assert_hierarchy_installed(m)
     long_path_links = [(0, 3), (3, 4), (4, 3), (3, 0), (1, 4), (4, 1)]
     on_long_path = _used(m, long_path_links)
     assert on_long_path <= TOL, \
@@ -171,7 +224,7 @@ def test_one_vs_two_switch(formulation=Formulation.MILP):
     assert abs(m["switch_hops"] - 2) <= TOL, \
         f"two chunks over a one-switch path = 2 switch hops, got {m['switch_hops']:g}: {m['volume']}"
     print(f"    [2] one_vs_two_switch     OK  epochs={m['epochs']} switch_hops={m['switch_hops']:g} "
-          f"links={sorted(m['volume'])}")
+          f"tiers={_tier_str(m)} links={sorted(m['volume'])}")
     return m
 
 
@@ -190,6 +243,8 @@ def test_slow_switch_vs_relay(formulation=Formulation.MILP):
     fast = metrics(solve(build_topology(FastSwitchVsRelay, passive=passive),
                          ObjectiveType.LEXICOGRAPHIC, formulation))
 
+    assert_hierarchy_installed(slow)
+    assert_hierarchy_installed(fast)
     assert slow["host_relay"] > TOL, \
         f"the relay path is strictly faster here, so tier 1 must overrule tier 2: {slow['volume']}"
     assert slow["epochs"] <= 3, \

@@ -42,15 +42,17 @@ OBJECTIVES = [
 
 def _row(label, formulation, objective_name, m):
     links = ", ".join(f"{i}->{j}:{v:g}" for (i, j), v in sorted(m["volume"].items()))
-    return (f"{label:<26}{formulation.name:<7}{objective_name:<20}{m['epochs']:>8}"
-            f"{m['host_relay']:>12g}{m['switch_hops']:>14g}  {links}")
+    # NumObj says which objective the SOLVED model actually carried: 1 for the single
+    # weighted objective, 3 when the lexicographic hierarchy was installed.
+    return (f"{label:<26}{formulation.name:<7}{objective_name:<20}{m['num_obj']:>6}"
+            f"{m['epochs']:>8}{m['host_relay']:>12g}{m['switch_hops']:>14g}  {links}")
 
 
 def run_comparison():
     results = {}
     print("\n" + "=" * 130)
-    print(f"{'Case':<26}{'Form.':<7}{'Objective':<20}{'Epochs':>8}{'Host relay':>12}"
-          f"{'Switch hops':>14}  Links used")
+    print(f"{'Case':<26}{'Form.':<7}{'Objective':<20}{'NumObj':>6}{'Epochs':>8}"
+          f"{'Host relay':>12}{'Switch hops':>14}  Links used")
     print("-" * 130)
     for label, topo_cls, passive, expectation in CASES:
         for formulation in FORMULATIONS:
@@ -61,6 +63,9 @@ def run_comparison():
                 m = metrics(solve(topology, objective_type, formulation))
                 results[(label, formulation, objective_name)] = m
                 print(_row(label, formulation, objective_name, m))
+                if m["tiers"]:
+                    print(f"{'':<53}Gurobi tier values: "
+                          + "  ".join(f"{name}={value:g}" for name, value in m["tiers"]))
         print(f"{'':<26}expected of LEXICOGRAPHIC: {expectation}")
         print("-" * 130)
     return results
