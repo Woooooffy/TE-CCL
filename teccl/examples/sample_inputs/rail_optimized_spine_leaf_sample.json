@@ -29,7 +29,7 @@
         "switch_pipeline": true,
         "debug": false,
         "debug_output_file": "",
-        "objective_type": 2,
+        "objective_type": 3,
         "solution_method": 1,
         "symmetry": true,
         "schedule_output_file": "teccl/examples/schedules/rail_optimized_spine_leaf_schedule_alltoall_long.json"

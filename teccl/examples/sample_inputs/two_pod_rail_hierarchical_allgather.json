@@ -34,7 +34,7 @@
         "collective": 1,
         "formulation": 2,
         "switch_copy": false,
-        "num_chunks": 1,
+        "num_chunks": 3,
         "epoch_type": 1,
         "epoch_multiplier": 1,
         "epoch_duration": -1,
