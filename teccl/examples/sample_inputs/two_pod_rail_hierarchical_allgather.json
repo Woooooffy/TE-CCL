@@ -15,7 +15,7 @@
     "TopologyParams": {
         "name": "TwoPodRail",
         "chassis": 1,
-        "chunk_size": 1
+        "chunk_size": 3
     },
     "GurobiParams": {
         "time_limit": 2,
@@ -37,7 +37,7 @@
             1
         ],
         "epoch_duration": [
-            0.0133333333333333333333333334,
+            0.04,
             -1
         ],
         "epoch_multiplier": 1,
