@@ -18,12 +18,23 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from teccl.input_data import TopologyParams                                  # noqa: E402
 from teccl.ncclize.port_split import (Flow, FlowLoad, assign_ports,          # noqa: E402
-                                      assert_port_capacity, flow_loads, port_loads)
+                                      assert_port_capacity, flow_loads, occupancy_grid,
+                                      port_loads, qualify_path_key, unqualify_path_key)
 from teccl.topologies.two_pod_rail import (TwoPodRailHostBound,              # noqa: E402
-                                           TwoPodRailHostBoundSplitPorts)
+                                           TwoPodRailHostBoundSplitPorts,
+                                           TwoPodRailSplitPorts)
 
 SCHEDULE = 'Schedules/two_pod_rail_hostbound_allgather_fast_epoch_flat.json'
-FINE_PER_COARSE = 1728
+SPINE_BOUND = 'Schedules/two_pod_rail_allgather_flat.json'
+# Every paced two_pod_rail schedule, with the split topology it was solved on.
+ALL_CASES = [
+    ('two_pod_rail_allgather_flat', TwoPodRailSplitPorts),
+    ('two_pod_rail_alltoall_flat', TwoPodRailSplitPorts),
+    ('two_pod_rail_hostbound_allgather_flat', TwoPodRailHostBoundSplitPorts),
+    ('two_pod_rail_hostbound_alltoall_flat', TwoPodRailHostBoundSplitPorts),
+    ('two_pod_rail_hostbound_allgather_fast_epoch_flat', TwoPodRailHostBoundSplitPorts),
+    ('two_pod_rail_hostbound_alltoall_fast_epoch_flat', TwoPodRailHostBoundSplitPorts),
+]
 
 _passed = []
 
@@ -176,8 +187,34 @@ def test_topology_ports_do_not_touch_the_solve():
 def _reference():
     topo = TwoPodRailHostBoundSplitPorts(TopologyParams())
     sched = json.load(open(SCHEDULE))
-    loads = flow_loads(sched, epoch_of=lambda e: e // FINE_PER_COARSE)
+    loads = flow_loads(sched, occupancy_grid(sched))
     return topo, loads
+
+
+def test_occupancy_grid_is_derived():
+    """The packing grid comes from the schedule, not from a hand-supplied divisor.
+
+    Every paced send here starts on a multiple of 1728 fine epochs and lasts exactly 1728, so
+    the gcd lands on 1728 and each send occupies exactly one grid epoch -- per-grid-epoch
+    occupancy is then per-fine-epoch occupancy exactly, with nothing approximated away.
+    """
+    sched = json.load(open(SCHEDULE))
+    occ = occupancy_grid(sched)
+    assert list(occ(0, 1.0, 0.520833)) == [0], list(occ(0, 1.0, 0.520833))
+    assert list(occ(1728, 1.0, 0.520833)) == [1], list(occ(1728, 1.0, 0.520833))
+    assert list(occ(10368, 1.0, 0.520833)) == [6]
+    ok("occupancy grid derived from the schedule (1728 fine epochs per grid epoch)")
+
+
+def test_path_key_qualification_round_trip():
+    """An unsplit route keeps its exact key; a split one takes the (switches, ports) form."""
+    assert qualify_path_key((24, 28, 26), [0, 0, 0, 0], False) == (24, 28, 26)
+    assert unqualify_path_key((24, 28, 26)) == ((24, 28, 26), None)
+    q = qualify_path_key((24, 28, 26), [0, 1, 0, 0], True)
+    assert q == ((24, 28, 26), (0, 1, 0, 0)), q
+    assert unqualify_path_key(q) == ((24, 28, 26), (0, 1, 0, 0))
+    assert unqualify_path_key(None) == (None, None)
+    ok("path key qualification is opt-in and round-trips")
 
 
 def test_reference_schedule():
@@ -212,6 +249,105 @@ def test_path_keys_unchanged():
     ha = collections.Counter(len(v) for v in after.values())
     assert hb == ha == collections.Counter({1: 104, 2: 64}), (hb, ha)
     ok("per-(src,dst) path-key count unchanged: {1: 104, 2: 64}")
+
+
+def test_spine_bound_exercises_the_bucket_split():
+    """The SLACK instance -- the one the host-bound schedule cannot provide.
+
+    In the host-bound config every leaf uplink is pinned at line rate, so no in-port bucket can
+    exceed a port and the packing has nothing to decide. Spine-bound (GPU_LEAF_BW = 50) leaves
+    the GPU->leaf links with headroom, one ingress bucket outgrows a 25 GB/s port, and the
+    bucket is broken up at FLOW granularity: 5 combos rather than the floor of 4, which is
+    exactly the transportation bound r + c - 1 = 4 + 2 - 1. Still zero flow splits.
+    """
+    topo = TwoPodRailSplitPorts(TopologyParams())
+    sched = json.load(open(SPINE_BOUND))
+    loads = flow_loads(sched, occupancy_grid(sched))
+    a = assign_ports(loads, topo.port_count, topo.port_capacity)
+    assert_port_capacity(loads, a, topo.port_count, topo.port_capacity)
+    assert not a.splits, a.splits
+    for leaf in range(24, 28):
+        assert a.combos[((leaf, 28), 1)] == 5, (leaf, a.combos[((leaf, 28), 1)])   # bucket split
+        assert a.combos[((28, leaf), 2)] == 2, (leaf, a.combos[((28, leaf), 2)])   # at the floor
+        for link in ((leaf, 28), (28, leaf)):
+            pl = port_loads(loads, a, link)
+            for q in (0, 1):
+                assert all(abs(v - 25.0) < 1e-3 for v in pl[q].values()), (link, q, pl[q])
+    ok("spine-bound config: bucket split to 5 combos (bound r+c-1), still 0 flow splits")
+
+
+def test_every_paced_two_pod_rail_schedule():
+    """Breadth: both collectives, both configs, both epoch granularities."""
+    for name, cls in ALL_CASES:
+        topo = cls(TopologyParams())
+        sched = json.load(open(f'Schedules/{name}.json'))
+        loads = flow_loads(sched, occupancy_grid(sched))
+        a = assign_ports(loads, topo.port_count, topo.port_capacity)
+        assert_port_capacity(loads, a, topo.port_count, topo.port_capacity)
+        assert not a.splits, f"{name}: {len(a.splits)} flow splits"
+    ok(f"all {len(ALL_CASES)} paced two_pod_rail schedules split with 0 flow splits")
+
+
+def test_ncclize_emission():
+    """Step 4: the port reaches the emitted program, and costs no channels.
+
+    Skipped without the ncclize deps (lxml); everything above runs with none.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from teccl_ncclize import build_algorithm, build_switch_routes
+    except ImportError as e:
+        print(f"  [SKIP] ncclize emission ({e})")
+        return
+    sched = json.load(open(SCHEDULE))
+
+    def emit(topo):
+        algo, fpk, srm, _view, _rate, gates = build_algorithm(sched, topology=topo)
+        ids, manifest = {}, []
+        for si, step in enumerate(algo.steps):            # taccl's route bijection, mirrored
+            for addr, src, dst in step.sends:
+                key = fpk.get((si, addr, src, dst))
+                fid = ids.setdefault((src, dst, key), len(ids))
+                manifest.append({'flow_id': fid, 'step': si, 'src': src, 'dst': dst,
+                                 'path_key': key})
+        routes = build_switch_routes(manifest, srm, topo.programmable_switch_indices)
+        per_edge = collections.defaultdict(set)
+        for (_si, _a, src, dst), key in fpk.items():
+            per_edge[(src, dst)].add(key)
+        return fpk, routes, manifest, len(ids), len(gates), \
+            collections.Counter(len(v) for v in per_edge.values())
+
+    f0, r0, _m0, n0, g0, c0 = emit(TwoPodRailHostBound(TopologyParams()))
+    f1, r1, m1, n1, g1, c1 = emit(TwoPodRailHostBoundSplitPorts(TopologyParams()))
+
+    assert c0 == c1 == collections.Counter({1: 104, 2: 64}), (c0, c1)
+    assert n0 == n1, f"route count changed: {n0} -> {n1}"
+    assert g0 == g1, f"pacing gate count changed: {g0} -> {g1} (path keys and gate keys disagree)"
+    assert f0 != f1, "the split topology should have produced port-qualified keys"
+
+    # The emitted forwarding table gains next_hop_port and changes in no other way.
+    def without_port(routes):
+        return {s: {f: {k: v for k, v in e.items() if k != 'next_hop_port'}
+                    for f, e in sw.items()} for s, sw in routes['switches'].items()}
+    assert without_port(r0) == without_port(r1), "the split perturbed the forwarding table"
+    assert r0['switch_id_map'] == r1['switch_id_map']
+
+    # Every programmed port matches the hop it leaves on in the route's own port tuple.
+    inv = {int(d): raw for d, raw in r1['switch_id_map'].items()}
+    checked = 0
+    for rec in m1:
+        switches, ports = unqualify_path_key(rec['path_key'])
+        if ports is None:
+            continue
+        for i, raw in enumerate(switches):
+            dense = [d for d, r in inv.items() if r == raw]
+            if not dense:
+                continue
+            entry = r1['switches'][str(dense[0])][str(rec['flow_id'])]
+            assert entry['next_hop_port'] == ports[i + 1], (rec, entry)
+            checked += 1
+    assert checked, "no port-qualified entry reached the forwarding table"
+    ok(f"emission: channels/routes/gates unchanged, {checked} next_hop_port entries verified")
 
 
 def test_negative_control_random_hash():
@@ -254,10 +390,16 @@ def main():
     test_hairpin_is_rejected()
     print(" topology")
     test_topology_ports_do_not_touch_the_solve()
+    test_path_key_qualification_round_trip()
     print(" regression -- two_pod_rail_hostbound_allgather_fast_epoch_flat")
+    test_occupancy_grid_is_derived()
     test_reference_schedule()
     test_path_keys_unchanged()
+    test_spine_bound_exercises_the_bucket_split()
+    test_every_paced_two_pod_rail_schedule()
     test_negative_control_random_hash()
+    print(" emission")
+    test_ncclize_emission()
     print(f"\n{len(_passed)} passed")
 
 

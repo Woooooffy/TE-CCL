@@ -328,6 +328,19 @@ def two_pod_rail_variant(name: str = "TwoPodRailVariant",
     return type(name, (TwoPodRail,), attrs)
 
 
+class TwoPodRailSplitPorts(TwoPodRail):
+    """`TwoPodRail` (the SPINE-BOUND config, H = 50) with spine0 as two 25 GB/s ports.
+
+    The sibling of TwoPodRailHostBoundSplitPorts, and the one that exercises the port split's
+    packing choices rather than just its arithmetic. In the host-bound config every leaf uplink
+    runs at exactly line rate, so per-port balance is FORCED by capacity and every fit rule and
+    bucket ordering produces the same assignment. Here the binding cut is the spine layer and
+    the GPU->leaf links carry slack, so the buckets arriving at a leaf are not all pinned and
+    the placement rule has something to decide.
+    """
+    LEAF_SPINE_PORTS = (2, 1)
+
+
 class TwoPodRailHostBoundSplitPorts(TwoPodRailHostBound):
     """`TwoPodRailHostBound` with spine0's 50 GB/s links realized as TWO 25 GB/s ports.
 

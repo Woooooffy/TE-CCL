@@ -131,23 +131,21 @@ _FLOW_RE = re.compile(
 )
 
 
-def flow_loads(schedule: dict, epoch_of: Optional[Callable[[int], int]] = None,
-               window: Optional[Callable[[int, float, float], Iterable[int]]] = None,
+def flow_loads(schedule: dict,
+               occupancy: Optional[Callable[[int, float, float], Iterable[int]]] = None,
                ) -> List[FlowLoad]:
     """Group a schedule's "7-Flows" lines into flows carrying a per-epoch rate.
 
-    `epoch_of` maps a schedule epoch to the grid the packing runs on. The default is identity;
-    pass `lambda e: e // fine_per_coarse` to pack on the coarse grid a hierarchical schedule's
-    network flows were actually paced against, which is both correct and much cheaper (see
-    "keep d small" in the design note).
+    `occupancy(epoch, volume, rate)` yields every GRID epoch a send occupies -- one callable,
+    not a separate epoch remap plus a window, because the two do not compose: a send spanning
+    many fine epochs occupies one grid epoch at its rate, it does not deposit that rate once per
+    fine epoch. `occupancy_grid()` builds the right one for a schedule.
 
-    `window(epoch, volume, rate)` yields every epoch a send occupies. The default is the single
-    epoch it starts in, which is exact under the fill-one-epoch pacing rule
-    (`reconstruct._piece_rate`): a piece's rate is defined so that it finishes at its epoch
-    boundary. A sub-rate multi-epoch send needs a wider window, and the caller has the
-    epoch duration needed to compute one.
+    The default is `(epoch,)`: the send occupies exactly the epoch it starts in, which is what a
+    flat schedule does and what the fill-one-epoch pacing rule (`reconstruct._piece_rate`) makes
+    true on any level's own grid.
     """
-    eo = epoch_of or (lambda e: e)
+    occ = occupancy or (lambda e, v, r: (e,))
     acc: Dict[Flow, Dict[int, float]] = defaultdict(lambda: defaultdict(float))
     seen: set = set()
     for line in schedule['7-Flows']:
@@ -164,11 +162,54 @@ def flow_loads(schedule: dict, epoch_of: Optional[Callable[[int], int]] = None,
         rate = float(m.group('rate'))
         volume = float(m.group('volume') or 1.0)
         epoch = int(m.group('epoch'))
-        for e in (window(epoch, volume, rate) if window else (epoch,)):
-            acc[flow][eo(e)] += rate
+        for e in occ(epoch, volume, rate):
+            acc[flow][e] += rate
     loads = [FlowLoad(f, dict(acc[f])) for f in sorted(acc, key=str)]
     loads += [FlowLoad(f, {}) for f in sorted(seen - set(acc), key=str)]
     return loads
+
+
+def occupancy_grid(schedule: dict, subdivision: int = 1
+                   ) -> Callable[[int, float, float], Iterable[int]]:
+    """Derive a schedule's occupancy callable, without being told the grid.
+
+    A paced send occupies its link for `volume / rate` seconds, i.e. for
+    `chunk_size / (M * rate * delta)` FINE epochs -- the same duration `parse_flows_lp`
+    computes for its pacing gates. So the honest occupancy axis is the fine one, and on it a
+    hierarchical schedule's network sends each span many epochs (1728 of them on the reference
+    schedule, where one coarse epoch is 1728 fine ones).
+
+    Packing per fine epoch would be correct and unaffordable. Instead take `g`, the gcd of
+    every send's start AND duration: that is the coarsest grid on which every paced send both
+    starts and ends on a boundary, so per-grid-epoch occupancy is EXACTLY per-fine-epoch
+    occupancy, with no approximation. On the reference schedule g comes out 1728 and every send
+    spans one grid epoch; on a flat schedule g is 1 and nothing changes.
+
+    A schedule mixing levels with incommensurate pacing lands on g = 1 and pays the fine axis.
+    That is the honest cost of the case, not a silent degradation -- and `window` still yields
+    the exact epoch set, so the result is right either way.
+    """
+    delta = schedule['1-Epoch_Duration']
+    chunk = schedule.get('9-Chunk_Size', 1.0)
+    from math import gcd
+    g = 0
+    spans = {}
+    for line in schedule['7-Flows']:
+        m = _FLOW_RE.match(line)
+        if m is None or m.group('rate') is None:
+            continue
+        rate = float(m.group('rate'))
+        start = int(m.group('epoch'))
+        dur = max(1, round(chunk / (subdivision * rate * delta)))
+        spans[(start, rate)] = dur
+        g = gcd(g, start, dur)
+    g = max(1, g)
+
+    def occupancy(epoch: int, volume: float, rate: float) -> Iterable[int]:
+        dur = spans.get((epoch, rate)) or max(1, round(chunk / (subdivision * rate * delta)))
+        return range(epoch // g, (epoch + dur) // g)
+
+    return occupancy
 
 
 # ----------------------------------------------------------------------------------------------
@@ -355,6 +396,34 @@ def _piece_split(fl: FlowLoad, used: Dict[int, Dict[int, float]], nports: int, c
         if left > tol:
             return None
     return dict(share)
+
+
+def qualify_path_key(path_key, ports: Sequence[int], any_split: bool):
+    """The port-qualified form of a `_parse_switch_path` key: `(switches, ports)`.
+
+    Returns the key UNCHANGED when the route touches no multi-port link, so a topology that
+    declares no ports -- i.e. every topology today -- produces byte-identical output through
+    every downstream consumer. Only a genuinely split route takes the new shape.
+
+    `ports` has one entry per HOP, so it is one longer than `switches`: hop i is the link INTO
+    switch i, and the final hop is the last switch to the destination GPU.
+    """
+    if not any_split:
+        return path_key
+    return (tuple(path_key or ()), tuple(ports))
+
+
+def unqualify_path_key(path_key) -> Tuple[Optional[Tuple[int, ...]], Optional[Tuple[int, ...]]]:
+    """Split a path key back into (switches, ports), with ports None if it carries none.
+
+    The single place that knows the qualified key's shape, so consumers that need the raw
+    switch sequence (`build_switch_routes`) do not each re-implement the discrimination. A plain
+    key is a tuple of ints; a qualified one is a 2-tuple whose first element is itself a tuple.
+    """
+    if (isinstance(path_key, tuple) and len(path_key) == 2
+            and isinstance(path_key[0], tuple) and isinstance(path_key[1], tuple)):
+        return path_key[0], path_key[1]
+    return path_key, None
 
 
 # ----------------------------------------------------------------------------------------------

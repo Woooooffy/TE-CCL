@@ -79,7 +79,7 @@ def _parse_switch_path(switches):
     return tuple(int(s.strip()) for s in switches.split('->'))
 
 
-def parse_flows(schedule):
+def parse_flows(schedule, port_qualify=None):
     """Group TE-CCL's '7-Flows' entries by epoch, remapping GPU ids to a dense
     0-indexed range.
 
@@ -133,6 +133,12 @@ def parse_flows(schedule):
         raw_ids.update((origin, src, dst))
         if path_key:
             switch_raw_ids.update(path_key)
+        # Port qualification happens HERE, not on the way out, so that every downstream key
+        # built from a path key -- flow_path_keys, paced_sends and therefore the pacing gates --
+        # agrees. Rewriting flow_path_keys after the fact would leave the gate manifest keyed on
+        # the unqualified form and silently drop every gate.
+        if port_qualify is not None:
+            path_key = port_qualify(src, dst, path_key)
         max_subchunk = max(max_subchunk, subchunk)
         parsed.append((epoch, subchunk, origin, src, dst, path_key))
 
@@ -394,7 +400,7 @@ def _finish_before_start_gates(paced_sends):
     return edges
 
 
-def parse_flows_lp(schedule, collective_name):
+def parse_flows_lp(schedule, collective_name, port_qualify=None):
     """Parse an LP schedule (any collective) the way parse_flows() does for the
     allgather MILP, but generate sends from the nested "8-Chunk paths" so each
     chunk's multipath decomposition can be split into disjoint integer sub-chunk
@@ -477,6 +483,8 @@ def parse_flows_lp(schedule, collective_name):
                 raw_ids.update((hop_src_raw, hop_dst_raw))
                 if path_key:
                     switch_raw_ids.update(path_key)
+                if port_qualify is not None:      # see the note in parse_flows()
+                    path_key = port_qualify(hop_src_raw, hop_dst_raw, path_key)
                 volumes.append(_segment_volume(sm))
                 hops.append((hop_epoch, hop_src_raw, hop_dst_raw, path_key,
                              None if rate is None else float(rate)))
@@ -696,26 +704,40 @@ def build_switch_routes(flow_manifest, switch_rank_map, programmable_switches=No
                     enumerate(sorted(s for s in switch_rank_map
                                      if s in programmable_switches))}
 
+    try:                                  # sibling module; see _build_port_qualifier
+        from port_split import unqualify_path_key
+    except ImportError:
+        from teccl.ncclize.port_split import unqualify_path_key
+
     routes = defaultdict(dict)
     for record in flow_manifest:
-        path_key = record['path_key']
-        if not path_key:
+        raw_key, ports = unqualify_path_key(record['path_key'])
+        if not raw_key:
             continue  # direct GPU-GPU link, no switch hop involved
-        switch_path = tuple(rank_map[s] for s in path_key if s in rank_map)
-        if not switch_path:
+        # Keep each surviving switch's ORIGINAL index: its physical egress port is the port of
+        # the hop leaving IT, which is unaffected by whether the switches after it were filtered
+        # out as self-routing. Chaining past a skipped switch changes the next hop, not the wire
+        # the packet leaves on.
+        kept = [(i, rank_map[s]) for i, s in enumerate(raw_key) if s in rank_map]
+        if not kept:
             continue  # entirely self-routing (e.g. an intra-node NVSwitch hop)
+        switch_path = [dense for _, dense in kept]
         flow_id, src, dst = (
             record['flow_id'], record['src'], record['dst'])
-        for i, switch in enumerate(switch_path):
+        for i, (orig_idx, switch) in enumerate(kept):
             is_last = i == len(switch_path) - 1
             next_hop_type = 'gpu' if is_last else 'switch'
             next_hop = dst if is_last else switch_path[i + 1]
-            routes[switch][flow_id] = {
+            entry = {
                 'next_hop_type': next_hop_type,
                 'next_hop': next_hop,
                 'src_gpu': src,
                 'dst_gpu': dst,
             }
+            if ports is not None:
+                # ports has one entry per hop, so hop orig_idx+1 is the one LEAVING this switch.
+                entry['next_hop_port'] = ports[orig_idx + 1]
+            routes[switch][flow_id] = entry
 
     return {
         'switch_id_map': {str(dense): raw for raw, dense in sorted(
@@ -820,6 +842,56 @@ def _build_collective(collective_name, num_nodes, root_dense):
         f"No taccl collective mapping for {collective_name!r}")
 
 
+def _build_port_qualifier(schedule, topology, lp_format):
+    """Run the post-solve port split and return (qualify, assignment), or (None, None).
+
+    Returns None unless the topology actually declares a multi-port link, so every topology
+    today -- none of which do -- takes exactly the path it takes now, with no port machinery in
+    the emitted output at all.
+
+    The split is computed once, here, from the schedule and the real fine topology, and the
+    resulting per-(flow, link) port is folded into the path key at parse time. That makes the
+    port part of a route's IDENTITY, which is what the two consumers need: the channel allocator
+    partitions each edge's flows by path key, and the flow id is a bijection with (src, dst,
+    path key), so two flows down the same switch sequence on different ports get different flow
+    ids and therefore different forwarding entries.
+
+    The capacity assert runs before anything is emitted: if the split cannot fit the schedule
+    onto real ports, that is a fact about the topology and the solve, and it should stop the
+    emission rather than silently produce a program that overruns a port.
+    """
+    if topology is None or not getattr(topology, 'ports', None):
+        return None, None
+    try:                                  # sibling module; this file runs both as a script
+        from port_split import (Flow, assign_ports, assert_port_capacity,   # noqa: E402
+                                flow_loads, occupancy_grid, qualify_path_key)
+    except ImportError:                   # ... and as part of the teccl package
+        from teccl.ncclize.port_split import (Flow, assign_ports, assert_port_capacity,
+                                              flow_loads, occupancy_grid, qualify_path_key)
+
+    subdivision = _compute_subdivision(schedule) if lp_format else 1
+    loads = flow_loads(schedule, occupancy_grid(schedule, subdivision))
+    assignment = assign_ports(loads, topology.port_count, topology.port_capacity)
+    assert_port_capacity(loads, assignment, topology.port_count, topology.port_capacity)
+
+    def qualify(src_raw, dst_raw, path_key):
+        flow = Flow(src_raw, tuple(path_key or ()), dst_raw)
+        hops = flow.hops()
+        any_split = any(topology.port_count(*h) > 1 for h in hops)
+        if not any_split:
+            return path_key
+        try:
+            ports = [assignment.port[(flow, h)] for h in hops]
+        except KeyError:
+            raise AssertionError(
+                f"route {flow} appears in the schedule section this parser reads but not in "
+                f"'7-Flows', which the port split was computed from; the two sections "
+                f"disagree about which routes exist")
+        return qualify_path_key(path_key, ports, any_split)
+
+    return qualify, assignment
+
+
 def build_algorithm(schedule, name='teccl', topology=None):
     """Build the taccl Algorithm from a TE-CCL schedule.
 
@@ -839,11 +911,12 @@ def build_algorithm(schedule, name='teccl', topology=None):
     # own flat format.
     collective_name = detect_collective(schedule)
     lp_format = is_lp_format(schedule)
+    port_qualify, _port_assignment = _build_port_qualifier(schedule, topology, lp_format)
 
     if lp_format:
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
          sorted_epochs, flow_completion_epochs, flow_rates, root_dense,
-         pacing_gates) = parse_flows_lp(schedule, collective_name)
+         pacing_gates) = parse_flows_lp(schedule, collective_name, port_qualify)
         collective = _build_collective(collective_name, num_nodes, root_dense)
     else:
         # parse_flows labels chunks src-major (rank_map[origin] * S + subchunk), so
@@ -855,7 +928,7 @@ def build_algorithm(schedule, name='teccl', topology=None):
                 "MILP-format schedules use src-major chunk labels, which cannot "
                 "represent alltoall's destination-major chunk identity.")
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-         sorted_epochs, flow_completion_epochs) = parse_flows(schedule)
+         sorted_epochs, flow_completion_epochs) = parse_flows(schedule, port_qualify)
         flow_rates = {}
         collective = _build_collective(collective_name, num_nodes,
                                        schedule.get('0-Root'))

@@ -154,15 +154,35 @@ split costs one channel against a cap of 32, an overloaded port costs the makesp
 
 Expected on the reference schedule: ZERO splits.
 
-## 6. Channel cost -- what the split actually costs
+## 6. Emission -- how the port reaches the program
 
-Nothing, at flow granularity. Channels are allocated per `(srcGPU, dstGPU)` EDGE
-(`taccl_ncclize._allocate_channels_match_topology`: `chan = path_idx * link + rr`, with
-`path_indices` a dict per edge), and each flow keeps exactly one port-qualified tuple, so the
-per-edge distinct-path-key count is unchanged. Measured before the split: 104 edges with 1 key,
-64 with 2, max 2, against `max_channels = 32`. Only a SPLIT flow adds a key.
+The port is folded into the path key AT PARSE TIME (`parse_flows` / `parse_flows_lp` take a
+`port_qualify` callable), not rewritten afterwards. That is load-bearing: `parse_flows_lp` also
+builds `paced_sends` from the path key, and the pacing gate manifest is keyed on
+`(step, gpu, peer, path_key)`. Rewriting the keys after parsing would leave the gates keyed on
+the unqualified form and `_realize_pacing_gates` would silently match nothing.
 
-This is why in-port affinity is a tiebreak and not an objective: it was never buying channels.
+The qualified key is `(switches, ports)`, with one port per HOP -- one longer than `switches`,
+since hop i is the link INTO switch i. `qualify_path_key` returns the key UNCHANGED when the
+route touches no multi-port link, so a topology that declares no ports (every topology today)
+produces byte-identical output through every consumer. `unqualify_path_key` is the one place
+that knows the shape.
+
+Two consumers need it, and both get it for free from the key:
+
+* **Channels.** Allocated per `(srcGPU, dstGPU)` EDGE
+  (`_allocate_channels_match_topology`: `chan = path_idx * link + rr`, `path_indices` a dict per
+  edge). Each flow keeps exactly one port-qualified tuple, so the per-edge key count is
+  unchanged: measured 104 edges with 1 key, 64 with 2, against `max_channels = 32`, identical
+  before and after. Only a SPLIT flow adds one. This is why in-port affinity is a tiebreak and
+  not an objective -- it was never buying channels.
+* **Forwarding.** A flow id is a bijection with `(src, dst, path_key)`, so two flows down the
+  same switch sequence on different ports now get different flow ids and therefore different
+  entries. `build_switch_routes` emits `next_hop_port` on each entry: for a programmable switch
+  at original index i, that is `ports[i+1]`, the port of the hop LEAVING it. The original index
+  is kept while filtering non-programmable switches, because chaining past a self-routing switch
+  changes the next hop, not the wire the packet leaves on. The key is added only when the route
+  carries ports, so an unsplit table is byte-identical.
 
 ## 7. Validation
 
@@ -179,15 +199,33 @@ This is why in-port affinity is a tiebreak and not an objective: it was never bu
   (heavy-first vs arbitrary).
 * Negative control: a random per-`(flow, link)` port hash is 0/20000 feasible, median max port
   load 72/48 = **1.50x** makespan inflation. The pass must produce <= 48.
+* Emission: channels per edge, route count and pacing-gate count all unchanged, and every
+  `next_hop_port` in the forwarding table matches its route's own port tuple.
 
 ## 8. Build order
 
-1. `ports` on `Topology` + `TwoPodRailHostBoundSplitPorts`, defaults 1 everywhere. No behavior
-   change; verify byte-identical solver output.
-2. `port_split.py`: hop sweep + local solver. Unit-test the structural cases on synthetic
-   single-link inputs.
-3. Port-granular capacity assert; run against the existing schedule as a read-only check.
-   **This is the go/no-go.**
-4. Fold the port into `_parse_switch_path`'s key; verify per-edge channel counts unchanged.
-5. Sweep to `GPU_LEAF_BW = 50` (spine-bound `TwoPodRail`), where the leaf uplinks have slack,
-   to actually exercise the fit rule and the skew path.
+1. DONE -- `ports` on `Topology` + `TwoPodRailHostBoundSplitPorts`, defaults 1 everywhere.
+   `capacity` and `alpha` verified byte-identical against the unsplit class.
+2. DONE -- `port_split.py`: hop sweep + local solver, plus `occupancy_grid` so the packing grid
+   is derived from the schedule rather than supplied.
+3. DONE (go/no-go) -- port-granular capacity assert. Reference schedule: exact 25/25 GB/s per
+   port on all 8 spine0 links, 0 flow splits, 4 combos per link (the floor).
+4. DONE -- port folded into the path key at parse time. Channels per edge `{1: 104, 2: 64}`,
+   route count and gate count all unchanged; forwarding table gains `next_hop_port` and changes
+   in no other way.
+5. DONE -- `two_pod_rail_allgather_flat` is the spine-bound (`GPU_LEAF_BW = 50`) instance and IS
+   paced, so no new solve was needed. It is the only case that exercises the packing: with
+   slack on the GPU->leaf links one ingress bucket outgrows a 25 GB/s port and is broken up at
+   flow granularity, giving 5 combos on each leaf->spine0 link -- the transportation bound
+   `r + c - 1 = 4 + 2 - 1` -- against 4 in the host-bound config. Still zero flow splits.
+   All six paced two_pod_rail schedules (both collectives, both configs, both epoch
+   granularities) split with zero flow splits and exact per-port balance.
+
+## 9. What is NOT covered
+
+The fit rule and the bucket ordering are still only discriminated by the synthetic tests. The
+spine-bound instance exercises the bucket-split path, but every spine0 link in every schedule
+here runs at exactly 100%, so per-port balance is forced by capacity and no fit rule can do
+worse. A topology with sustained partial utilisation on a multi-port link -- or a link used at
+several hop indices AND declaring more than one port, which none of these have -- is what would
+first distinguish them on real data.
