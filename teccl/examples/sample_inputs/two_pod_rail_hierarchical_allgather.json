@@ -1,0 +1,49 @@
+{
+    "_comment": "Hierarchical AllGather on the 30-node TwoPodRail (16 GPUs behind 8 NVSwitches, 4 leaves, 2 UNEQUAL spines). This is the MULTIPATH configuration: the spine cut binds, both spine links out of every leaf are saturated end to end, and the optimal split is forced to 2/3 via spine0 and 1/3 via spine1. Copy-free LP AllGather, matching the semantics the topology's cut analysis assumes. Run: python -m teccl solve -i teccl/examples/sample_inputs/two_pod_rail_hierarchical_allgather.json",
+    "_expected": "T* = 0.4267 (chunk_size 1 GB, num_chunks 1), spine-bound; GPU->leaf at 65.6%; per-GPU cross-pod 18.75 GB/s splitting 12.5 / 6.25 across the two spines, intra-pod 14.06 GB/s. An equal-split router would land at 0.64, i.e. 1.50x. COARSE LEVEL at num_chunks 3 (coarse chunk 6 GB): cross-pod demand 32 chunks against a 4-leaf spine cut, so with the root epoch pinned to 0.0133333 s the cut carries 0.6667 chunks/epoch and 32 / 0.6667 = 48 epochs EXACTLY -- finish 0.64 s, which is the continuous bound with zero ceiling loss (it was 0.72 s at the unpinned 0.12 s epoch). Expect: 48 epochs, host relay 0, and every leaf at ratio exactly 2.000 in both directions for all but the unsaturated tail.",
+    "_log_file": "A SUFFIX on the auto-generated Gurobi log name, not a path. The LP always writes Logs/{solver}_{topology}_{n}-nodes_{chunks}-chunks_{epochs}-epochs_{duration}-epoch_duration_{objective}[suffix].log whenever output_flag=1; this tag is what makes THIS run's logs separable from the many others that share those fields. Note Logs/ (capital L) is a different directory from logs/ on Linux -- scripts/run_two_pod_rail.sh collects them into logs/gurobi/. GurobiParams.log_to_console is a DEAD field: no solver reads it, and the LP hard-codes LogToConsole=0 whenever it writes the file, so Gurobi output can never reach the sbatch .out.",
+    "_notes": {
+        "collective/formulation": "1 = ALLGATHER, 2 = LP. The LP is required: the whole cut analysis is LP semantics (no replication, so every destination needs its own delivery across the spine cut). The MILP with switch copy solves a different problem and its makespan is NOT comparable to the numbers above.",
+        "switch_copy": "false is mandatory with LP AllGather -- get_solver rejects the combination outright.",
+        "num_chunks": "3 triples the PAYLOAD (3 x 1 GB per GPU); it does not refine the chunk. The coarse chunk becomes 6 GB and, under FASTEST_LINK, the epoch scales with it (0.04 -> 0.12), so the normalized problem -- demand in chunks over capacity in chunks per epoch -- is IDENTICAL to num_chunks 1 and the epoch count is unchanged at 6. It cannot affect the 32/6.0 = 5.33 cut ratio, which is dimensionless. Nor is it needed to express the 2:1 spine split: that comes from the capacities (1.0 on spine0 against 0.5 on spine1) and every volume in the solution is a half, never a third.",
+        "symmetry": "false, deliberately. TwoPodRail declares NO equivalent_node_indices: the spines differ in capacity (that asymmetry is the entire point of the topology) and no two leaves share a neighbor set, so there is nothing for symmetry to constrain.",
+        "objective_type": "3 = PAPER, matching the other hierarchical samples. Option 5 (TOTAL_DEMAND_MIN_SWITCH_HOPS) is worth an A/B here: it tie-breaks toward fewer switch->switch hops, which is the intra-pod cross-rail choice this analysis assumes goes over NVLink rather than detouring through a spine.",
+        "feasibility_tol": "1e-5, not the 1e-4 default. At 1e-4 the reconstruction chain's snap tolerance is 1.1e-4 against a grid radius of 1.22e-4 (MAX_DENOM=64) and the run logs 'identity-grid margin is thin' -- it passes with 11% to spare. 1e-5 gives 3x margin.",
+        "flat ground truth": "The fine topology is only 30 nodes, so the FLAT solve of the same problem is tractable and is what the hierarchical result should be validated against -- see two_pod_rail_flat_allgather.json.",
+        "epoch_type / epoch_duration": "PER-LEVEL LISTS, indexed by hierarchy depth (input_data.resolve_epoch_policy); depths past the end take the last entry, so [root, rest] is the whole idiom. The root is pinned to 0.04/3 = 0.0133333 s and every level below keeps the FASTEST_LINK default. Why: the epoch is the model's time quantum and the makespan is always a whole number of them, so the epoch decides the final ceiling loss. FASTEST_LINK sizes it from a LINK (the 50 GB/s spine uplink) which is unrelated to the CUT that binds (the 4-leaf spine cut) -- at 0.12 s that cost a whole epoch, 5.33 -> 6, i.e. 11%. A pinned root epoch makes the cut bound land on an integer instead. It must NOT apply below the root, where the fabric is a 900 GB/s NVSwitch and this value would be absurd -- which is the entire reason these fields became per-level."
+    },
+    "TopologyParams": {
+        "name": "TwoPodRail",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 2,
+        "feasibility_tol": 1e-05,
+        "intfeas_tol": 0.0001,
+        "optimality_tol": 0.0001,
+        "output_flag": 1,
+        "log_file": "_multipath_lex",
+        "log_to_console": 0,
+        "mip_gap": 0.0001
+    },
+    "InstanceParams": {
+        "collective": 1,
+        "formulation": 2,
+        "switch_copy": false,
+        "num_chunks": 1,
+        "epoch_type": 1,
+        "epoch_duration": -1,
+        "epoch_multiplier": 1,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": true,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": true,
+        "hierarchy_prefix": "two_pod_rail_allgather",
+        "hierarchy_side_outputs": true,
+        "schedule_output_file": "Schedules/two_pod_rail_allgather_flat.json"
+    }
+}

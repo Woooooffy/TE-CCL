@@ -23,23 +23,15 @@ Requirement already satisfied: python-dateutil>=2.7 in /data/commit/graphit/wang
 Requirement already satisfied: six>=1.5 in /data/commit/graphit/wangyj05/miniconda3/envs/teccl/lib/python3.14t/site-packages (from python-dateutil>=2.7->matplotlib!=3.6.1,>=3.4->seaborn->teccl==1.0.0) (1.17.0)
 Building wheels for collected packages: teccl
   Building wheel for teccl (pyproject.toml): started
-  Building wheel for teccl (pyproject.toml): finished with status 'done'
-  Created wheel for teccl: filename=teccl-1.0.0-py3-none-any.whl size=211970 sha256=de685d9f8ad3ce99da2d70c7ae73a024960520edf23b08950f3d3f882b68a96c
-  Stored in directory: /tmp/home/wangyj05/.cache/pip/wheels/2d/31/f1/88ef48e0a336b237a128de3fcf8e52662d1ed0bfbd5a678f6e
-Successfully built teccl
-Installing collected packages: teccl
-  Attempting uninstall: teccl
-    Found existing installation: teccl 1.0.0
-    Uninstalling teccl-1.0.0:
-      Successfully uninstalled teccl-1.0.0
-Successfully installed teccl-1.0.0
+  Building wheel for teccl (pyproject.toml): finished with status 'error'
+Failed to build teccl
 Set parameter WLSAccessID
 Set parameter WLSSecret
 Set parameter LicenseID to value 2766017
 Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
-Set parameter LogFile to value "Logs/ALLGATHER_LP_TwoPodRailHostBound_14-nodes_1-chunks_80-epochs_28.000245000000007-epoch_duration_ObjectiveType.TOTAL_DEMAND.log"
+Set parameter LogFile to value "Logs/ALLGATHER_LP_TwoPodRailHostBound_14-nodes_1-chunks_80-epochs_28.000245000000007-epoch_duration_ObjectiveType.TOTAL_DEMAND_hostbound_lex.log"
 Set parameter LogToConsole to value 0
-Set parameter LogFile to value "Logs/ALLGATHER_LP_TwoPodRailHostBound_14-nodes_1-chunks_88-epochs_0.04-epoch_duration_ObjectiveType.TOTAL_DEMAND.log"
+Set parameter LogFile to value "Logs/ALLGATHER_LP_TwoPodRailHostBound_14-nodes_1-chunks_88-epochs_0.04-epoch_duration_ObjectiveType.TOTAL_DEMAND_hostbound_lex.log"
 Set parameter LogToConsole to value 0
 
 ==============================================================================

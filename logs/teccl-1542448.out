@@ -24,7 +24,7 @@ Requirement already satisfied: six>=1.5 in /data/commit/graphit/wangyj05/minicon
 Building wheels for collected packages: teccl
   Building wheel for teccl (pyproject.toml): started
   Building wheel for teccl (pyproject.toml): finished with status 'done'
-  Created wheel for teccl: filename=teccl-1.0.0-py3-none-any.whl size=211970 sha256=d94733674e086c941d588d0b4a94326c1da820b1def068f8bcfdd838af5a09b3
+  Created wheel for teccl: filename=teccl-1.0.0-py3-none-any.whl size=222912 sha256=0a402dbbd2060bf32215e1d89cef6a9c821d485073622551bcc563492629ea68
   Stored in directory: /tmp/home/wangyj05/.cache/pip/wheels/2d/31/f1/88ef48e0a336b237a128de3fcf8e52662d1ed0bfbd5a678f6e
 Successfully built teccl
 Installing collected packages: teccl
@@ -1374,3 +1374,5 @@ RAW CONSUMED VARS  T_s_d_k = consumed_at_k[source s][dest d][epoch k]
 ==============================================================================
 
 Schedule written to Schedules/two_pod_rail_hostbound_alltoall_fast_epoch_coarse.json
+[flat] network pacing: every paced send's uplink is freed by a send finishing at its epoch; P2 pins them all to their coarse epoch
+Schedule written to Schedules/two_pod_rail_hostbound_alltoall_fast_epoch_flat.json

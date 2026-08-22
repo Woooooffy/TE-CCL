@@ -24,7 +24,7 @@ Requirement already satisfied: six>=1.5 in /data/commit/graphit/wangyj05/minicon
 Building wheels for collected packages: teccl
   Building wheel for teccl (pyproject.toml): started
   Building wheel for teccl (pyproject.toml): finished with status 'done'
-  Created wheel for teccl: filename=teccl-1.0.0-py3-none-any.whl size=220204 sha256=5ede8df3fe726b571c9b2bacc4dba6f972ca2264d78b6cc82ae304c2273db332
+  Created wheel for teccl: filename=teccl-1.0.0-py3-none-any.whl size=222912 sha256=32db5cb41b634941e62da419cdd8a876dabcb55b0e8b4ace2815dd9f72a09ff6
   Stored in directory: /tmp/home/wangyj05/.cache/pip/wheels/2d/31/f1/88ef48e0a336b237a128de3fcf8e52662d1ed0bfbd5a678f6e
 Successfully built teccl
 Installing collected packages: teccl
@@ -37,9 +37,9 @@ Set parameter WLSAccessID
 Set parameter WLSSecret
 Set parameter LicenseID to value 2766017
 Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
-Set parameter LogFile to value "Logs/ALLGATHER_LP_TwoPodRail_14-nodes_1-chunks_80-epochs_84.000245-epoch_duration_ObjectiveType.LEXICOGRAPHIC_multipath_lex.log"
+Set parameter LogFile to value "Logs/ALLGATHER_LP_TwoPodRail_14-nodes_1-chunks_80-epochs_28.000245000000007-epoch_duration_ObjectiveType.LEXICOGRAPHIC_multipath_lex.log"
 Set parameter LogToConsole to value 0
-Set parameter LogFile to value "Logs/ALLGATHER_LP_TwoPodRail_14-nodes_1-chunks_9-epochs_0.12-epoch_duration_ObjectiveType.LEXICOGRAPHIC_multipath_lex.log"
+Set parameter LogFile to value "Logs/ALLGATHER_LP_TwoPodRail_14-nodes_1-chunks_9-epochs_0.04-epoch_duration_ObjectiveType.LEXICOGRAPHIC_multipath_lex.log"
 Set parameter LogToConsole to value 0
 
 ==============================================================================
