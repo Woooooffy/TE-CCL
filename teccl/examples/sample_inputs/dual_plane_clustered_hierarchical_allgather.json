@@ -1,0 +1,44 @@
+{
+    "_comment": "Hierarchical AllGather on the 96-GPU dual-plane cluster (114 fine nodes -> 18 coarse), CLUSTERED placement: each host wholly on one leaf. A/B partner of dual_plane_scattered_hierarchical_allgather.json -- identical hardware, identical switch count, identical capacities; the ONLY difference is DualPlaneHeteroCluster._gpu_leaf.",
+
+    "_expected": "Host-uplink bound T* >= 0.880 s = 44 epochs, set by the 8-GPU hosts (704 GB across the host boundary / 800 GB/s of dual-plane egress). The spine cut is SLACK at 0.640 s, which is the whole point of a non-blocking fabric -- so LATENCY SHOULD TIE between clustered and scattered. The comparison lives in objective_type 5's switch-hop tie-breaker term: scattered puts 33.3% of cross-host GPU pairs on a shared leaf vs clustered's 22.6%, so scattered should show strictly FEWER leaf->spine hops at the same makespan. A latency DIFFERENCE means something is wrong (or an uplink got tapered).",
+
+    "_epoch_note": "epoch_duration is PINNED to 0.02 s (= 1/50 GB/s, the fine GPU->leaf link) rather than derived, and this is load-bearing for the A/B. Derived SLOWEST_LINK sizing would give the two placements DIFFERENT epochs -- SLOWEST_LINK reads the MIN coarse capacity, which is 400 GB/s clustered vs 100 GB/s scattered -- a 4x difference in quantum, giving 0.0025 s vs 0.0100 s -- so the makespans would differ by epoch quantization rather than by placement quality. Same epoch on both sides is what makes the comparison mean anything.",
+
+    "_known_failure": "The coarse LP can trip account_for_consume's 'assert consume == 0' on sub-feasibility-tol Gurobi flow noise (see the lp_extraction_feasibility_tol_noise note). feasibility_tol is tightened to 1e-6 here to make that less likely; if it still fires, that is the known extraction bug, not a topology problem.",
+
+    "TopologyParams": {
+        "name": "DualPlaneHeteroCluster",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 8,
+        "feasibility_tol": 1e-6,
+        "optimality_tol": 1e-6,
+        "output_flag": 1,
+        "log_file": "_dp_clustered_hier",
+        "log_to_console": 0,
+        "method": -1,
+        "crossover": -1
+    },
+    "InstanceParams": {
+        "collective": 1,
+        "formulation": 2,
+        "switch_copy": false,
+        "num_chunks": 1,
+        "epoch_type": 3,
+        "epoch_duration": 0.02,
+        "epoch_multiplier": 1,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": true,
+        "objective_type": 5,
+        "solution_method": 1,
+        "hierarchical": true,
+        "hierarchy_prefix": "dual_plane_clustered_allgather",
+        "hierarchy_side_outputs": true,
+        "schedule_output_file": "Schedules/dual_plane_clustered_allgather_flat.json"
+    }
+}

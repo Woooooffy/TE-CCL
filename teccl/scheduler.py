@@ -25,6 +25,8 @@ from teccl.topologies.star import Star
 from teccl.topologies.incast_switch import IncastSwitch
 from teccl.topologies.rail_optimized_spine_leaf import RailOptimizedSpineLeaf
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
+from teccl.topologies.dual_plane_hetero_cluster import (
+    DualPlaneHeteroCluster, DualPlaneHeteroClusterScattered)
 from teccl.topologies.two_pod_rail import TwoPodRail, TwoPodRailHostBound
 from teccl.topologies.nested_cluster import NestedCluster
 from teccl.topologies.topology import Topology
@@ -97,6 +99,10 @@ class TECCLSolver(object):
             return RailOptimizedSpineLeaf(topology_params)
         elif topology_params.name == "HeteroTaperedCluster":
             return HeteroTaperedCluster(topology_params)
+        elif topology_params.name == "DualPlaneHeteroCluster":
+            return DualPlaneHeteroCluster(topology_params)
+        elif topology_params.name == "DualPlaneHeteroClusterScattered":
+            return DualPlaneHeteroClusterScattered(topology_params)
         elif topology_params.name == "TwoPodRail":
             return TwoPodRail(topology_params)
         elif topology_params.name == "TwoPodRailHostBound":
