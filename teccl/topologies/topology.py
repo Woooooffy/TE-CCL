@@ -13,6 +13,11 @@ class Topology(ABC):
         self.chunk_size = topo_input.chunk_size
         self.capacity: List[List[float]] = []
         self.alpha: List[List[float]] = []
+        # Optional: how many PARALLEL PHYSICAL PORTS realize each modeled link. `capacity`
+        # stays the AGGREGATE, so the solver is unaffected -- it never reads this. A
+        # post-solve pass (teccl/ncclize/port_split.py) uses it to place each flow on one
+        # port of `capacity[i][j] / ports[i][j]`. Left empty => one port per link.
+        self.ports: List[List[int]] = []
         self.switch_indices: List[int] = []
         self.equivalent_node_indices: List[List[int]] = []
         # Optional hierarchy: groups of fine nodes (e.g. an 8-GPU + NVSwitch host) that a
@@ -29,6 +34,7 @@ class Topology(ABC):
             self.capacity) > 0, "Link capacities not set in the construct_topology function"
         assert len(
             self.alpha) > 0, "Link alphas not set in the construct_topology function "
+        self._check_ports()
         self.get_epoch_duration_fast_link()
         self.get_epoch_duration_slow_link()
         self.set_switch_indicies()
@@ -42,6 +48,37 @@ class Topology(ABC):
         assert set(self.programmable_switch_indices) <= set(self.switch_indices), \
             "programmable_switch_indices must be a subset of switch_indices"
         self.build_hierarchy()
+
+    def _check_ports(self) -> None:
+        """Validate an optional `ports` matrix, or leave it empty (== one port everywhere).
+
+        Checked here rather than in each construct_topology so a subclass only has to set the
+        entries it splits. The equal-width restriction is real: `port_split` divides the
+        aggregate evenly, so an odd split would have to be expressed as a list of per-port
+        capacities instead of a count.
+        """
+        if not self.ports:
+            return
+        n = len(self.capacity)
+        assert len(self.ports) == n and all(len(r) == n for r in self.ports), \
+            "ports must be the same shape as capacity"
+        for i in range(n):
+            for j in range(n):
+                p = self.ports[i][j]
+                assert p >= 1 and int(p) == p, f"ports[{i}][{j}] = {p} must be a positive int"
+                assert self.ports[i][j] == self.ports[j][i], \
+                    f"ports must be symmetric; ports[{i}][{j}] != ports[{j}][{i}]"
+                if p > 1:
+                    assert self.capacity[i][j] > 0, \
+                        f"ports[{i}][{j}] = {p} on an unused link"
+
+    def port_count(self, i: int, j: int) -> int:
+        """Parallel physical ports realizing link (i, j); 1 unless declared otherwise."""
+        return self.ports[i][j] if self.ports else 1
+
+    def port_capacity(self, i: int, j: int) -> float:
+        """Bandwidth of ONE port of link (i, j), in the same units as `capacity`."""
+        return self.capacity[i][j] / self.port_count(i, j)
 
     @abstractmethod
     def construct_topology(self, topo_input: TopologyParams) -> None:

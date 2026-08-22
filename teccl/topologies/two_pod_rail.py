@@ -134,6 +134,11 @@ class TwoPodRail(Topology):
     GPU_LEAF_BW = 50.0                  # H -- the swept knob; see the class docstring
     LEAF_SPINE_BW = (50.0, 25.0)        # per spine; unequal ON PURPOSE
 
+    # Parallel physical ports per leaf<->spine link. The AGGREGATE stays LEAF_SPINE_BW, so the
+    # solver is identical for any value here; only the post-solve port split (port_split.py)
+    # reads it. See TwoPodRailHostBoundSplitPorts.
+    LEAF_SPINE_PORTS = (1, 1)
+
     NVLINK_ALPHA = 0.35 * pow(10, -6)
     NETWORK_ALPHA = 0.7 * pow(10, -6)
 
@@ -202,6 +207,18 @@ class TwoPodRail(Topology):
             self.capacity[j][i] = cap
             self.alpha[i][j] = alpha
             self.alpha[j][i] = alpha
+
+        # Parallel-port declaration. Structurally invisible: `capacity` above is untouched, so
+        # every solve is bit-for-bit identical whatever LEAF_SPINE_PORTS says.
+        if any(p > 1 for p in self.LEAF_SPINE_PORTS):
+            assert len(self.LEAF_SPINE_PORTS) == self.NUM_SPINE, \
+                "LEAF_SPINE_PORTS must give one port count per spine"
+            self.ports = [[1] * total_nodes for _ in range(total_nodes)]
+            for leaf in range(self.NUM_LEAF):
+                pod, rail = divmod(leaf, self.GPUS_PER_NODE)
+                for s in range(self.NUM_SPINE):
+                    i, j = self._leaf(pod, rail), self._spine(s)
+                    self.ports[i][j] = self.ports[j][i] = self.LEAF_SPINE_PORTS[s]
 
         # No twins, deliberately. The spines differ in capacity (that asymmetry is the point of
         # the topology) and no two leaves share a neighbor set. If LEAF_SPINE_BW is ever made
@@ -309,3 +326,20 @@ def two_pod_rail_variant(name: str = "TwoPodRailVariant",
     if nvlink_bw is not None:
         attrs["NVLINK_BW"] = float(nvlink_bw)
     return type(name, (TwoPodRail,), attrs)
+
+
+class TwoPodRailHostBoundSplitPorts(TwoPodRailHostBound):
+    """`TwoPodRailHostBound` with spine0's 50 GB/s links realized as TWO 25 GB/s ports.
+
+    Identical graph, identical capacities, identical solve -- `capacity[leaf][spine0]` is still
+    50, so the solver's feasibility statement is unchanged and every schedule this class
+    produces is byte-for-byte what TwoPodRailHostBound produces. The only difference is the
+    `ports` matrix, which nothing upstream of teccl/ncclize/port_split.py reads.
+
+    With the split the whole fabric is uniformly 25 GB/s per port: 4 downlinks + 2 up-ports to
+    spine0 + 1 up-port to spine1 on each leaf, for the same 75 GB/s of uplink. That makes the
+    leaf a permanent fan-in/fan-out mismatch (4 single-port downlinks against a 2-port and a
+    1-port uplink), which is exactly the case an in-port -> out-port identity mapping cannot
+    serve -- see port_split_design.md section 4.
+    """
+    LEAF_SPINE_PORTS = (2, 1)
