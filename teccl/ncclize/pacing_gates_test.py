@@ -82,7 +82,96 @@ def main():
           {(0, 0, 1, (9, 5)): (0, 1), (1, 0, 2, (9, 6)): (1, 2)},
           [((1, 0, 2, (9, 6)), (0, 0, 1, (9, 5)))])
 
+    realization_tests()
     print("pacing gate tests OK")
+
+
+def _load_taccl_ncclize():
+    """Import taccl_ncclize with lxml/z3 stubbed out.
+
+    The module pulls both in at import time for parts this test never touches (XML
+    serialization uses the same ElementTree API; z3 is only used by scratch remapping),
+    so stubbing keeps the gate tests runnable in a bare env, matching this file's docstring.
+    """
+    import types
+    import xml.etree.ElementTree as _ET
+    lxml = types.ModuleType('lxml'); lxml.etree = _ET
+    sys.modules.setdefault('lxml', lxml)
+    sys.modules.setdefault('lxml.etree', _ET)
+    sys.modules.setdefault('z3', types.ModuleType('z3'))
+    import taccl_ncclize
+    return taccl_ncclize
+
+
+def realization_tests():
+    """_realize_pacing_gates puts the edge on net_dep (never depends), and
+    _assert_gates_acyclic catches the deadlock the runtime would otherwise hang on."""
+    T = _load_taccl_ncclize()
+
+    def send(gpu, peer, step):
+        return T._Op(gpu, peer, step, True, 's', 'i', 0, 'o', 0, 1, [])
+
+    def build(tb_specs):
+        """tb_specs: list of (rbid, [ops]) for one gpu; returns (gpus, ops)."""
+        gpu = T._Gpu([], {}, {}, 0, 0)
+        gpu.threadblocks = []
+        for rbid, ops in tb_specs:
+            tb = T._Threadblock(channel=0, rbid=rbid)
+            tb.steps = list(ops)
+            tb.ops = list(ops)
+            for op in ops:
+                op.block_rbid = rbid
+            gpu.threadblocks.append(tb)
+        return {0: gpu}
+
+    # Cross-threadblock gate lands on net_dep and leaves depends untouched: a gate is
+    # not a data dependency and must not become one (nor an expansion nop).
+    a, b = send(0, 1, 0), send(0, 2, 1)
+    gpus = build([(0, [a]), (1, [b])])
+    T._realize_pacing_gates(gpus, [((1, 0, 2, None), (0, 0, 1, None))])
+    assert b.net_dep is a, "gate not realized onto net_dep"
+    assert b.depends == [] and a.depends == [], "gate leaked into depends"
+    assert not a.has_dependence, "gate producer must not need a kernel dep flag"
+    print("  [OK] realization: cross-tb gate lands on net_dep, not depends")
+
+    # Two gated sends in ONE threadblock are an ordinary schedule: both survive.
+    p0, p1 = send(0, 1, 0), send(0, 1, 2)
+    c0, c1 = send(0, 2, 1), send(0, 2, 3)
+    gpus = build([(0, [p0, p1]), (1, [c0, c1])])
+    T._realize_pacing_gates(gpus, [((1, 0, 2, None), (0, 0, 1, None)),
+                                   ((3, 0, 2, None), (2, 0, 1, None))])
+    assert (c0.net_dep, c1.net_dep) == (p0, p1), "a threadblock may carry several gates"
+    print("  [OK] realization: several gates in one threadblock all survive")
+
+    # Same threadblock on both ends: one threadblock is one connection, whose send
+    # FIFO already orders its own sends, so the edge is dropped as redundant.
+    s0, s1 = send(0, 1, 0), send(0, 1, 1)
+    gpus = build([(0, [s0, s1])])
+    T._realize_pacing_gates(gpus, [((1, 0, 1, None), (0, 0, 1, None))])
+    assert s1.net_dep is None, "same-connection gate should be dropped as redundant"
+    print("  [OK] realization: same-threadblock gate dropped as redundant")
+
+    # Acyclicity. Legitimate shape: B = [X, gated-send] -- no cycle.
+    ax, ay = send(0, 1, 0), send(0, 1, 2)
+    bx, by = send(0, 2, 1), send(0, 2, 3)
+    ay.depends = [bx]          # A's second send needs B's first
+    by.net_dep = ax            # B's second send gated on A's first
+    T._assert_gates_acyclic(build([(0, [ax, ay]), (1, [bx, by])]))
+    print("  [OK] acyclicity: legitimate gate accepted")
+
+    # The failing shape from the runtime plan: B = [gated-send, X], A = [Y needs B.X, send],
+    # gate A.1 -> B.0. Closes through both threadblocks' program order.
+    ax, ay = send(0, 1, 0), send(0, 1, 2)
+    bx, by = send(0, 2, 1), send(0, 2, 3)
+    ax.depends = [by]          # A.0 needs B.1
+    bx.net_dep = ay            # B.0 gated on A.1
+    try:
+        T._assert_gates_acyclic(build([(0, [ax, ay]), (1, [bx, by])]))
+    except ValueError as e:
+        assert 'deadlock' in str(e), e
+        print("  [OK] acyclicity: deadlocking gate rejected")
+    else:
+        raise AssertionError("expected the gate cycle to be rejected")
 
 
 if __name__ == '__main__':

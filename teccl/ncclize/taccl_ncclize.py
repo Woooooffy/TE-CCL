@@ -68,6 +68,10 @@ class _Op:
     # to pace it (e.g. an intra-node NVLink hop that carries ordering but is not
     # pinned to the epoch grid).
     piece_rate: float = None
+    # Send-pacing gate: the send op that must FINISH ON THE WIRE before this send may
+    # be posted. Emitted as netdepid/netdeps, a separate axis from depends/depid/deps
+    # -- see _realize_pacing_gates. None means this send is ungated.
+    net_dep: object = None
 
     def __eq__(self, other):
         return self is other
@@ -402,22 +406,34 @@ class ChannelPolicy(Enum):
 
 
 def _realize_pacing_gates(gpus, pacing_gates):
-    """Wire the caller's send-pacing gate manifest into ``op.depends``.
+    """Attach the caller's send-pacing gate manifest to each gated send as a NETWORK
+    dependency, emitted separately from ``depends``/``depid``/``deps``.
 
     ``pacing_gates`` is a list of ``(consumer_key, producer_key)`` edges, each key a
     ``(step, src, dst, path_key)`` send-op identity, computed by teccl_ncclize from per-send
     link-occupancy windows (finish-before-start; see ``_finish_before_start_gates`` there). The
     pacing POLICY -- which send waits on which, from rate and topology -- lives with the level that
     produced the schedule; this function only REALIZES it, because only here do ops have the
-    threadblock ids and post-nop-expansion step indices a ``depid``/``deps`` edge needs.
+    threadblock ids and post-nop-expansion step indices an XML edge needs.
+
+    A gate and a data dependency are different constructs and must not share a field. A data
+    dependency says "these bytes are not readable yet" and is discharged inside the GPU kernel the
+    moment the producer's FIFO tail bumps; a gate says "this send must not go out on the wire until
+    that one has landed", which only the proxy can honour by withholding the ``isend``. Encoding a
+    gate as a ``depends`` entry buys the wrong guarantee (and, via nop expansion, costs an XML step
+    per gate); the runtime carries it as ``netdepid``/``netdeps`` instead.
 
     A key can map to several ops when ``make_intervals`` splits one epoch's transfer into
-    non-contiguous offset runs; those share a threadblock and run in step order, so gating a
-    consumer on the producer key's LAST op (all its bytes done) suffices, and every consumer op of
-    the key inherits the gate. The gate is appended as an extra dependency; the nop-expansion pass
-    below realizes any dependency past the first and drops same-threadblock ones (threadblock step
-    order already serializes those). Every edge points to a strictly-earlier-finishing send, so the
-    added edges cannot form a cycle. Requires ``op.block_rbid`` to be assigned already.
+    non-contiguous offset runs; those share a threadblock and run in step order, so gating on the
+    producer key's LAST op (all its bytes done) suffices, and every consumer op of the key inherits
+    the gate. Gates whose endpoints land in the same threadblock are dropped: one threadblock is
+    one connection, whose send FIFO already orders its own sends, so the edge is redundant.
+
+    ``_finish_before_start_gates`` emits at most one edge per consumer key, so a send carries at
+    most one gate -- which is what the single ``netdepid``/``netdeps`` pair can express. Several
+    sends in ONE threadblock may each carry their own gate; that is an ordinary schedule and is not
+    reduced here. Requires ``op.block_rbid`` to be assigned already; ``op.idx`` is read later, at
+    XML emission, so this must run before nop expansion assigns it.
     """
     key_to_ops = defaultdict(list)
     for gpu in gpus.values():
@@ -432,7 +448,71 @@ def _realize_pacing_gates(gpus, pacing_gates):
             continue
         producer = producers[-1]  # last in threadblock order: its completion covers the key
         for op in consumers:
-            op.depends = list(op.depends) + [producer]
+            if op.block_rbid == producer.block_rbid:
+                continue  # same connection: the send FIFO already orders these
+            assert op.net_dep is None or op.net_dep is producer, (
+                f'send {consumer_key} was given two different pacing gates; the XML carries one '
+                f'netdepid/netdeps per step')
+            op.net_dep = producer
+
+
+def _assert_gates_acyclic(gpus):
+    """Reject a gate set that would deadlock, at generation time rather than on the cluster.
+
+    The gate is the only construct here that can deadlock, and one check covers it. Build the
+    graph over ops with edges meaning "must happen first" -- threadblock program order, data
+    dependencies, and gates -- and look for a cycle. Program-order edges supply the reach, so no
+    quantifiers over step ranges are needed: the classic failure is a gate A.1 -> B.0 crossed with
+    a data dependency B.1 -> A.0, which closes through the two threadblocks' program order.
+
+    A within-pass check is sufficient because every runtime edge points forward across passes:
+    data dependencies compare the same loop iteration, gates carry a per-pass target, and program
+    order and FIFO credit both point forward. Cycles can therefore only form inside one pass.
+
+    Iterative, not recursive: a real schedule has hundreds of thousands of ops.
+    """
+    succ = defaultdict(list)
+    nodes = []
+    for gpu in gpus.values():
+        for tb in gpu.threadblocks:
+            prev = None
+            for op in tb.ops:
+                nodes.append(op)
+                if prev is not None:
+                    succ[prev].append(op)          # program order
+                for dep in op.depends:
+                    succ[dep].append(op)           # data dependency
+                if op.net_dep is not None:
+                    succ[op.net_dep].append(op)    # pacing gate
+                prev = op
+
+    WHITE, GREY, BLACK = 0, 1, 2
+    colour = {op: WHITE for op in nodes}
+    for root in nodes:
+        if colour[root] != WHITE:
+            continue
+        stack = [(root, iter(succ[root]))]
+        colour[root] = GREY
+        path = [root]
+        while stack:
+            node, it = stack[-1]
+            for nxt in it:
+                if colour[nxt] == GREY:
+                    cycle = path[path.index(nxt):] + [nxt]
+                    raise ValueError(
+                        'send-pacing gates would deadlock: cycle over threadblock program '
+                        'order, data dependencies and gates: ' +
+                        ' -> '.join(f'gpu{o.gpu}/tb{o.block_rbid}/step{o.step}({o.op_type})'
+                                    for o in cycle))
+                if colour[nxt] == WHITE:
+                    colour[nxt] = GREY
+                    path.append(nxt)
+                    stack.append((nxt, iter(succ[nxt])))
+                    break
+            else:
+                colour[node] = BLACK
+                stack.pop()
+                path.pop()
 
 
 def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, piece_rate=None, send_epoch_manifest=None, pacing_gates=None, max_channels=32):
@@ -947,8 +1027,9 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for op in tb.steps:
                 op.block_rbid = tb.rbid
 
-    # Realize the caller's send-pacing gates (finish-before-start edges) into op.depends BEFORE nop
-    # expansion, so each added gate becomes an ordinary extra dependency.
+    # Realize the caller's send-pacing gates (finish-before-start edges) onto op.net_dep, which is
+    # emitted as netdepid/netdeps. Must run here: it needs block_rbid, which is assigned above, and
+    # it must NOT go through nop expansion -- a gate is not a data dependency and costs no XML step.
     if pacing_gates:
         _realize_pacing_gates(gpus, pacing_gates)
 
@@ -971,6 +1052,11 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for op in tb.ops:
                 op.block_rbid = tb.rbid
             all_ops.extend(tb.ops)
+
+    # A gate is the only construct here that can deadlock the runtime, and it would do so as a
+    # hang on the cluster. Fail at generation instead.
+    if pacing_gates:
+        _assert_gates_acyclic(gpus)
 
     for op in all_ops:
         if len(op.depends):
@@ -1077,6 +1163,24 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                 elif old_format:
                     op_elem.set('depid', '-1')
                     op_elem.set('deps', '-1')
+                # Send-pacing gate: this send is withheld until op.net_dep has landed on the
+                # wire. Deliberately NOT depid/deps -- a data dependency is discharged in the
+                # kernel the moment the producer's FIFO tail bumps, which is the wrong
+                # guarantee, and would also serialize on every recv->send chain. Omitted
+                # entirely when ungated, which is the runtime's default, so an unpaced
+                # schedule's XML is unchanged. The producer needs no `hasdep`: the gate is
+                # enforced against its transmission count, never against a kernel flag.
+                if op.net_dep is not None:
+                    nd = op.net_dep
+                    assert nd.block_rbid is not None and nd.idx is not None, (
+                        f'pacing gate of {op.op_type} on gpu {op.gpu} names a send that was '
+                        f'never assigned a threadblock/index: rbid={nd.block_rbid} '
+                        f'idx={nd.idx}')
+                    assert op.is_send and nd.is_send, (
+                        'a pacing gate may only order one send against another; got '
+                        f'{op.op_type} <- {nd.op_type} on gpu {op.gpu}')
+                    op_elem.set('netdepid', str(nd.block_rbid))
+                    op_elem.set('netdeps', str(nd.idx))
                 if op.has_dependence:
                     op_elem.set('hasdep', '1')
                 elif old_format:
@@ -1090,8 +1194,8 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                 if op.piece_rate is not None:
                     op_elem.set('rate', str(op.cnt * op.piece_rate))
                 # Optional per-send epoch record, keyed by final XML location (gpu, tb, s).
-                # Epoch ordering is now enforced in-band by _realize_pacing_gates (extra op.depends
-                # before nop expansion), so this manifest no longer drives it; it is retained only
+                # Epoch ordering is enforced in-band by _realize_pacing_gates (netdepid/netdeps
+                # on the gated send), so this manifest no longer drives it; it is retained only
                 # as an informational hook for callers that want a per-op epoch map.
                 if send_epoch_manifest is not None and op.is_send:
                     send_epoch_manifest.append(
