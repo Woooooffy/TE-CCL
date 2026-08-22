@@ -318,42 +318,79 @@ def _send_uplink(key):
 
 
 def _finish_before_start_gates(paced_sends):
-    """Derive send-pacing gate edges from per-send link-occupancy windows.
+    """Derive pacing gate edges from per-send link-occupancy windows.
 
     `paced_sends` maps a send op key (step_idx, src, dst, path_key) to its
     (start_epoch, finish_epoch) window in FINE epochs, where finish = start +
-    volume/rate (how long the send occupies its outgoing link). Gate each send S on
-    the LATEST-finishing paced send P *contending for the same physical uplink* (see
-    _send_uplink) whose link-occupancy finishes at or before S starts -- i.e. the send
-    that frees that uplink exactly when S is due. That predecessor's rate-paced
-    completion pins S to its epoch (P1/P2); S needs no gate if nothing finishes in time
-    (an early-firing residual, the deferred-P3 case the stitch reports).
+    volume/rate (how long the send occupies its outgoing link). Only flows the
+    producing level chose to PACE appear here, so every candidate below is pinned to
+    that level's epoch grid; unpaced intra-level hops carry ordering, not time, and
+    must never become a clock.
 
-    Deriving the edge from finish-vs-start rather than step ORDER is what makes it
-    correct for two cases a plain sort gets wrong: two sends in the SAME epoch never
+    Each send S is gated on the latest paced event that lands at or before S starts,
+    drawn from two pools:
+
+      SEND pool (P2)  -- sends contending for the same physical uplink (see
+        _send_uplink), timed by their link-occupancy FINISH: the send that frees the
+        uplink is what lets S onto the wire.
+      RECV pool (P3)  -- paced deliveries INTO S's source GPU, timed by their ARRIVAL.
+        A send at epoch k whose uplink was idle through k-1 has no send to wait on;
+        a recv landing exactly at k is then the only rate-paced clock tick available,
+        and gating on it pins S to k. This is what closes the residual the stitch
+        reports (flat_schedule.check_network_pacing) for a GPU that goes quiet on an
+        uplink for an epoch but is still receiving.
+
+    A recv is a paced send observed from the far end, so the RECV pool needs no new
+    data: a send (step, src, dst, path_key) finishing at t IS a delivery at `dst`
+    arriving at t, and the receiving op's mirror key is (step, dst, src, path_key).
+
+    Deriving the edge from finish/arrival-vs-start rather than step ORDER is what makes
+    it correct for two cases a plain sort gets wrong: two sends in the SAME epoch never
     gate each other (a same-epoch P has finish > start_S, so it is not a candidate),
     and a multi-epoch send does not serialize a later send that runs alongside its
     tail on freed capacity (that P is excluded; the send that truly frees the link is
     picked). Grouping is per physical uplink (src, first_switch), so a multi-uplink
     GPU paces each of its uplinks independently.
 
-    Returns a list of (consumer_key, producer_key) edges.
+    Ties prefer the SEND pool. A send-sourced gate is free -- it rides netdepid/netdeps
+    and costs no XML step -- while a recv-sourced one is a depid/deps edge that may cost
+    an expansion nop, so the recv pool is only reached for a send the uplink cannot pin.
+
+    Returns a list of (consumer_key, producer_key, kind) edges, kind being 'send' or
+    'recv'. The kind picks the RUNTIME CARRIER and cannot be inferred from the keys:
+    a recv key (step, dst, src, path_key) is indistinguishable from the key of a real
+    send on the reverse edge at the same step, which bidirectional traffic produces.
+    A 'send' edge orders one send behind another ON THE WIRE and is carried by
+    netdepid/netdeps, which the proxy thread enforces against the NIC. A 'recv' edge
+    is discharged the moment the proxy marks the recv slot filled -- exactly the event
+    depid/deps already encodes and the GPU kernel already waits on -- so it rides that
+    path instead; see taccl_ncclize._realize_pacing_gates.
     """
     from collections import defaultdict as _dd
     by_link = _dd(list)
+    arrivals = _dd(list)   # receiving gpu -> [(arrival_epoch, recv mirror key)]
     for key, (start, finish) in paced_sends.items():
+        step, src, dst, path_key = key
         by_link[_send_uplink(key)].append((start, finish, key))
+        arrivals[dst].append((finish, (step, dst, src, path_key)))
+
     edges = []
     for sends in by_link.values():
         for cstart, _cfin, ckey in sends:
-            best = None  # (finish, key) of the latest-finishing eligible predecessor
-            for pstart, pfin, pkey in sends:
+            csrc = ckey[1]
+            # (time, kind_rank, key), maximised: the latest-landing eligible producer. The rank
+            # breaks a tie at equal time toward the SEND pool, so it ranks ABOVE recv here.
+            best = None
+            for _pstart, pfin, pkey in sends:
                 if pkey == ckey:
                     continue
-                if pfin <= cstart and (best is None or pfin > best[0]):
-                    best = (pfin, pkey)
+                if pfin <= cstart and (best is None or (pfin, 1) > (best[0], best[1])):
+                    best = (pfin, 1, pkey)
+            for arrival, rkey in arrivals.get(csrc, ()):
+                if arrival <= cstart and (best is None or (arrival, 0) > (best[0], best[1])):
+                    best = (arrival, 0, rkey)
             if best is not None:
-                edges.append((ckey, best[1]))
+                edges.append((ckey, best[2], 'send' if best[1] == 1 else 'recv'))
     return edges
 
 

@@ -406,54 +406,80 @@ class ChannelPolicy(Enum):
 
 
 def _realize_pacing_gates(gpus, pacing_gates):
-    """Attach the caller's send-pacing gate manifest to each gated send as a NETWORK
-    dependency, emitted separately from ``depends``/``depid``/``deps``.
+    """Attach the caller's pacing gate manifest to each gated send, on the carrier the
+    edge's kind names.
 
-    ``pacing_gates`` is a list of ``(consumer_key, producer_key)`` edges, each key a
-    ``(step, src, dst, path_key)`` send-op identity, computed by teccl_ncclize from per-send
-    link-occupancy windows (finish-before-start; see ``_finish_before_start_gates`` there). The
-    pacing POLICY -- which send waits on which, from rate and topology -- lives with the level that
-    produced the schedule; this function only REALIZES it, because only here do ops have the
-    threadblock ids and post-nop-expansion step indices an XML edge needs.
+    ``pacing_gates`` is a list of ``(consumer_key, producer_key, kind)`` edges. Each key is
+    an op identity ``(step, gpu, peer, path_key)`` -- for a send that reads (step, src, dst,
+    path_key); for a recv it is the mirror, (step, dst, src, path_key). The edges are computed
+    by teccl_ncclize from per-send link-occupancy windows (finish/arrival-before-start; see
+    ``_finish_before_start_gates`` there). The pacing POLICY -- which send waits on what, from
+    rate and topology -- lives with the level that produced the schedule; this function only
+    REALIZES it, because only here do ops have the threadblock ids and post-nop-expansion step
+    indices an XML edge needs. Consumers are always sends; producers are sends or recvs.
 
-    A gate and a data dependency are different constructs and must not share a field. A data
-    dependency says "these bytes are not readable yet" and is discharged inside the GPU kernel the
-    moment the producer's FIFO tail bumps; a gate says "this send must not go out on the wire until
-    that one has landed", which only the proxy can honour by withholding the ``isend``. Encoding a
-    gate as a ``depends`` entry buys the wrong guarantee (and, via nop expansion, costs an XML step
-    per gate); the runtime carries it as ``netdepid``/``netdeps`` instead.
+    The two kinds ride different runtime carriers because they are discharged by different
+    agents, and picking the wrong one buys the wrong guarantee:
+
+    ``kind='send'`` -> ``net_dep`` (emitted as ``netdepid``/``netdeps``). "This send must not
+    go out on the wire until that one has landed." Only the proxy thread can honour it, by
+    withholding the ``isend`` until the NIC reports the producer's bytes away; the GPU kernel
+    has no network-side information to decide it. Encoding it as a ``depends`` entry would
+    instead discharge it the moment the producer's FIFO tail bumps -- the producer's data
+    being *readable*, not *sent* -- which is not the constraint.
+
+    ``kind='recv'`` -> ``depends`` (emitted as ``depid``/``deps``). "This send must not start
+    until those bytes have arrived." That event is precisely the one the proxy already signals
+    to the kernel when it marks a recv slot filled, and ``depid``/``deps`` is precisely the
+    kernel's existing wait on it. So a recv-sourced gate needs no new runtime construct and is
+    strictly more accurate on this path than a netdep would be: netdeps are enforced against a
+    transmission count, which says nothing about a *reception*. It rides ``depends`` even
+    though its PURPOSE is pacing rather than data readiness -- the runtime edge is identical,
+    and the producing recv gets its ``hasdep`` flag from the ordinary marking pass below.
 
     A key can map to several ops when ``make_intervals`` splits one epoch's transfer into
-    non-contiguous offset runs; those share a threadblock and run in step order, so gating on the
-    producer key's LAST op (all its bytes done) suffices, and every consumer op of the key inherits
-    the gate. Gates whose endpoints land in the same threadblock are dropped: one threadblock is
-    one connection, whose send FIFO already orders its own sends, so the edge is redundant.
+    non-contiguous offset runs; those share a threadblock and run in step order, so gating on
+    the producer key's LAST op (all its bytes done) suffices, and every consumer op of the key
+    inherits the gate. Gates whose endpoints land in the same threadblock are dropped: one
+    threadblock is one connection, whose FIFO already orders its own ops, so the edge is
+    redundant. (For ``depends`` that drop is also done downstream by nop expansion; doing it
+    here keeps both kinds symmetric and keeps a redundant edge from reaching the cycle check.)
 
-    ``_finish_before_start_gates`` emits at most one edge per consumer key, so a send carries at
-    most one gate -- which is what the single ``netdepid``/``netdeps`` pair can express. Several
-    sends in ONE threadblock may each carry their own gate; that is an ordinary schedule and is not
-    reduced here. Requires ``op.block_rbid`` to be assigned already; ``op.idx`` is read later, at
-    XML emission, so this must run before nop expansion assigns it.
+    ``_finish_before_start_gates`` emits at most one edge per consumer key, so a send carries
+    at most one gate -- which is what the single ``netdepid``/``netdeps`` pair can express.
+    Several sends in ONE threadblock may each carry their own gate; that is an ordinary
+    schedule and is not reduced here. Requires ``op.block_rbid`` to be assigned already;
+    ``op.idx`` is read later, at XML emission. A ``send`` edge must therefore run before nop
+    expansion assigns ``idx``, and a ``recv`` edge must run before it too, so that its extra
+    ``depends`` entry is expanded like any other.
     """
-    key_to_ops = defaultdict(list)
+    send_ops = defaultdict(list)
+    recv_ops = defaultdict(list)
     for gpu in gpus.values():
         for tb in gpu.threadblocks:
             for op in tb.steps:
-                if op.is_send:
-                    key_to_ops[(op.step, op.gpu, op.peer, op.path_key)].append(op)
-    for consumer_key, producer_key in pacing_gates:
-        producers = key_to_ops.get(producer_key)
-        consumers = key_to_ops.get(consumer_key)
+                index = send_ops if op.is_send else recv_ops
+                index[(op.step, op.gpu, op.peer, op.path_key)].append(op)
+    for consumer_key, producer_key, kind in pacing_gates:
+        if kind not in ('send', 'recv'):
+            raise ValueError(f'unknown pacing gate kind {kind!r} for consumer {consumer_key}')
+        producers = (send_ops if kind == 'send' else recv_ops).get(producer_key)
+        consumers = send_ops.get(consumer_key)
         if not producers or not consumers:
             continue
         producer = producers[-1]  # last in threadblock order: its completion covers the key
         for op in consumers:
             if op.block_rbid == producer.block_rbid:
-                continue  # same connection: the send FIFO already orders these
-            assert op.net_dep is None or op.net_dep is producer, (
-                f'send {consumer_key} was given two different pacing gates; the XML carries one '
-                f'netdepid/netdeps per step')
-            op.net_dep = producer
+                continue  # same connection: the FIFO already orders these
+            if kind == 'send':
+                assert op.net_dep is None or op.net_dep is producer, (
+                    f'send {consumer_key} was given two different pacing gates; the XML carries '
+                    f'one netdepid/netdeps per step')
+                op.net_dep = producer
+            elif producer not in op.depends:
+                # Already a data dependency? Then the wait exists and the gate is satisfied
+                # by it; adding a duplicate would only cost an expansion nop.
+                op.depends.append(producer)
 
 
 def _assert_gates_acyclic(gpus):
@@ -464,6 +490,10 @@ def _assert_gates_acyclic(gpus):
     dependencies, and gates -- and look for a cycle. Program-order edges supply the reach, so no
     quantifiers over step ranges are needed: the classic failure is a gate A.1 -> B.0 crossed with
     a data dependency B.1 -> A.0, which closes through the two threadblocks' program order.
+
+    Both gate carriers are covered without special-casing: a send-sourced gate is read off
+    ``net_dep``, and a recv-sourced one is already indistinguishable from a data dependency here
+    because it IS one on the wire (see _realize_pacing_gates) and arrives through ``depends``.
 
     A within-pass check is sufficient because every runtime edge points forward across passes:
     data dependencies compare the same loop iteration, gates carry a per-pass target, and program
@@ -1027,9 +1057,14 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for op in tb.steps:
                 op.block_rbid = tb.rbid
 
-    # Realize the caller's send-pacing gates (finish-before-start edges) onto op.net_dep, which is
-    # emitted as netdepid/netdeps. Must run here: it needs block_rbid, which is assigned above, and
-    # it must NOT go through nop expansion -- a gate is not a data dependency and costs no XML step.
+    # Realize the caller's pacing gates (finish/arrival-before-start edges): a send-sourced gate
+    # onto op.net_dep (emitted as netdepid/netdeps, enforced by the proxy against the NIC), a
+    # recv-sourced one onto op.depends (emitted as depid/deps, discharged by the kernel when the
+    # proxy marks the recv slot filled). Must run HERE, between rbid assignment and the loop
+    # below: it needs block_rbid, which is assigned above; a net_dep must skip nop expansion
+    # (it is not a data dependency and costs no XML step); and a recv gate's extra depends entry
+    # must go THROUGH that expansion, and through the has_dependence marking after it, exactly
+    # like any other data dependency.
     if pacing_gates:
         _realize_pacing_gates(gpus, pacing_gates)
 
@@ -1163,13 +1198,16 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                 elif old_format:
                     op_elem.set('depid', '-1')
                     op_elem.set('deps', '-1')
-                # Send-pacing gate: this send is withheld until op.net_dep has landed on the
-                # wire. Deliberately NOT depid/deps -- a data dependency is discharged in the
-                # kernel the moment the producer's FIFO tail bumps, which is the wrong
-                # guarantee, and would also serialize on every recv->send chain. Omitted
-                # entirely when ungated, which is the runtime's default, so an unpaced
-                # schedule's XML is unchanged. The producer needs no `hasdep`: the gate is
-                # enforced against its transmission count, never against a kernel flag.
+                # Send-sourced pacing gate: this send is withheld until op.net_dep has landed
+                # on the wire. Deliberately NOT depid/deps -- a data dependency is discharged in
+                # the kernel the moment the producer's FIFO tail bumps, which is the wrong
+                # guarantee for "that send is off the NIC". Omitted entirely when ungated, which
+                # is the runtime's default, so an unpaced schedule's XML is unchanged. The
+                # producer needs no `hasdep`: the gate is enforced against its transmission
+                # count, never against a kernel flag. A RECV-sourced pacing gate is the opposite
+                # case and is not emitted here at all -- it waits on a reception, which the
+                # kernel already observes, so _realize_pacing_gates put it on op.depends and it
+                # left through depid/deps above.
                 if op.net_dep is not None:
                     nd = op.net_dep
                     assert nd.block_rbid is not None and nd.idx is not None, (
@@ -1177,8 +1215,9 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                         f'never assigned a threadblock/index: rbid={nd.block_rbid} '
                         f'idx={nd.idx}')
                     assert op.is_send and nd.is_send, (
-                        'a pacing gate may only order one send against another; got '
-                        f'{op.op_type} <- {nd.op_type} on gpu {op.gpu}')
+                        'netdepid/netdeps may only order one send against another (a recv-sourced '
+                        f'gate belongs on depid/deps); got {op.op_type} <- {nd.op_type} on gpu '
+                        f'{op.gpu}')
                     op_elem.set('netdepid', str(nd.block_rbid))
                     op_elem.set('netdeps', str(nd.idx))
                 if op.has_dependence:

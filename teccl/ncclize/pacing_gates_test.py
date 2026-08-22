@@ -1,14 +1,20 @@
-"""Unit tests for send-pacing gate derivation (_finish_before_start_gates).
+"""Unit tests for pacing gate derivation (_finish_before_start_gates).
 
-The gate manifest decides which paced send waits on which so that a rate-paced send
-holds to its intended epoch on real hardware. The edge is derived from each send's
-LINK-OCCUPANCY WINDOW (start, finish=start+volume/rate), NOT from step order -- which
-is what makes it correct for two cases a plain sort gets wrong:
+The gate manifest decides what each paced send waits on so that a rate-paced send
+holds to its intended epoch on real hardware. The edge is derived from LINK-OCCUPANCY
+WINDOWS (start, finish=start+volume/rate), NOT from step order -- which is what makes
+it correct for two cases a plain sort gets wrong:
 
   1. Concurrent sends (same epoch, different peers/channels/uplinks) must never be
      serialized against each other.
   2. A send paced to span multiple epochs must not serialize a later send that runs
      alongside its tail on capacity a *different*, earlier send already freed.
+
+There are two clocks. P2 is a SEND on the same physical uplink freeing it; P3 is a
+paced RECV ARRIVING at the sending GPU, which pins a send whose uplink was idle. They
+ride different runtime carriers -- netdepid/netdeps for P2 (the proxy withholds the
+isend against the NIC) and depid/deps for P3 (the kernel already waits on the proxy
+marking a recv slot filled) -- so the manifest tags each edge with its kind.
 
 Run from the repo root (in an env with the ncclize deps, or none -- this file imports
 only teccl_ncclize, which needs lxml/z3 for the rest of the module):
@@ -22,9 +28,9 @@ from teccl_ncclize import _finish_before_start_gates as gates  # noqa: E402
 
 
 def check(name, paced, expect):
-    got = sorted(gates(paced))
-    if got != sorted(expect):
-        raise AssertionError(f"{name}: expected {sorted(expect)}, got {got}")
+    got = sorted(gates(paced), key=repr)
+    if got != sorted(expect, key=repr):
+        raise AssertionError(f"{name}: expected {sorted(expect, key=repr)}, got {got}")
     print(f"  [OK] {name}")
 
 
@@ -47,7 +53,7 @@ def main():
     # Contiguous epochs: send finishing at 6 pins the send starting at 6.
     check("contiguous chain: gate on the send that frees the link",
           {(5, 0, 1, None): (5, 6), (6, 0, 1, None): (6, 7)},
-          [((6, 0, 1, None), (5, 0, 1, None))])
+          [((6, 0, 1, None), (5, 0, 1, None), 'send')])
 
     # Concern 2: X spans epochs 0..2 (half rate, finish 2); Y in epoch 0 finishes at 1;
     # Z starts at epoch 1. Z runs alongside X's tail on the half Y just freed, so Z must
@@ -56,13 +62,13 @@ def main():
           {(0, 0, 1, None): (0, 2),   # X
            (0, 0, 2, None): (0, 1),   # Y
            (1, 0, 3, None): (1, 2)},  # Z
-          [((1, 0, 3, None), (0, 0, 2, None))])
+          [((1, 0, 3, None), (0, 0, 2, None), 'send')])
 
-    # A gap still pins to the latest send that finishes in time (best-effort; the
-    # residual earliness is the deferred-P3 case the stitch reports).
+    # A gap with nothing arriving still pins to the latest send that finishes in time
+    # (best-effort; the residual earliness is what the stitch reports).
     check("gap: pin to the latest finishing predecessor",
           {(0, 0, 1, None): (0, 1), (3, 0, 1, None): (3, 4)},
-          [((3, 0, 1, None), (0, 0, 1, None))])
+          [((3, 0, 1, None), (0, 0, 1, None), 'send')])
 
     # Sends from different source GPUs share no uplink -> never gate each other.
     check("cross-gpu: independent uplinks, no edges",
@@ -80,7 +86,53 @@ def main():
     # when the downstream switch path differs.
     check("same uplink, different downstream path, still chains",
           {(0, 0, 1, (9, 5)): (0, 1), (1, 0, 2, (9, 6)): (1, 2)},
-          [((1, 0, 2, (9, 6)), (0, 0, 1, (9, 5)))])
+          [((1, 0, 2, (9, 6)), (0, 0, 1, (9, 5)), 'send')])
+
+    # --- P3: the recv pool -------------------------------------------------------
+    # gpu0's uplink is idle going into epoch 3 (its own last send freed the link back at 1),
+    # but a paced delivery from gpu9 ARRIVES at gpu0 exactly at 3. That arrival is the only
+    # rate-paced tick available, so it -- not the stale send at 1 -- is the gate. The producer
+    # key is the recv's MIRROR of the delivering send: (step, dst, src, path_key).
+    check("p3: recv arriving at k pins a send the idle uplink cannot",
+          {(0, 0, 1, None): (0, 1),     # gpu0's earlier send, frees the uplink at 1
+           (2, 9, 0, None): (2, 3),     # delivery into gpu0, arrives at 3
+           (3, 0, 1, None): (3, 4)},    # the send to pin
+          [((3, 0, 1, None), (2, 0, 9, None), 'recv')])
+
+    # Tie at the same epoch prefers the SEND pool: a netdep costs no XML step, a depid/deps
+    # edge may cost an expansion nop. Here the multi-epoch send finishes at 3 and the recv
+    # also arrives at 3.
+    check("p3: tie at k prefers the send pool",
+          {(0, 0, 1, None): (0, 3),     # multi-epoch send, frees the uplink at 3
+           (2, 9, 0, None): (2, 3),     # delivery into gpu0, also lands at 3
+           (3, 0, 1, None): (3, 4)},
+          [((3, 0, 1, None), (0, 0, 1, None), 'send')])
+
+    # An arrival at a DIFFERENT gpu is not a clock for this send: the recv pool is indexed by
+    # the sending gpu, so gpu5's delivery cannot pin gpu0.
+    check("p3: an arrival at another gpu does not pin",
+          {(2, 9, 5, None): (2, 3),     # delivery into gpu5, not gpu0
+           (3, 0, 1, None): (3, 4)},
+          [])
+
+    # An arrival AFTER the send starts is not a candidate -- same finish-before-start rule the
+    # send pool uses. Nothing else is eligible either, so the send stays ungated.
+    check("p3: an arrival after the send starts is not a candidate",
+          {(3, 9, 0, None): (3, 4),     # arrives at 4, after the send is due
+           (3, 0, 1, None): (3, 4)},
+          [])
+
+    # A GPU with no send to gate against but a steady stream of arrivals pins on the latest
+    # one that lands in time: 5, not 2 (and not the one arriving at 8, after it is due).
+    # gpu9's own three sends share an uplink and chain among themselves as usual.
+    check("p3: pick the latest arrival that lands in time",
+          {(0, 9, 0, None): (0, 2),
+           (4, 9, 0, None): (4, 5),
+           (7, 9, 0, None): (7, 8),     # arrives at 8, too late
+           (5, 0, 1, None): (5, 6)},
+          [((5, 0, 1, None), (4, 0, 9, None), 'recv'),
+           ((4, 9, 0, None), (0, 9, 0, None), 'send'),
+           ((7, 9, 0, None), (4, 9, 0, None), 'send')])
 
     realization_tests()
     print("pacing gate tests OK")
@@ -104,12 +156,16 @@ def _load_taccl_ncclize():
 
 
 def realization_tests():
-    """_realize_pacing_gates puts the edge on net_dep (never depends), and
-    _assert_gates_acyclic catches the deadlock the runtime would otherwise hang on."""
+    """_realize_pacing_gates routes each edge to the carrier its kind names -- net_dep for a
+    send-sourced gate, depends for a recv-sourced one -- and _assert_gates_acyclic catches the
+    deadlock the runtime would otherwise hang on."""
     T = _load_taccl_ncclize()
 
     def send(gpu, peer, step):
         return T._Op(gpu, peer, step, True, 's', 'i', 0, 'o', 0, 1, [])
+
+    def recv(gpu, peer, step):
+        return T._Op(gpu, peer, step, False, 'r', 'i', 0, 'o', 0, 1, [])
 
     def build(tb_specs):
         """tb_specs: list of (rbid, [ops]) for one gpu; returns (gpus, ops)."""
@@ -124,22 +180,56 @@ def realization_tests():
             gpu.threadblocks.append(tb)
         return {0: gpu}
 
-    # Cross-threadblock gate lands on net_dep and leaves depends untouched: a gate is
-    # not a data dependency and must not become one (nor an expansion nop).
+    # A SEND-sourced gate lands on net_dep and leaves depends untouched: it waits on bytes
+    # being off the NIC, which the kernel cannot observe, so it must not become a data
+    # dependency (nor an expansion nop).
     a, b = send(0, 1, 0), send(0, 2, 1)
     gpus = build([(0, [a]), (1, [b])])
-    T._realize_pacing_gates(gpus, [((1, 0, 2, None), (0, 0, 1, None))])
+    T._realize_pacing_gates(gpus, [((1, 0, 2, None), (0, 0, 1, None), 'send')])
     assert b.net_dep is a, "gate not realized onto net_dep"
     assert b.depends == [] and a.depends == [], "gate leaked into depends"
     assert not a.has_dependence, "gate producer must not need a kernel dep flag"
-    print("  [OK] realization: cross-tb gate lands on net_dep, not depends")
+    print("  [OK] realization: cross-tb send gate lands on net_dep, not depends")
+
+    # A RECV-sourced gate is the mirror case: it waits on a reception, the exact event the
+    # proxy already signals to the kernel, so it rides depends/depid/deps and leaves net_dep
+    # alone. The producing recv then picks up hasdep from ncclize's ordinary marking pass.
+    r, c = recv(0, 9, 0), send(0, 2, 1)
+    gpus = build([(0, [r]), (1, [c])])
+    T._realize_pacing_gates(gpus, [((1, 0, 2, None), (0, 0, 9, None), 'recv')])
+    assert c.net_dep is None, "recv gate must not take the netdep carrier"
+    assert c.depends == [r], f"recv gate not realized onto depends: {c.depends}"
+    print("  [OK] realization: cross-tb recv gate lands on depends, not net_dep")
+
+    # A recv that is ALREADY a data dependency of the gated send needs no second edge: the
+    # wait exists, and a duplicate would only buy an expansion nop.
+    r, c = recv(0, 9, 0), send(0, 2, 1)
+    c.depends = [r]
+    gpus = build([(0, [r]), (1, [c])])
+    T._realize_pacing_gates(gpus, [((1, 0, 2, None), (0, 0, 9, None), 'recv')])
+    assert c.depends == [r], f"recv gate duplicated an existing dependency: {c.depends}"
+    print("  [OK] realization: recv gate not duplicated onto an existing dependency")
+
+    # The producer key is looked up in the pool its kind names. A send and a recv can share a
+    # key when traffic is bidirectional over the same route at the same step -- here gpu0
+    # both sends to and receives from gpu9 at step 0, so (0, 0, 9, None) names two ops. The
+    # kind is what disambiguates them.
+    sr, rr, c = send(0, 9, 0), recv(0, 9, 0), send(0, 2, 1)
+    gpus = build([(0, [sr]), (1, [rr]), (2, [c])])
+    T._realize_pacing_gates(gpus, [((1, 0, 2, None), (0, 0, 9, None), 'recv')])
+    assert c.depends == [rr] and c.net_dep is None, "kind did not disambiguate the shared key"
+    c2 = send(0, 3, 1)
+    gpus = build([(0, [sr]), (1, [rr]), (2, [c2])])
+    T._realize_pacing_gates(gpus, [((1, 0, 3, None), (0, 0, 9, None), 'send')])
+    assert c2.net_dep is sr and c2.depends == [], "kind did not disambiguate the shared key"
+    print("  [OK] realization: kind disambiguates a key shared by a send and a recv")
 
     # Two gated sends in ONE threadblock are an ordinary schedule: both survive.
     p0, p1 = send(0, 1, 0), send(0, 1, 2)
     c0, c1 = send(0, 2, 1), send(0, 2, 3)
     gpus = build([(0, [p0, p1]), (1, [c0, c1])])
-    T._realize_pacing_gates(gpus, [((1, 0, 2, None), (0, 0, 1, None)),
-                                   ((3, 0, 2, None), (2, 0, 1, None))])
+    T._realize_pacing_gates(gpus, [((1, 0, 2, None), (0, 0, 1, None), 'send'),
+                                   ((3, 0, 2, None), (2, 0, 1, None), 'send')])
     assert (c0.net_dep, c1.net_dep) == (p0, p1), "a threadblock may carry several gates"
     print("  [OK] realization: several gates in one threadblock all survive")
 
@@ -147,7 +237,7 @@ def realization_tests():
     # FIFO already orders its own sends, so the edge is dropped as redundant.
     s0, s1 = send(0, 1, 0), send(0, 1, 1)
     gpus = build([(0, [s0, s1])])
-    T._realize_pacing_gates(gpus, [((1, 0, 1, None), (0, 0, 1, None))])
+    T._realize_pacing_gates(gpus, [((1, 0, 1, None), (0, 0, 1, None), 'send')])
     assert s1.net_dep is None, "same-connection gate should be dropped as redundant"
     print("  [OK] realization: same-threadblock gate dropped as redundant")
 
