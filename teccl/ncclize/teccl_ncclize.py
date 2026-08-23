@@ -138,7 +138,7 @@ def parse_flows(schedule, port_qualify=None):
         # agrees. Rewriting flow_path_keys after the fact would leave the gate manifest keyed on
         # the unqualified form and silently drop every gate.
         if port_qualify is not None:
-            path_key = port_qualify(src, dst, path_key)
+            path_key = port_qualify(src, dst, path_key, epoch)
         max_subchunk = max(max_subchunk, subchunk)
         parsed.append((epoch, subchunk, origin, src, dst, path_key))
 
@@ -484,7 +484,7 @@ def parse_flows_lp(schedule, collective_name, port_qualify=None):
                 if path_key:
                     switch_raw_ids.update(path_key)
                 if port_qualify is not None:      # see the note in parse_flows()
-                    path_key = port_qualify(hop_src_raw, hop_dst_raw, path_key)
+                    path_key = port_qualify(hop_src_raw, hop_dst_raw, path_key, hop_epoch)
                 volumes.append(_segment_volume(sm))
                 hops.append((hop_epoch, hop_src_raw, hop_dst_raw, path_key,
                              None if rate is None else float(rate)))
@@ -870,23 +870,29 @@ def _build_port_qualifier(schedule, topology, lp_format):
                                               flow_loads, occupancy_grid, qualify_path_key)
 
     subdivision = _compute_subdivision(schedule) if lp_format else 1
-    loads = flow_loads(schedule, occupancy_grid(schedule, subdivision))
+    occupancy = occupancy_grid(schedule, subdivision)
+    loads = flow_loads(schedule, occupancy)
     assignment = assign_ports(loads, topology.port_count, topology.port_capacity)
     assert_port_capacity(loads, assignment, topology.port_count, topology.port_capacity)
 
-    def qualify(src_raw, dst_raw, path_key):
+    # Only a SPLIT flow reads the epoch -- an unsplit one has the same port in every epoch --
+    # but it must land on the grid `assign_ports` packed on, or a slice boundary would be
+    # resolved on the wrong side. Every paced send starts on a grid boundary by construction
+    # (the grid is the gcd of the starts), so integer division names its slice exactly.
+
+    def qualify(src_raw, dst_raw, path_key, epoch):
         flow = Flow(src_raw, tuple(path_key or ()), dst_raw)
         hops = flow.hops()
         any_split = any(topology.port_count(*h) > 1 for h in hops)
         if not any_split:
             return path_key
         try:
-            ports = [assignment.port[(flow, h)] for h in hops]
+            ports = [assignment.port_at(flow, h, occupancy.epoch_of(epoch)) for h in hops]
         except KeyError:
             raise AssertionError(
-                f"route {flow} appears in the schedule section this parser reads but not in "
-                f"'7-Flows', which the port split was computed from; the two sections "
-                f"disagree about which routes exist")
+                f"route {flow} in epoch {epoch} appears in the schedule section this parser "
+                f"reads but not in '7-Flows', which the port split was computed from; the two "
+                f"sections disagree about which routes exist")
         return qualify_path_key(path_key, ports, any_split)
 
     return qualify, assignment

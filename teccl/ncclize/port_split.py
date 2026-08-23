@@ -82,40 +82,66 @@ class FlowLoad:
 
 
 @dataclass
-class SplitFlow:
-    """A flow that did not fit any single port and had its PIECES divided across ports.
+class SubFlow:
+    """A flow whose epochs did not all fit one port, divided into per-epoch slices.
 
-    The escape hatch, not the plan. Pieces are atomic and identical, so piece granularity is
-    always feasible when the aggregate fits -- but it costs the flow its 1:1 path key, so each
-    of these is +1 channel on that (src, dst) edge. Reported, never silent.
+    The escape hatch, not the plan -- but a REAL route split, not a bookkeeping note. Each slice
+    is emitted as its own route: its port tuple differs, so its path key differs, so it gets its
+    own flow id, its own channel and its own switch forwarding entry. That is what makes the
+    emitted program actually describe the wire the bytes cross.
+
+    Whole-epoch slices, because that is the finest granularity the emission can express: a
+    downstream path key is looked up per (step, chunk, src, dst), and step is the epoch. A flow
+    whose load in a SINGLE epoch exceeds one port would need a within-epoch split, which is
+    refused loudly rather than approximated -- see _epoch_split.
     """
     flow: Flow
     link: Link
-    epoch_share: Dict[int, Dict[int, float]]   # port -> epoch -> rate
+    epoch_port: Dict[int, int]                 # epoch -> port
 
 
 @dataclass
 class PortAssignment:
+    # (flow, link) -> port, for a flow that uses ONE port across all its epochs. A flow split
+    # into per-epoch slices is absent here and present in `epoch_port` instead, so that reading
+    # the wrong one raises rather than silently returning a port the flow only partly uses.
     port: Dict[Tuple[Flow, Link], int] = field(default_factory=dict)
-    splits: List[SplitFlow] = field(default_factory=list)
+    epoch_port: Dict[Tuple[Flow, Link], Dict[int, int]] = field(default_factory=dict)
+    splits: List[SubFlow] = field(default_factory=list)
     # (link, hop) -> number of distinct (in-port, out-port) pairs realized
     combos: Dict[Tuple[Link, int], int] = field(default_factory=dict)
 
-    def of(self, flow: Flow, link: Link) -> int:
+    def port_at(self, flow: Flow, link: Link, epoch: int) -> int:
+        """THE accessor. Every consumer should use this rather than reading `port` directly."""
+        per_epoch = self.epoch_port.get((flow, link))
+        if per_epoch is not None:
+            return per_epoch[epoch]
         return self.port[(flow, link)]
 
-    def qualified_path(self, flow: Flow) -> Tuple[object, ...]:
-        """The flow's switch path with a port index attached to each hop.
+    def of(self, flow: Flow, link: Link) -> int:
+        """The single port a flow uses on a link. Raises if it was split -- use port_at."""
+        if (flow, link) in self.epoch_port:
+            raise KeyError(
+                f"flow {flow} is split across ports on link {link} "
+                f"({self.epoch_port[(flow, link)]}); ask port_at(flow, link, epoch)")
+        return self.port[(flow, link)]
+
+    def qualified_path(self, flow: Flow, epoch: int) -> Tuple[object, ...]:
+        """The flow's switch path with a port index attached to each hop, in one epoch.
 
         This is what a downstream path key becomes: `(24, 0, 28, 1, 26)` rather than
         `(24, 28, 26)`. Hops on single-port links keep index 0, so a topology that declares no
         ports produces exactly the tuple it produces today.
+
+        Epoch-dependent ONLY for a split flow: an unsplit one returns the same tuple for every
+        epoch, so nothing changes for a schedule that needs no splitting. A split flow returns a
+        different tuple per slice, which is exactly how the slices become distinct routes.
         """
         out: List[object] = []
         for i, hop in enumerate(flow.hops()):
             if i:
                 out.append(flow.path()[i])
-            out.append(self.port[(flow, hop)])
+            out.append(self.port_at(flow, hop, epoch))
         return tuple(out)
 
 
@@ -169,9 +195,35 @@ def flow_loads(schedule: dict,
     return loads
 
 
-def occupancy_grid(schedule: dict, subdivision: int = 1
-                   ) -> Callable[[int, float, float], Iterable[int]]:
-    """Derive a schedule's occupancy callable, without being told the grid.
+@dataclass(frozen=True)
+class Grid:
+    """A schedule's packing grid: `step` fine epochs per grid epoch, plus the occupancy map.
+
+    Callable, so it can be handed straight to `flow_loads`. `epoch_of` is exposed separately
+    because a consumer that only has a raw epoch -- the emission-side qualifier, resolving which
+    slice of a split flow a send belongs to -- needs to land on the same grid the packing used,
+    and it has no rate to feed the occupancy call.
+    """
+    step: int
+    spans: Dict[Tuple[int, float], int]
+    chunk: float
+    delta: float
+    subdivision: int
+
+    def epoch_of(self, epoch: int) -> int:
+        return epoch // self.step
+
+    def duration(self, rate: float, epoch: int) -> int:
+        return (self.spans.get((epoch, rate))
+                or max(1, round(self.chunk / (self.subdivision * rate * self.delta))))
+
+    def __call__(self, epoch: int, volume: float, rate: float) -> Iterable[int]:
+        return range(epoch // self.step,
+                     (epoch + self.duration(rate, epoch)) // self.step)
+
+
+def occupancy_grid(schedule: dict, subdivision: int = 1) -> Grid:
+    """Derive a schedule's packing grid, without being told it.
 
     A paced send occupies its link for `volume / rate` seconds, i.e. for
     `chunk_size / (M * rate * delta)` FINE epochs -- the same duration `parse_flows_lp`
@@ -186,8 +238,8 @@ def occupancy_grid(schedule: dict, subdivision: int = 1
     spans one grid epoch; on a flat schedule g is 1 and nothing changes.
 
     A schedule mixing levels with incommensurate pacing lands on g = 1 and pays the fine axis.
-    That is the honest cost of the case, not a silent degradation -- and `window` still yields
-    the exact epoch set, so the result is right either way.
+    That is the honest cost of the case, not a silent degradation -- the epoch set stays exact,
+    so the result is right either way.
     """
     delta = schedule['1-Epoch_Duration']
     chunk = schedule.get('9-Chunk_Size', 1.0)
@@ -203,13 +255,7 @@ def occupancy_grid(schedule: dict, subdivision: int = 1
         dur = max(1, round(chunk / (subdivision * rate * delta)))
         spans[(start, rate)] = dur
         g = gcd(g, start, dur)
-    g = max(1, g)
-
-    def occupancy(epoch: int, volume: float, rate: float) -> Iterable[int]:
-        dur = spans.get((epoch, rate)) or max(1, round(chunk / (subdivision * rate * delta)))
-        return range(epoch // g, (epoch + dur) // g)
-
-    return occupancy
+    return Grid(max(1, g), spans, chunk, delta, subdivision)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -350,16 +396,26 @@ def _solve_link(link: Link, hop: int, flows: Sequence[FlowLoad], inport: Dict[Fl
                 place(fl.load, q)
                 touched.add(q)
                 continue
-            share = _piece_split(fl, used, nports, cap, tol)
-            if share is None:
+            per_epoch = _epoch_split(fl, used, nports, cap, tol)
+            if per_epoch is None:
+                stuck = next(e for e in sorted(fl.load)
+                             if all(used[q][e] + fl.load[e] > cap + tol for q in range(nports)))
+                # Two very different failures wear the same shape here; say which.
+                if fl.load[stuck] > cap + tol:
+                    why = (f"the flow alone carries {fl.load[stuck]:g} > one port's {cap:g}, so "
+                           f"it must be split WITHIN an epoch -- per-chunk slicing, which the "
+                           f"emission cannot express (a path key is keyed per (step, chunk) and "
+                           f"step is the epoch)")
+                else:
+                    room = max(cap - used[q][stuck] for q in range(nports))
+                    why = (f"the flow needs {fl.load[stuck]:g} but the emptiest port has only "
+                           f"{room:g} left, spent by earlier buckets. The greedy packing failed, "
+                           f"not necessarily the instance -- the aggregate may still fit")
                 raise AssertionError(
-                    f"flow {fl.flow} on link {link} does not fit even when its pieces are "
-                    f"divided across all {nports} ports -- the link is over capacity in "
-                    f"aggregate, which means the SOLVE is infeasible for this topology, not "
-                    f"the split")
-            result.port[(fl.flow, link)] = min(share)
-            result.splits.append(SplitFlow(fl.flow, link, share))
-            touched |= set(share)
+                    f"flow {fl.flow} on link {link} cannot be placed in epoch {stuck}: {why}.")
+            result.epoch_port[(fl.flow, link)] = per_epoch
+            result.splits.append(SubFlow(fl.flow, link, per_epoch))
+            touched |= set(per_epoch.values())
         combos += len(touched)
     result.combos[(link, hop)] = combos
 
@@ -372,30 +428,29 @@ def _aggregate(fs: Sequence[FlowLoad]) -> Dict[int, float]:
     return dict(agg)
 
 
-def _piece_split(fl: FlowLoad, used: Dict[int, Dict[int, float]], nports: int, cap: float,
-                 tol: float) -> Optional[Dict[int, Dict[int, float]]]:
-    """Divide one flow's rate across ports, per epoch. Always feasible if the aggregate fits.
+def _epoch_split(fl: FlowLoad, used: Dict[int, Dict[int, float]], nports: int, cap: float,
+                 tol: float) -> Optional[Dict[int, int]]:
+    """Place each of a flow's epochs on its own port, when no single port takes them all.
 
-    This is what makes the pass total: flow granularity is bin packing and can fail, but pieces
-    are atomic and interchangeable, so a flow can always be poured into whatever headroom
-    exists. The cost is the flow's 1:1 path key, hence a SplitFlow report rather than silence.
+    This is the natural relaxation of the vector constraint that made the flow not fit: the
+    flow's problem is that its load in epoch A wants one port and its load in epoch B wants
+    another. Slicing by epoch resolves exactly that, and each slice stays a whole, unsplit send
+    on one wire -- which is what lets it be emitted as a route rather than a fraction.
+
+    Returns None if some SINGLE epoch's load exceeds every port's residual. That case needs a
+    within-epoch split, which the emission cannot express (a path key is keyed per (step, chunk)
+    and step is the epoch), so the caller raises instead of approximating.
     """
-    share: Dict[int, Dict[int, float]] = defaultdict(dict)
-    for e, r in fl.load.items():
-        left = r
-        for q in range(nports):
-            if left <= tol:
-                break
-            room = cap - used[q][e]
-            if room <= tol:
-                continue
-            take = min(room, left)
-            share[q][e] = take
-            used[q][e] += take
-            left -= take
-        if left > tol:
+    out: Dict[int, int] = {}
+    for e in sorted(fl.load):
+        r = fl.load[e]
+        cand = [q for q in range(nports) if used[q][e] + r <= cap + tol]
+        if not cand:
             return None
-    return dict(share)
+        q = min(cand, key=lambda q: (-(used[q][e] + r), q))   # best-fit within the epoch
+        out[e] = q
+        used[q][e] += r
+    return out
 
 
 def qualify_path_key(path_key, ports: Sequence[int], any_split: bool):
@@ -448,18 +503,10 @@ def assert_port_capacity(loads: Sequence[FlowLoad], assignment: PortAssignment,
     send still starts and finishes exactly where the solve put it.
     """
     load: Dict[Tuple[Link, int, int], float] = defaultdict(float)
-    split = {(s.flow, s.link) for s in assignment.splits}
-    for s in assignment.splits:
-        for q, per in s.epoch_share.items():
-            for e, r in per.items():
-                load[(s.link, q, e)] += r
     for fl in loads:
         for hop in fl.flow.hops():
-            if (fl.flow, hop) in split:
-                continue
-            q = assignment.port[(fl.flow, hop)]
             for e, r in fl.load.items():
-                load[(hop, q, e)] += r
+                load[(hop, assignment.port_at(fl.flow, hop, e), e)] += r
     over = []
     for (link, q, e), r in sorted(load.items()):
         cap = port_capacity(*link)
@@ -475,16 +522,9 @@ def port_loads(loads: Sequence[FlowLoad], assignment: PortAssignment,
                link: Link) -> Dict[int, Dict[int, float]]:
     """port -> epoch -> assigned rate on one link. For reporting and tests."""
     out: Dict[int, Dict[int, float]] = defaultdict(lambda: defaultdict(float))
-    split = {s.flow: s for s in assignment.splits if s.link == link}
     for fl in loads:
         if link not in fl.flow.hops():
             continue
-        if fl.flow in split:
-            for q, per in split[fl.flow].epoch_share.items():
-                for e, r in per.items():
-                    out[q][e] += r
-            continue
-        q = assignment.port[(fl.flow, link)]
         for e, r in fl.load.items():
-            out[q][e] += r
+            out[assignment.port_at(fl.flow, link, e)][e] += r
     return {q: dict(v) for q, v in out.items()}

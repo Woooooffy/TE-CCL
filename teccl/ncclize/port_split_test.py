@@ -62,7 +62,7 @@ def test_single_port_is_identity():
     a = assign_ports(flows, pc, cap)
     assert all(q == 0 for q in a.port.values()), a.port
     # port, switch, port -- one port index per HOP, interleaved with the switch ids
-    assert a.qualified_path(flows[0].flow) == (0, 2, 0), a.qualified_path(flows[0].flow)
+    assert a.qualified_path(flows[0].flow, 0) == (0, 2, 0), a.qualified_path(flows[0].flow, 0)
     ok("single-port link is an identity relabeling")
 
 
@@ -148,15 +148,57 @@ def test_vector_not_scalar():
     ok("placement is by epoch vector, not scalar total")
 
 
-def test_piece_split_escape_hatch():
-    """A flow too large for any single port is divided at PIECE granularity and reported."""
-    flows = [FlowLoad(Flow(1, (10,), 11), {0: 60.0}), FlowLoad(Flow(2, (10,), 11), {0: 40.0})]
-    pc, cap = fixed({(10, 11): 2}, {(10, 11): 100.0})
+def test_sub_flows_become_distinct_routes():
+    """A flow that fits neither port in ALL its epochs is sliced, and the slices are ROUTES.
+
+    Two ports of 100. `a` loads port 0 in epoch 0 only; `b` is pushed to port 1 and loads it
+    mostly in epoch 1. That leaves the two ports with complementary residuals -- port 0 tight in
+    epoch 0, port 1 tight in epoch 1 -- so `x`, which spans both, fits neither port whole while
+    fitting SOME port in each epoch. That is exactly the vector-packing failure epoch slicing
+    exists for, and the two slices must produce different qualified path keys, or the emitted
+    program would name one wire for bytes that cross two.
+    """
+    pc, cap = fixed({(10, 11): 2}, {(10, 11): 200.0})       # 100 per port
+    a_ = FlowLoad(Flow(1, (10,), 11), {0: 90.0})
+    b_ = FlowLoad(Flow(2, (10,), 11), {0: 20.0, 1: 90.0})
+    x_ = FlowLoad(Flow(3, (10,), 11), {0: 30.0, 1: 30.0})
+    flows = [a_, b_, x_]
     a = assign_ports(flows, pc, cap)
     assert_port_capacity(flows, a, pc, cap)
-    assert len(a.splits) == 1 and a.splits[0].flow == flows[0].flow, a.splits
-    assert abs(sum(sum(v.values()) for v in a.splits[0].epoch_share.values()) - 60.0) < 1e-9
-    ok("oversized flow escapes to a piece split and is reported")
+
+    assert [str(s.flow) for s in a.splits] == [str(x_.flow)], [str(s.flow) for s in a.splits]
+    sf = a.splits[0]
+    assert set(sf.epoch_port) == {0, 1}, sf.epoch_port
+    assert len(set(sf.epoch_port.values())) == 2, f"the slices should differ: {sf.epoch_port}"
+    assert a.port_at(x_.flow, (10, 11), 0) != a.port_at(x_.flow, (10, 11), 1)
+
+    # of() must refuse a split flow rather than hand back a representative port
+    try:
+        a.of(x_.flow, (10, 11))
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("of() must refuse a split flow rather than pick a representative")
+
+    # ... and the slices are distinct routes: different key => different flow id and channel
+    k0, k1 = a.qualified_path(x_.flow, 0), a.qualified_path(x_.flow, 1)
+    assert k0 != k1, (k0, k1)
+    # an UNSPLIT flow is still epoch-invariant, so nothing changes when nothing splits
+    assert a.qualified_path(b_.flow, 0) == a.qualified_path(b_.flow, 1)
+    ok("a sub-flow is sliced by epoch and its slices are distinct routes")
+
+
+def test_within_epoch_split_is_refused():
+    """One epoch's load exceeding every port needs per-chunk slicing -- refuse, do not fudge."""
+    pc, cap = fixed({(10, 11): 2}, {(10, 11): 100.0})
+    flows = [FlowLoad(Flow(1, (10,), 11), {0: 60.0}), FlowLoad(Flow(2, (10,), 11), {0: 40.0})]
+    try:
+        assign_ports(flows, pc, cap)
+    except AssertionError as e:
+        assert 'WITHIN an epoch' in str(e), e
+        ok("a within-epoch split is refused with a clear error")
+        return
+    raise AssertionError("expected a within-epoch split to be refused")
 
 
 def test_hairpin_is_rejected():
@@ -244,7 +286,8 @@ def test_path_keys_unchanged():
     before, after = collections.defaultdict(set), collections.defaultdict(set)
     for fl in loads:
         before[(fl.flow.src, fl.flow.dst)].add(fl.flow.switches)
-        after[(fl.flow.src, fl.flow.dst)].add(a.qualified_path(fl.flow))
+        for e in fl.load or {0: 0.0}:
+            after[(fl.flow.src, fl.flow.dst)].add(a.qualified_path(fl.flow, e))
     hb = collections.Counter(len(v) for v in before.values())
     ha = collections.Counter(len(v) for v in after.values())
     assert hb == ha == collections.Counter({1: 104, 2: 64}), (hb, ha)
@@ -350,6 +393,50 @@ def test_ncclize_emission():
     ok(f"emission: channels/routes/gates unchanged, {checked} next_hop_port entries verified")
 
 
+def test_sub_flow_reaches_the_emitted_key():
+    """End to end through the qualifier: a slice becomes a distinct path key.
+
+    No shipped schedule splits, so this drives `_build_port_qualifier` on a hand-built one --
+    the same complementary-residual shape as the unit test above, expressed as "7-Flows" lines.
+    It is the only coverage of the wiring from a SubFlow to the key ncclize keys channels,
+    flow ids and forwarding entries on.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from teccl_ncclize import _build_port_qualifier
+    except ImportError as e:
+        print(f"  [SKIP] sub-flow emission ({e})")
+        return
+
+    def line(src, dst, epoch, rate):
+        return (f"Chunk 0 from {src} traveled over {src}->{dst} with volume 1 "
+                f"in epoch {epoch} at rate {rate} via switches 10")
+    schedule = {
+        '1-Epoch_Duration': 1.0, '9-Chunk_Size': 1.0,
+        '7-Flows': [line(1, 11, 0, 90),                       # fills port 0 in epoch 0
+                    line(2, 11, 0, 20), line(2, 11, 1, 90),   # pushed to port 1, fills epoch 1
+                    line(3, 11, 0, 30), line(3, 11, 1, 30)],  # fits neither port whole
+    }
+
+    class Stub:                       # only these three attributes are read
+        ports = True
+        programmable_switch_indices = [10]
+        def port_count(self, i, j):
+            return 2 if 10 in (i, j) else 1
+        def port_capacity(self, i, j):
+            return 100.0 if 10 in (i, j) else 1e9
+
+    qualify, assignment = _build_port_qualifier(schedule, Stub(), lp_format=False)
+    assert len(assignment.splits) == 1, [str(s.flow) for s in assignment.splits]
+    k0 = qualify(3, 11, (10,), 0)
+    k1 = qualify(3, 11, (10,), 1)
+    assert k0 != k1, f"a sliced flow must emit distinct keys, got {k0} twice"
+    assert k0[0] == k1[0] == (10,), (k0, k1)          # same switches, different ports
+    # the unsplit flows stay epoch-invariant, so they stay ONE route each
+    assert qualify(2, 11, (10,), 0) == qualify(2, 11, (10,), 1)
+    ok(f"a sub-flow emits distinct path keys per slice: {k0} vs {k1}")
+
+
 def test_negative_control_random_hash():
     """An ECMP-style per-(flow, link) hash must lose, and by a lot.
 
@@ -386,7 +473,8 @@ def main():
     test_heavy_first_is_load_bearing()
     test_best_fit_compacts_across_hops()
     test_vector_not_scalar()
-    test_piece_split_escape_hatch()
+    test_sub_flows_become_distinct_routes()
+    test_within_epoch_split_is_refused()
     test_hairpin_is_rejected()
     print(" topology")
     test_topology_ports_do_not_touch_the_solve()
@@ -400,6 +488,7 @@ def main():
     test_negative_control_random_hash()
     print(" emission")
     test_ncclize_emission()
+    test_sub_flow_reaches_the_emitted_key()
     print(f"\n{len(_passed)} passed")
 
 

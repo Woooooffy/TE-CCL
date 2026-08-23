@@ -144,15 +144,37 @@ arrival order to be online against.
 20.95 vs 19.20 at 0.95/4) and is a one-line swap if determinism ever matters more than the
 marginal packing.
 
-## 5. Fallback
+## 5. Fallback: sub-flows are real routes
 
-Flow granularity is bin packing and can fail even when the aggregate fits. Pieces are atomic
-and identical, so PIECE granularity is always feasible when `sum <= P*C`. So: attempt flow
-granularity, and where a flow genuinely does not fit, split its pieces across ports, log the
-flow, and accept +1 path key on that `(src, dst)` edge. Never inflate the makespan instead: a
-split costs one channel against a cap of 32, an overloaded port costs the makespan.
+Flow granularity is bin packing and can fail even when the aggregate fits. When it does, slice
+the flow BY EPOCH: each epoch's load goes whole onto a port, and each slice is emitted as its
+own route -- different port tuple, different path key, therefore its own flow id, its own
+channel and its own switch forwarding entry. Not a bookkeeping annotation on one route: the
+emitted program has to name the wire the bytes actually cross.
 
-Expected on the reference schedule: ZERO splits.
+Epoch slices, because that is the finest granularity the emission can express. A path key is
+looked up per `(step, chunk, src, dst)` and `step` IS the epoch, so a flow can differ by epoch
+but not within one. Epoch slicing is also the natural relaxation of the constraint that failed:
+the flow did not fit because its load in epoch A wanted one port and its load in epoch B wanted
+another.
+
+`PortAssignment.port_at(flow, link, epoch)` is the accessor; `of(flow, link)` raises for a split
+flow rather than returning a representative port. An UNSPLIT flow is epoch-invariant, so a
+schedule that needs no slicing produces exactly the keys it produces without this section.
+
+Two failures remain, and they are told apart in the error rather than merged:
+
+* the flow's load in one epoch alone exceeds a port -- needs per-chunk slicing, which the
+  emission cannot express;
+* every port's residual in that epoch is spent by earlier buckets -- the GREEDY packing failed,
+  and the aggregate may still fit.
+
+Neither inflates the makespan silently. Accepting a split costs one channel against a cap of
+32; accepting an overloaded port costs the makespan.
+
+Expected on the reference schedule: ZERO splits. Nothing that ships splits, so the slicing path
+is covered by synthetic tests only -- including one that drives the emission-side qualifier on a
+hand-built schedule, since that wiring is otherwise untested.
 
 ## 6. Emission -- how the port reaches the program
 
@@ -201,6 +223,8 @@ Two consumers need it, and both get it for free from the key:
   load 72/48 = **1.50x** makespan inflation. The pass must produce <= 48.
 * Emission: channels per edge, route count and pacing-gate count all unchanged, and every
   `next_hop_port` in the forwarding table matches its route's own port tuple.
+* Sub-flows: a sliced flow emits a DIFFERENT path key per slice, an unsplit one emits the same
+  key in every epoch, and `of()` refuses a split flow.
 
 ## 8. Build order
 
