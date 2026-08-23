@@ -15,6 +15,29 @@ the realized one (`sum(rate) <= B/P` on each port), and the gap is exactly what 
 closes. It closes it without inflating the makespan whenever the per-port packing succeeds --
 which is a property of the flow-size vectors, not of the routing.
 
+## 0.5 The model
+
+Two objects, each a bijection with a physical thing:
+
+    Flow     <-> a path                    (src, switches, dst)
+    SubFlow  <-> a path plus its ports     (src, switches, dst, one port per hop)
+
+A SubFlow is what crosses wires, so it is what everything downstream keys on. Its identity is
+purely SPATIAL -- `SubFlow.key = (switches, ports)`, with nothing temporal in it. That is not
+tidiness: `(channel, peer)` must stay one logical connection with its own FIFO and in-order
+delivery, so a key that varied by epoch would scatter one connection's traffic across two of
+them and break the ordering the XML runtime depends on.
+
+The packing's job is to give each Flow exactly ONE SubFlow. When a flow will not fit a single
+port it falls back to several, and its PIECES are partitioned among them. One mechanism, not
+two: partitioning across epochs yields subflows alive at different times, partitioning within an
+epoch yields concurrent subflows at finer rates. Same object, same key, same treatment.
+
+A `Piece` is one "7-Flows" line, addressed `(origin, chunk, epoch)` -- the floor, because that
+is exactly what a downstream path-key lookup is keyed on
+(`flow_path_keys[(step_idx, chunk_id, src, dst)]`, chunk_id from (origin, chunk), step_idx from
+epoch). Below a piece there is nothing to partition.
+
 ## 1. Port declaration
 
 `Topology.ports[i][j]`, defaulting to 1 on every used edge, alongside `capacity`. Per-port
@@ -144,37 +167,41 @@ arrival order to be online against.
 20.95 vs 19.20 at 0.95/4) and is a one-line swap if determinism ever matters more than the
 marginal packing.
 
-## 5. Fallback: sub-flows are real routes
+## 5. Fallback: three tiers of one rule
 
-Flow granularity is bin packing and can fail even when the aggregate fits. When it does, slice
-the flow BY EPOCH: each epoch's load goes whole onto a port, and each slice is emitted as its
-own route -- different port tuple, different path key, therefore its own flow id, its own
-channel and its own switch forwarding entry. Not a bookkeeping annotation on one route: the
-emitted program has to name the wire the bytes actually cross.
+The local solve descends only on failure, applying the SAME rule (heavy-first, best-fit) at
+three grains:
 
-Epoch slices, because that is the finest granularity the emission can express. A path key is
-looked up per `(step, chunk, src, dst)` and `step` IS the epoch, so a flow can differ by epoch
-but not within one. Epoch slicing is also the natural relaxation of the constraint that failed:
-the flow did not fit because its load in epoch A wanted one port and its load in epoch B wanted
-another.
+    tier 1   the whole in-port bucket on one port     one combo, no flow partitioned
+    tier 2   each flow in the bucket, whole           still one subflow per flow
+    tier 3   individual pieces                        the flow gains subflows
 
-`PortAssignment.port_at(flow, link, epoch)` is the accessor; `of(flow, link)` raises for a split
-flow rather than returning a representative port. An UNSPLIT flow is epoch-invariant, so a
-schedule that needs no slicing produces exactly the keys it produces without this section.
+Descending only on failure is what keeps subflow counts at one wherever that is possible, and
+having one rule at three grains is what makes an across-epoch partition and a within-epoch
+partition the same mechanism instead of two special cases.
 
-Two failures remain, and they are told apart in the error rather than merged:
+Each resulting subflow is a real route: its own port tuple, therefore its own path key, flow id,
+channel and switch forwarding entry. Not a bookkeeping annotation on one route -- the emitted
+program has to name the wire the bytes actually cross.
 
-* the flow's load in one epoch alone exceeds a port -- needs per-chunk slicing, which the
-  emission cannot express;
-* every port's residual in that epoch is spent by earlier buckets -- the GREEDY packing failed,
-  and the aggregate may still fit.
+`PortAssignment.subflow_of(flow, origin, chunk, epoch)` is the accessor; `only(flow)` raises for
+a partitioned flow rather than returning a representative. The piece address SELECTS a subflow;
+it is never part of the key.
 
-Neither inflates the makespan silently. Accepting a split costs one channel against a cap of
-32; accepting an overloaded port costs the makespan.
+At tier 3 a single piece can still fail to place, and the two reasons are told apart rather than
+merged, because they send the reader to different places:
 
-Expected on the reference schedule: ZERO splits. Nothing that ships splits, so the slicing path
-is covered by synthetic tests only -- including one that drives the emission-side qualifier on a
-hand-built schedule, since that wiring is otherwise untested.
+* the piece alone exceeds every port -- nothing left to divide, so the TOPOLOGY cannot carry
+  this schedule;
+* every port's residual is spent by earlier placements -- the GREEDY packing failed, and the
+  aggregate may still fit.
+
+Neither inflates the makespan silently. Accepting an extra subflow costs one channel against a
+cap of 32; accepting an overloaded port costs the makespan.
+
+Expected on the reference schedule: ONE subflow per flow throughout. Nothing that ships
+partitions, so the fallback is covered by synthetic tests only -- including one that drives the
+emission-side qualifier on a hand-built schedule, since that wiring is otherwise untested.
 
 ## 6. Emission -- how the port reaches the program
 
@@ -184,9 +211,9 @@ builds `paced_sends` from the path key, and the pacing gate manifest is keyed on
 `(step, gpu, peer, path_key)`. Rewriting the keys after parsing would leave the gates keyed on
 the unqualified form and `_realize_pacing_gates` would silently match nothing.
 
-The qualified key is `(switches, ports)`, with one port per HOP -- one longer than `switches`,
-since hop i is the link INTO switch i. `qualify_path_key` returns the key UNCHANGED when the
-route touches no multi-port link, so a topology that declares no ports (every topology today)
+The emitted key is `SubFlow.key = (switches, ports)`, one port per HOP -- one longer than
+`switches`, since hop i is the link INTO switch i. The qualifier returns the route UNCHANGED
+when it touches no multi-port link, so a topology that declares no ports (every topology today)
 produces byte-identical output through every consumer. `unqualify_path_key` is the one place
 that knows the shape.
 
@@ -223,8 +250,9 @@ Two consumers need it, and both get it for free from the key:
   load 72/48 = **1.50x** makespan inflation. The pass must produce <= 48.
 * Emission: channels per edge, route count and pacing-gate count all unchanged, and every
   `next_hop_port` in the forwarding table matches its route's own port tuple.
-* Sub-flows: a sliced flow emits a DIFFERENT path key per slice, an unsplit one emits the same
-  key in every epoch, and `of()` refuses a split flow.
+* Sub-flows: a partitioned flow emits one key per subflow, an unpartitioned one emits a single
+  key for every piece (so its `(channel, peer)` connection stays single), and `only()` refuses a
+  partitioned flow.
 
 ## 8. Build order
 

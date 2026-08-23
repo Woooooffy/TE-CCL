@@ -138,7 +138,7 @@ def parse_flows(schedule, port_qualify=None):
         # agrees. Rewriting flow_path_keys after the fact would leave the gate manifest keyed on
         # the unqualified form and silently drop every gate.
         if port_qualify is not None:
-            path_key = port_qualify(src, dst, path_key, epoch)
+            path_key = port_qualify(src, dst, path_key, origin, subchunk, epoch)
         max_subchunk = max(max_subchunk, subchunk)
         parsed.append((epoch, subchunk, origin, src, dst, path_key))
 
@@ -484,7 +484,8 @@ def parse_flows_lp(schedule, collective_name, port_qualify=None):
                 if path_key:
                     switch_raw_ids.update(path_key)
                 if port_qualify is not None:      # see the note in parse_flows()
-                    path_key = port_qualify(hop_src_raw, hop_dst_raw, path_key, hop_epoch)
+                    path_key = port_qualify(hop_src_raw, hop_dst_raw, path_key,
+                                            src_raw, chunk, hop_epoch)
                 volumes.append(_segment_volume(sm))
                 hops.append((hop_epoch, hop_src_raw, hop_dst_raw, path_key,
                              None if rate is None else float(rate)))
@@ -864,36 +865,37 @@ def _build_port_qualifier(schedule, topology, lp_format):
         return None, None
     try:                                  # sibling module; this file runs both as a script
         from port_split import (Flow, assign_ports, assert_port_capacity,   # noqa: E402
-                                flow_loads, occupancy_grid, qualify_path_key)
+                                flow_loads, occupancy_grid)
     except ImportError:                   # ... and as part of the teccl package
         from teccl.ncclize.port_split import (Flow, assign_ports, assert_port_capacity,
-                                              flow_loads, occupancy_grid, qualify_path_key)
+                                              flow_loads, occupancy_grid)
 
     subdivision = _compute_subdivision(schedule) if lp_format else 1
-    occupancy = occupancy_grid(schedule, subdivision)
-    loads = flow_loads(schedule, occupancy)
+    loads = flow_loads(schedule, occupancy_grid(schedule, subdivision))
     assignment = assign_ports(loads, topology.port_count, topology.port_capacity)
     assert_port_capacity(loads, assignment, topology.port_count, topology.port_capacity)
 
-    # Only a SPLIT flow reads the epoch -- an unsplit one has the same port in every epoch --
-    # but it must land on the grid `assign_ports` packed on, or a slice boundary would be
-    # resolved on the wrong side. Every paced send starts on a grid boundary by construction
-    # (the grid is the gcd of the starts), so integer division names its slice exactly.
+    def qualify(src_raw, dst_raw, path_key, origin, chunk, epoch):
+        """The path key for one send: its SUBFLOW's key, or the route unchanged.
 
-    def qualify(src_raw, dst_raw, path_key, epoch):
+        The piece address only selects WHICH subflow -- it is never part of the key. A flow the
+        packing kept whole has one subflow, so its key is the same for every piece and the
+        `(channel, peer)` connection stays single; only a partitioned flow resolves to more than
+        one, and those are genuinely different routes on different wires.
+
+        Returned unchanged when the route touches no multi-port link, so a topology declaring no
+        ports emits byte-identical keys.
+        """
         flow = Flow(src_raw, tuple(path_key or ()), dst_raw)
-        hops = flow.hops()
-        any_split = any(topology.port_count(*h) > 1 for h in hops)
-        if not any_split:
+        if not any(topology.port_count(*h) > 1 for h in flow.hops()):
             return path_key
         try:
-            ports = [assignment.port_at(flow, h, occupancy.epoch_of(epoch)) for h in hops]
+            return assignment.subflow_of(flow, origin, chunk, epoch).key
         except KeyError:
             raise AssertionError(
-                f"route {flow} in epoch {epoch} appears in the schedule section this parser "
-                f"reads but not in '7-Flows', which the port split was computed from; the two "
-                f"sections disagree about which routes exist")
-        return qualify_path_key(path_key, ports, any_split)
+                f"chunk {chunk} from {origin} in epoch {epoch} on route {flow} appears in the "
+                f"schedule section this parser reads but not in '7-Flows', which the port "
+                f"split was computed from; the two sections disagree about what exists")
 
     return qualify, assignment
 
