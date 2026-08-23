@@ -15,7 +15,7 @@
     "TopologyParams": {
         "name": "TwoPodRail",
         "chassis": 1,
-        "chunk_size": 1
+        "chunk_size": 3
     },
     "GurobiParams": {
         "time_limit": 2,
@@ -32,8 +32,8 @@
         "formulation": 2,
         "switch_copy": false,
         "num_chunks": 1,
-        "epoch_type": 1,
-        "epoch_duration": -1,
+        "epoch_type": [3, 1],
+        "epoch_duration": [0.04, -1],
         "epoch_multiplier": 1,
         "num_epochs": -1,
         "alpha_threshold": 0.1,
@@ -42,8 +42,8 @@
         "objective_type": 6,
         "solution_method": 1,
         "hierarchical": true,
-        "hierarchy_prefix": "two_pod_rail_allgather",
+        "hierarchy_prefix": "two_pod_rail_allgather_epochs",
         "hierarchy_side_outputs": true,
-        "schedule_output_file": "Schedules/two_pod_rail_allgather_flat.json"
+        "schedule_output_file": "Schedules/two_pod_rail_allgather_epochs_flat.json"
     }
 }
