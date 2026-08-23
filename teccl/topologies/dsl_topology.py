@@ -2,10 +2,10 @@
 
 The DSL frontend (teccl/topologies/topology-dsl-frontend, a submodule shared with the ns-3
 simulator) parses a `.topo` file, evaluates its modules/loops/conditionals, and hands back a FLAT
-IR: a node list per type and an ordered list of undirected links, each carrying a bandwidth and a
-latency. That IR is backend-agnostic despite the `NS3` prefix on its class names -- ns-3 turns it
-into C++, and this module turns it into the matrices a Topology is made of. Nothing is emitted
-here; everything stays Python objects.
+IR: a node list per type, an ordered list of undirected links each carrying a bandwidth and a
+latency, and the module structure they came from. That IR is backend-neutral -- ns-3 turns it into
+C++ (its own `ns3codegen` adds one instruction on top), and this module turns it into the matrices
+a Topology is made of. Nothing is emitted here; everything stays Python objects.
 
 NODE NUMBERING is class-major, declaration-order within a class: every `gpu` first, then every
 `nvswitch`, then every `switch`. That is not an arbitrary convention -- it is the numbering the
@@ -43,9 +43,9 @@ _TYPE_ORDER = ("gpu", "nvswitch", "switch")
 def _load_frontend():
     """Import the DSL frontend, which is a submodule and so not an importable package.
 
-    `ns3codegen` does `from transformer import *`, so `transformer` has to be reachable under
-    that bare name -- hence sys.path rather than importlib with a qualified name. This mirrors
-    what the ns-3 consumer does (its topology/main.py), so the two stay in step.
+    `codegen` does `from transformer import *`, so `transformer` has to be reachable under that
+    bare name -- hence sys.path rather than importlib with a qualified name. This mirrors what the
+    ns-3 consumer does (its topology/main.py), so the two stay in step.
     """
     if not os.path.isfile(os.path.join(FRONTEND_DIR, "grammar.lark")):
         raise FileNotFoundError(
@@ -61,20 +61,23 @@ def _load_frontend():
             "the topology DSL needs `lark` (pip install lark) -- it is what parses a .topo "
             "file") from e
     from transformer import TopoTransformer
-    from ns3codegen import NS3CodeGenerator, NS3InstallLink
-    return Lark, TopoTransformer, NS3CodeGenerator, NS3InstallLink
+    # The NEUTRAL IR, not ns3codegen: TE-CCL emits nothing, so ns-3's fabric-build instruction
+    # would be one more thing to skip over rather than anything to read.
+    from codegen import TopologyIR, InstallLink
+    return Lark, TopoTransformer, TopologyIR, InstallLink
 
 
 def build_ir(topo_file: str):
-    """Parse `topo_file` and return the frontend's flattened IR (an NS3CodeGenerator).
+    """Parse `topo_file` and return the frontend's flattened IR (a TopologyIR).
 
     Everything the DSL can express -- modules, submodule instantiation, loops, conditionals,
     arithmetic over parameters -- has been evaluated by the time this returns. What is left is
-    `codegen.gpus / .switches / .nvswitches` (name -> per-class index, in declaration order),
-    `codegen.link_helpers` ((latency, bandwidth, mtu, type) -> id) and `codegen.insns` (the
-    NS3InstallLink list, in source order).
+    `ir.gpus / .switches / .nvswitches` (name -> per-type index, in declaration order),
+    `ir.link_classes` ((latency, bandwidth, mtu, type) -> id), `ir.insns` (the InstallLink list,
+    in source order), and the structure the flattening would otherwise erase: `ir.nodes`,
+    `ir.instances`, `ir.symmetry_groups`.
     """
-    Lark, TopoTransformer, NS3CodeGenerator, _ = _load_frontend()
+    Lark, TopoTransformer, TopologyIR, _ = _load_frontend()
     with open(os.path.join(FRONTEND_DIR, "grammar.lark")) as f:
         parser = Lark(f.read(), parser="lalr")
     with open(topo_file) as f:
@@ -82,7 +85,7 @@ def build_ir(topo_file: str):
     modules = TopoTransformer().transform(tree)
     if "main" not in modules:
         raise ValueError(f"{topo_file} declares no `main` module, so there is nothing to build")
-    codegen = NS3CodeGenerator(modules)
+    codegen = TopologyIR(modules)
     codegen.Generate()
     return codegen
 
@@ -185,7 +188,7 @@ class DslTopology(Topology):
         multi-cable edge, and it is the port numbering on each endpoint (see port_order).
         """
         _, _, _, install_link = _load_frontend()
-        by_id = {hid: attrs for attrs, hid in self._ir.link_helpers.items()}
+        by_id = {cid: attrs for attrs, cid in self._ir.link_classes.items()}
         links = []
         for insn in self._ir.insns:
             if not isinstance(insn, install_link):
@@ -197,7 +200,7 @@ class DslTopology(Topology):
             i, j = self.node_index[insn.src], self.node_index[insn.dst]
             if i == j:
                 raise ValueError(f"{self.topo_file}: {insn.src} is linked to itself")
-            latency, bandwidth, _mtu, _type = by_id[insn.link_helper]
+            latency, bandwidth, _mtu, _type = by_id[insn.link_class]
             links.append((i, j, _to_gigabytes_per_second(bandwidth, f"link {insn.src}-{insn.dst}"),
                           _to_seconds(latency, f"link {insn.src}-{insn.dst}")))
         if not links:
