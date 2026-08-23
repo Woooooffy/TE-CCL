@@ -33,6 +33,25 @@ class DualPlaneHeteroCluster(Topology):
       Port budget per plane: 3 leaves x 64 = 192 ports (fully used, 96 down + 96 up),
       2 spines x 48 = 96 of 128 ports used. 5 switches per plane, 10 switches total.
 
+      Those 32 leaf up-ports are DECLARED, not just aggregated. Each leaf<->spine edge
+      carries capacity 16 x 400 Gbps but `ports` says 16, so the post-solve split
+      (teccl/ncclize/port_split.py) pins each flow to one 400 Gbps cable; without it a flow
+      crossing the spine layer would appear to have 800 GB/s available on one edge -- the same
+      overstatement the two-plane split exists to avoid on the GPU side.
+
+      They are also NUMBERED, which is what the emitted forwarding table names. The default
+      allocation orders a node's connections by neighbor index, and since GPUs hold the low
+      indices and spines the high ones, a leaf comes out cabled the way the hardware is:
+
+          leaf port  0-31   the 32 GPU downlinks, one 400 Gbps port each
+          leaf port 32-47   the 16 cables to spine 0
+          leaf port 48-63   the 16 cables to spine 1
+
+      -- filling the 64-port radix exactly, which `radix()` below declares so that any edit
+      making the fabric wider fails at construction instead of silently overrunning a switch.
+      A spine numbers the far end of those same cables in ITS own space (3 leaves x 16 = ports
+      0-47 of 64); a port number is only ever meaningful relative to the node holding it.
+
     Why the two planes are modeled as disjoint fabrics
     --------------------------------------------------
     There is deliberately NO link between plane 0 and plane 1 anywhere -- not at the leaf,
@@ -186,6 +205,24 @@ class DualPlaneHeteroCluster(Topology):
             self.alpha[i][j] = alpha
             self.alpha[j][i] = alpha
 
+        # Parallel-port declaration for the leaf uplinks. Each leaf<->spine edge above is an
+        # AGGREGATE of `per_spine_links` physical 400 Gbps ports, so what the aggregate hides
+        # is precisely the leaf's 32 up-ports: per_spine_links to each of the
+        # NUM_SPINE_PER_PLANE spines. Declaring them lets the post-solve split
+        # (teccl/ncclize/port_split.py) place each flow on ONE 400 Gbps port instead of
+        # letting it spread across the 800 GB/s bundle, which no single flow can do.
+        #
+        # Structurally invisible: `capacity` is untouched, so every solve is bit-for-bit what
+        # it was before -- nothing upstream of port_split.py reads `ports`. The GPU->leaf
+        # downlinks are genuinely one port each and stay at the default 1.
+        if per_spine_links > 1:
+            self.ports = [[1] * n for _ in range(n)]
+            for p in range(self.NUM_PLANES):
+                for l in range(self.NUM_LEAF_PER_PLANE):
+                    for s in range(self.NUM_SPINE_PER_PLANE):
+                        i, j = self._leaf(p, l), self._spine(p, s)
+                        self.ports[i][j] = self.ports[j][i] = per_spine_links
+
         # The spines within a plane are topological twins: each connects to all leaves of
         # its own plane with identical weights. Spines of DIFFERENT planes are not twins --
         # they have disjoint neighbor sets, which is exactly the point of the design. Leaves
@@ -203,6 +240,17 @@ class DualPlaneHeteroCluster(Topology):
             + [self._spine(p, s) for p in range(self.NUM_PLANES)
                for s in range(self.NUM_SPINE_PER_PLANE)]
         )
+
+    def radix(self, node: int) -> int | None:
+        """Leaves and spines are real 64-port parts; declare it so running out of ports asserts.
+
+        The NVSwitches and GPUs are left as None -- SWITCH_RADIX is a fact about the network
+        switches this class models, and claiming it for a per-host crossbar would be inventing
+        one. Nothing reads their width anyway: neither carries a port map.
+        """
+        if node >= self._leaf_base:
+            return self.SWITCH_RADIX
+        return None
 
     def default_programmable_switch_indices(self):
         # Only the leaf/spine fabric is programmed per route; the per-host NVSwitch is a

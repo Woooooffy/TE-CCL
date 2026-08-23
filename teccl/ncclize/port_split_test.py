@@ -20,6 +20,8 @@ from teccl.input_data import TopologyParams                                  # n
 from teccl.ncclize.port_split import (Flow, FlowLoad, Piece, SubFlow,        # noqa: E402
                                       assign_ports, assert_port_capacity, flow_loads,
                                       occupancy_grid, port_loads, unqualify_path_key)
+from teccl.topologies.dual_plane_hetero_cluster import (                    # noqa: E402
+    DualPlaneHeteroCluster)
 from teccl.topologies.two_pod_rail import (TwoPodRail, TwoPodRailHostBound,  # noqa: E402
                                            TwoPodRailSplitPorts,
                                            two_pod_rail_variant)
@@ -272,6 +274,99 @@ def test_topology_ports_do_not_touch_the_solve():
     ok("port declaration leaves capacity/alpha byte-identical")
 
 
+def test_port_numbers_follow_the_hardware():
+    """A leaf's port numbering must be the one the hardware has, not a per-link index.
+
+    DualPlaneHeteroCluster is the case that pins this down: a 64-port leaf with 32 GPU
+    downlinks and 32 uplinks split 16/16 over two spines. The default allocation orders by
+    neighbor index, and in a two-tier fabric GPUs hold the low node indices and spines the high
+    ones, so downlinks land on ports 0-31 and uplinks on 32-63 without anyone saying so.
+    """
+    t = DualPlaneHeteroCluster(TopologyParams())
+    leaf, spine0, spine1 = t._leaf(0, 0), t._spine(0, 0), t._spine(0, 1)
+
+    assert [t.physical_port(leaf, g) for g in range(32)] == list(range(32)), \
+        "the 32 GPU downlinks should hold ports 0-31"
+    assert [t.physical_port(leaf, spine0, c) for c in range(16)] == list(range(32, 48))
+    assert [t.physical_port(leaf, spine1, c) for c in range(16)] == list(range(48, 64))
+    assert len(t.port_map[leaf]) == t.radix(leaf) == 64, "the leaf should be fully cabled"
+    # The spine sees the same cables from its own end, and numbers them in ITS numbering --
+    # a port number is node-local, so the two ends of one cable need not agree.
+    assert t.physical_port(spine0, leaf, 0) == 0 and t.physical_port(leaf, spine0, 0) == 32
+    assert len(t.port_map[spine0]) == 48 and t.radix(spine0) == 64, "3 leaves x 16 of 64"
+
+    # Only programmable switches are numbered. A GPU and a self-routing NVSwitch say None
+    # rather than carrying a number nothing verified.
+    assert t.physical_port(0, leaf) is None, "a GPU NIC is not numbered"
+    assert t.physical_port(t._nvswitch(0), 0) is None, "a self-routing NVSwitch is not numbered"
+    assert set(t.port_map) == set(t.programmable_switch_indices)
+    ok("leaf ports 0-31 down / 32-63 up, spines 48/64, GPUs and NVSwitches unnumbered")
+
+
+def test_two_pod_rail_port_budget():
+    """The small case, written out: every switch an 8-port part, spine0 filled exactly.
+
+    This is the topology the rest of the suite runs on, so its port table is worth asserting
+    directly rather than inferring from the emitted schedules.
+    """
+    split = TwoPodRailHostBound(TopologyParams())          # spine0 as 2 cables
+    plain = TwoPodRailHostBoundOnePort(TopologyParams())   # the unsplit A/B twin
+    leaf, spine0, spine1 = split._leaf(0, 0), split._spine(0), split._spine(1)
+
+    # 4 GPU downlinks, then spine0's cables, then spine1's -- and 8 ports to hold them.
+    assert [split.physical_port(leaf, split._gpu(n, 0)) for n in range(4)] == [0, 1, 2, 3]
+    assert [split.physical_port(leaf, spine0, c) for c in range(2)] == [4, 5]
+    assert split.physical_port(leaf, spine1) == 6
+    assert len(split.port_map[leaf]) == 7 and split.radix(leaf) == 8
+
+    # spine0 takes 2 cables from each of the 4 leaves: its last port is its 8th.
+    assert len(split.port_map[spine0]) == 8 == split.radix(spine0), "spine0 should be full"
+    assert len(split.port_map[spine1]) == 4, "spine1 takes one cable per leaf"
+    assert split.physical_port(spine0, split._leaf(1, 1), 1) == 7
+
+    # The A/B twin cables the same graph differently, so spine1 sits on a different port. The
+    # schedules are identical (test_ncclize_emission); the port numbers are not, and must not be.
+    assert plain.physical_port(leaf, spine1) == 5 != split.physical_port(leaf, spine1)
+    assert plain.capacity == split.capacity, "only the cabling differs, not the bandwidth"
+    ok("two_pod_rail: leaf 7/8 ports, spine0 exactly full at 8/8, spine1 4/8")
+
+
+def test_a_bad_port_map_is_refused():
+    """The three ways an override goes wrong, each caught at construction.
+
+    port_order is a hook, so it can be got wrong; the point of validating is that a wrong one
+    fails loudly at construction instead of emitting a forwarding table full of ports that no
+    switch has.
+    """
+    class DoubleBooked(DualPlaneHeteroCluster):
+        def port_order(self, node):
+            order = super().port_order(node)
+            return [order[0]] * len(order) if node == self._leaf(0, 0) else order
+
+    class Dropped(DualPlaneHeteroCluster):
+        def port_order(self, node):
+            order = super().port_order(node)
+            return order[:-1] if node == self._leaf(0, 0) else order
+
+    class TooNarrow(DualPlaneHeteroCluster):
+        def radix(self, node):                        # a 32-port part cannot hold 64 cables
+            return 32 if node >= self._leaf_base else None
+
+    cases = [(DoubleBooked, 'more than one port'), (Dropped, 'unplugged'),
+             (TooNarrow, 'radix'),
+             # and the realistic one: a variant cabled wider than the switch it declares.
+             (lambda _: two_pod_rail_variant('TooWide', leaf_spine_ports=(4, 4))(
+                 TopologyParams()), 'needs 12 ports but its radix is 8')]
+    for cls, expected in cases:
+        try:
+            cls(TopologyParams())
+        except AssertionError as e:
+            assert expected in str(e), (cls, e)
+            continue
+        raise AssertionError(f"{cls} should have been refused")
+    ok("a port map that double-books, drops a cable, or overruns the radix is refused")
+
+
 def _reference():
     topo = TwoPodRailHostBound(TopologyParams())
     sched = json.load(open(SCHEDULE))
@@ -391,7 +486,7 @@ def test_ncclize_emission():
     sched = json.load(open(SCHEDULE))
 
     def emit(topo):
-        algo, fpk, srm, _view, _rate, gates = build_algorithm(sched, topology=topo)
+        algo, fpk, srm, _view, _rate, gates, grm = build_algorithm(sched, topology=topo)
         ids, manifest = {}, []
         for si, step in enumerate(algo.steps):            # taccl's route bijection, mirrored
             for addr, src, dst in step.sends:
@@ -399,7 +494,8 @@ def test_ncclize_emission():
                 fid = ids.setdefault((src, dst, key), len(ids))
                 manifest.append({'flow_id': fid, 'step': si, 'src': src, 'dst': dst,
                                  'path_key': key})
-        routes = build_switch_routes(manifest, srm, topo.programmable_switch_indices)
+        routes = build_switch_routes(manifest, srm, topo.programmable_switch_indices,
+                                     physical_port=topo.physical_port, gpu_rank_map=grm)
         per_edge = collections.defaultdict(set)
         for (_si, _a, src, dst), key in fpk.items():
             per_edge[(src, dst)].add(key)
@@ -414,29 +510,47 @@ def test_ncclize_emission():
     assert g0 == g1, f"pacing gate count changed: {g0} -> {g1} (path keys and gate keys disagree)"
     assert f0 != f1, "the split topology should have produced port-qualified keys"
 
-    # The emitted forwarding table gains next_hop_port and changes in no other way.
-    def without_port(routes):
-        return {s: {f: {k: v for k, v in e.items() if k != 'next_hop_port'}
+    # The split moves PORT NUMBERS and nothing else. The debug fields describe the route,
+    # which the split does not touch, so they must be identical between the two topologies.
+    def debug_only(routes):
+        return {s: {f: {k: v for k, v in e.items() if k != 'port'}
                     for f, e in sw.items()} for s, sw in routes['switches'].items()}
-    assert without_port(r0) == without_port(r1), "the split perturbed the forwarding table"
+    assert debug_only(r0) == debug_only(r1), "the split perturbed the route itself"
     assert r0['switch_id_map'] == r1['switch_id_map']
 
-    # Every programmed port matches the hop it leaves on in the route's own port tuple.
+    # Both tables carry a port on EVERY entry: a port number is not conditional on the link
+    # being split, it is what the switch is programmed with either way. The unsplit twin's
+    # leaf->spine0 port differs from the split one's precisely because the split leaf plugs two
+    # cables where the unsplit leaf plugs one, which shifts every port after them.
+    for r in (r0, r1):
+        assert all('port' in e for sw in r['switches'].values() for e in sw.values()), \
+            "an entry reached the table with no egress port"
+
+    # Every programmed port is the port the ROUTE's own next raw hop is plugged into -- checked
+    # against the topology directly, not against the tuple the emitter itself used.
+    topo1 = TwoPodRailHostBound(TopologyParams())
     inv = {int(d): raw for d, raw in r1['switch_id_map'].items()}
-    checked = 0
+    dense_gpu = {}
+    _, _, _, _, _, _, grm1 = build_algorithm(sched, topology=topo1)
+    dense_gpu = {v: k for k, v in grm1.items()}
+    checked = split_checked = 0
     for rec in m1:
-        switches, ports = unqualify_path_key(rec['path_key'])
-        if ports is None:
+        switches, cables = unqualify_path_key(rec['path_key'])
+        if not switches:
             continue
+        raw_path = tuple(switches) + (dense_gpu[rec['dst']],)
         for i, raw in enumerate(switches):
             dense = [d for d, r in inv.items() if r == raw]
             if not dense:
                 continue
             entry = r1['switches'][str(dense[0])][str(rec['flow_id'])]
-            assert entry['next_hop_port'] == ports[i + 1], (rec, entry)
+            cable = cables[i + 1] if cables is not None else 0
+            assert entry['port'] == topo1.physical_port(raw, raw_path[i + 1], cable), (rec, entry)
             checked += 1
-    assert checked, "no port-qualified entry reached the forwarding table"
-    ok(f"emission: channels/routes/gates unchanged, {checked} next_hop_port entries verified")
+            split_checked += cables is not None
+    assert checked and split_checked, "no port-qualified entry reached the forwarding table"
+    ok(f"emission: channels/routes/gates unchanged, {checked} egress ports verified "
+       f"({split_checked} on split links)")
 
 
 def test_send_uplink_deconstructs_the_key():
@@ -486,7 +600,7 @@ def test_split_does_not_move_the_pacing_gates():
     sched = json.load(open(SCHEDULE))
 
     def gates_of(topo):
-        _algo, _fpk, _srm, _v, _rate, gates = build_algorithm(sched, topology=topo)
+        _algo, _fpk, _srm, _v, _rate, gates, _grm = build_algorithm(sched, topology=topo)
         strip = lambda k: k[:3] + (unqualify_path_key(k[3])[0],)      # noqa: E731
         return {(strip(c), strip(p), kind) for c, p, kind in gates}
 
@@ -587,6 +701,9 @@ def main():
     test_hairpin_is_rejected()
     print(" topology")
     test_topology_ports_do_not_touch_the_solve()
+    test_port_numbers_follow_the_hardware()
+    test_two_pod_rail_port_budget()
+    test_a_bad_port_map_is_refused()
     test_sub_flow_key_round_trip()
     print(" regression -- two_pod_rail_hostbound_allgather_fast_epoch_flat")
     test_occupancy_grid_is_derived()

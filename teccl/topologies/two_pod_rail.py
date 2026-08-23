@@ -134,10 +134,19 @@ class TwoPodRail(Topology):
     GPU_LEAF_BW = 50.0                  # H -- the swept knob; see the class docstring
     LEAF_SPINE_BW = (50.0, 25.0)        # per spine; unequal ON PURPOSE
 
-    # Parallel physical ports per leaf<->spine link. The AGGREGATE stays LEAF_SPINE_BW, so the
-    # solver is identical for any value here; only the post-solve port split (port_split.py)
-    # reads it. See TwoPodRailHostBound and TwoPodRailSplitPorts.
+    # Parallel CABLES per leaf<->spine link. The AGGREGATE stays LEAF_SPINE_BW, so the solver is
+    # identical for any value here. Two post-solve things read it: the port split
+    # (port_split.py), which places each flow on one cable, and the port map (Topology), which
+    # numbers the sockets those cables occupy -- so changing it shifts the port numbers in the
+    # emitted forwarding table even though it changes no schedule. See TwoPodRailHostBound and
+    # TwoPodRailSplitPorts.
     LEAF_SPINE_PORTS = (1, 1)
+
+    # Every switch in the fabric is the same 8-port part, which is what makes the port budget
+    # below checkable rather than assumed. A variant that widens the fabric -- more GPUs per
+    # node, or more cables per spine -- must raise this or fail at construction, which is the
+    # point: you cannot plug nine cables into an eight-port switch.
+    SWITCH_RADIX = 8
 
     NVLINK_ALPHA = 0.35 * pow(10, -6)
     NETWORK_ALPHA = 0.7 * pow(10, -6)
@@ -239,6 +248,18 @@ class TwoPodRail(Topology):
             + [self._spine(s) for s in range(self.NUM_SPINE)]
         )
 
+    def radix(self, node: int) -> int | None:
+        """Leaf and spine are 8-port parts; the NVSwitches and GPUs do not claim a width.
+
+        Declaring it is what turns "this variant needs more ports than the switch has" into an
+        assertion at construction. The base configuration leaves a leaf at 6 of 8 and both
+        spines at 4 of 8; TwoPodRailHostBound's second spine0 cable fills spine0 exactly. See
+        that class for the port table.
+        """
+        if node >= self._leaf(0, 0):
+            return self.SWITCH_RADIX
+        return None
+
     def default_programmable_switch_indices(self):
         # Only the network fabric (leaf + spine) takes an external program. The per-node NVSwitch
         # is a self-routing crossbar: the solver freely routes GPU->NVSwitch->GPU through it, but
@@ -294,25 +315,40 @@ class TwoPodRailHostBound(TwoPodRail):
     lands on a vertex, whose minimal support sits on the natural grid. The sample input
     two_pod_rail_hostbound_allgather.json sets both.
 
-    SPINE0 IS TWO PORTS HERE. Its 50 GB/s leaf<->spine0 links are declared as 2 x 25 GB/s
+    SPINE0 IS TWO CABLES HERE. Its 50 GB/s leaf<->spine0 links are two 25 GB/s cables
     (LEAF_SPINE_PORTS below), which makes the whole fabric uniformly 25 GB/s per port: each leaf
-    has 4 downlinks, 2 up-ports to spine0 and 1 to spine1, for the same 75 GB/s of uplink.
+    has 4 downlinks, 2 up-ports to spine0 and 1 to spine1, for the same 75 GB/s of uplink. With
+    SWITCH_RADIX = 8 that is a fully specified port budget, and every switch is the same part:
 
-    That declaration is invisible to the solver -- `capacity[leaf][spine0]` is still 50, so
-    every solve, every schedule and every number above is unchanged. It is read only by the
-    post-solve pass in teccl/ncclize/port_split.py, which places each flow on one port. Carrying
+        leaf(pod p, rail r)   port 0-3   the 4 GPU downlinks, one per node of pod p on rail r
+                              port 4-5   the 2 cables to spine 0
+                              port 6     the 1 cable to spine 1        (7 of 8 used)
+        spine 0               port 0-7   4 leaves x 2 cables           (8 of 8 -- exactly full)
+        spine 1               port 0-3   4 leaves x 1 cable            (4 of 8 used)
+
+    This is the small case for the whole port model, which is why it is worth writing out: a
+    leaf that is a permanent fan-in/fan-out mismatch -- 4 single-cable downlinks against a
+    2-cable and a 1-cable uplink -- is exactly the shape an in-port -> out-port identity mapping
+    cannot serve (port_split_design.md section 6), and a spine filled to its last port is the
+    case where the radix assertion has something to say.
+
+    The declaration is invisible to the SOLVER -- `capacity[leaf][spine0]` is still 50, so every
+    solve, every schedule and every number above is unchanged. Two post-solve passes read it:
+    port_split.py places each flow on one cable, and the port map numbers the sockets. Carrying
     it on the named class rather than on a separate subclass is deliberate: this name is what
     scheduler.py, ncclize's --topology and the sample inputs resolve, so the whole workflow
     exercises the split end to end instead of a test-only alias doing it.
-
-    It also makes the leaf a permanent fan-in/fan-out mismatch -- 4 single-port downlinks
-    against a 2-port and a 1-port uplink -- which is exactly the shape an in-port -> out-port
-    identity mapping cannot serve. See port_split_design.md section 6.
 
     For an unsplit A/B on this same graph, build one:
 
         two_pod_rail_variant("TwoPodRailHostBoundOnePort", gpu_leaf_bw=25.0,
                              leaf_spine_ports=(1, 1))
+
+    Note what does and does not match across that A/B. The XML is byte-identical and so is every
+    route, because the schedule never depended on the cable count. The forwarding table's PORT
+    NUMBERS do differ, and must: the unsplit leaf plugs one cable into port 4 and reaches spine1
+    on port 5, while this one needs ports 4-5 for spine0 and pushes spine1 to port 6. A port
+    number is a fact about how the switch is cabled, so cabling it differently moves it.
 
     See TwoPodRail for the full derivation and for what this configuration gives up (the 2:1
     spine split stops being the unique optimum).
@@ -338,8 +374,10 @@ def two_pod_rail_variant(name: str = "TwoPodRailVariant",
         other_cfg     = two_pod_rail_variant("TwoPodRail_h40", gpu_leaf_bw=40.0)
 
     `leaf_spine_ports` is the one knob the SOLVER does not see: it splits a leaf<->spine link
-    into that many equal ports for the post-solve port pass, leaving `capacity` alone. Use it to
-    build an unsplit twin of a split configuration for an A/B:
+    into that many equal cables for the post-solve port pass, leaving `capacity` alone. It is
+    not free of consequences downstream -- it also decides how many sockets those links occupy,
+    so it moves the port numbers in the emitted forwarding table and can overrun SWITCH_RADIX.
+    Use it to build an unsplit twin of a split configuration for an A/B:
 
         unsplit_hostbound = two_pod_rail_variant("TwoPodRailHostBoundOnePort",
                                                  gpu_leaf_bw=25.0, leaf_spine_ports=(1, 1))

@@ -97,7 +97,7 @@ def parse_flows(schedule, port_qualify=None):
     assuming any fixed offset.
 
     Returns (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
-    switch_rank_map, sorted_epochs, flow_completion_epochs):
+    switch_rank_map, sorted_epochs, flow_completion_epochs, gpu_rank_map):
     - steps_in_order is a list of lists of (global_chunk_id, src, dst)
       0-indexed tuples, one list per non-empty epoch, in increasing epoch
       order.
@@ -121,7 +121,12 @@ def parse_flows(schedule, port_qualify=None):
       downstream to avoid merging chunks that took different switch paths
       into a single send op.
     - switch_rank_map maps each raw switch id appearing in any path key to a
-      dense 0-indexed id, the same way rank_map does for GPU ids.
+      dense 0-indexed id, the same way gpu_rank_map does for GPU ids.
+    - gpu_rank_map maps each raw GPU id to its dense id. Returned rather than
+      discarded because the switch forwarding table has to name the PORT a route
+      leaves a switch on, and the last hop's port is the one facing the
+      destination GPU -- which is a port lookup on a RAW node id, so the dense
+      id in the manifest is not enough to find it.
     """
     parsed = []
     raw_ids = set()
@@ -215,7 +220,7 @@ def parse_flows(schedule, port_qualify=None):
         ] = completion_epoch
 
     return (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
-            switch_rank_map, sorted_epochs, flow_completion_epochs)
+            switch_rank_map, sorted_epochs, flow_completion_epochs, rank_map)
 
 
 def _segment_volume(match):
@@ -328,16 +333,20 @@ def _send_uplink(key):
     own contention pool and stop sends that really do share an uplink from pacing
     against each other. unqualify_path_key is the one place that knows the shape.
 
-    When ports ARE present the first hop's port joins the identity, because that is
-    the physically contended thing: two sends leaving one GPU on different ports of
-    a split uplink do not compete. On an unsplit link the port is 0 for every send,
-    so the grouping is exactly what it was.
+    When cables ARE present the first hop's cable joins the identity, because that
+    is the physically contended thing: two sends leaving one GPU on different cables
+    of a split uplink do not compete. On an unsplit link the cable is 0 for every
+    send, so the grouping is exactly what it was.
+
+    Note this is the CABLE index and not a port number (Topology.port_map). It has
+    to be: hop 0 leaves a GPU, and a GPU carries no port map, so every cable of a
+    split uplink would collapse to one None and the pool would over-serialize.
     """
     _step, src, _dst, path_key = key
-    switches, ports = unqualify_path_key(path_key)
+    switches, cables = unqualify_path_key(path_key)
     first_switch = switches[0] if switches else None
-    first_port = ports[0] if ports else 0
-    return (src, first_switch, first_port)
+    first_cable = cables[0] if cables else 0
+    return (src, first_switch, first_cable)
 
 
 def _finish_before_start_gates(paced_sends):
@@ -669,10 +678,11 @@ def parse_flows_lp(schedule, collective_name, port_qualify=None):
 
     return (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
             sorted_epochs, flow_completion_epochs, flow_rates, root_dense,
-            pacing_gates)
+            pacing_gates, rank_map)
 
 
-def build_switch_routes(flow_manifest, switch_rank_map, programmable_switches=None):
+def build_switch_routes(flow_manifest, switch_rank_map, programmable_switches=None,
+                        physical_port=None, gpu_rank_map=None):
     """Build a per-switch flow_id -> next-hop forwarding table.
 
     flow_manifest is the list of {'flow_id', 'step', 'src', 'dst', 'path_key'}
@@ -702,15 +712,34 @@ def build_switch_routes(flow_manifest, switch_rank_map, programmable_switches=No
     non-programmable contributes nothing. None => every switch is programmable
     (the previous behaviour).
 
+    THE ENTRY IS A FLOW ID -> EGRESS PORT MAPPING. 'port' is the only key a
+    runtime needs and the only one that is load-bearing: a switch that sees a
+    packet tagged with this flow id sends it out of that physical port, and
+    every other key in the entry is there to be read by a human. 'port' is the
+    port number on THIS switch, in its own 0..radix-1 numbering
+    (Topology.port_map), of the cable the route leaves on -- not a link-local
+    index and not the next hop's port.
+
+    physical_port(node, neighbor, cable) supplies those numbers, normally
+    Topology.physical_port. Without it (no --topology) the entries carry no
+    'port' at all rather than a guessed one, since a port number that was not
+    read off a topology is a fiction. gpu_rank_map (raw GPU id -> dense) is
+    needed alongside it because the LAST hop's port faces the destination GPU,
+    and a port lookup is on raw node ids while the manifest carries dense ones.
+
+    The remaining keys are debug: next_hop / next_hop_type name where the packet
+    is going in the same dense 0-indexed numbering used elsewhere (GPU ids
+    matching the main XML's, switch ids ranked over the switches this table
+    covers), with next_hop_type ('switch' or 'gpu') disambiguating the two since
+    they are independently 0-indexed and can otherwise collide numerically;
+    src_gpu / dst_gpu name the route's endpoints. A reader can check any 'port'
+    against them; a runtime never has to.
+
     Returns {'switch_id_map': {switch_id_str: raw_node_id},
-             'switches': {switch_id_str: {flow_id_str: {...}}}}, with switch
-    and GPU ids both in the same dense 0-indexed numbering used elsewhere
-    (GPU ids matching the main XML's, switch ids ranked over the switches this
-    table covers) and an explicit next_hop_type ('switch' or 'gpu')
-    disambiguating the two, since they are independently 0-indexed and can
-    otherwise collide numerically. switch_id_map records the dense id -> raw
-    fine node id correspondence, which is no longer inferable from the schedule
-    alone once the table covers a subset of the switches.
+             'switches': {switch_id_str: {flow_id_str: {...}}}}. switch_id_map
+    records the dense id -> raw fine node id correspondence, which is no longer
+    inferable from the schedule alone once the table covers a subset of the
+    switches.
     """
     # Rank over the switches this table actually covers, so its ids stay dense
     # 0..k-1 rather than inheriting holes where a filtered-out switch sat.
@@ -722,34 +751,46 @@ def build_switch_routes(flow_manifest, switch_rank_map, programmable_switches=No
                     enumerate(sorted(s for s in switch_rank_map
                                      if s in programmable_switches))}
 
+    raw_gpu = ({dense: raw for raw, dense in gpu_rank_map.items()}
+               if gpu_rank_map is not None else None)
+
     routes = defaultdict(dict)
     for record in flow_manifest:
-        raw_key, ports = unqualify_path_key(record['path_key'])
+        raw_key, cables = unqualify_path_key(record['path_key'])
         if not raw_key:
             continue  # direct GPU-GPU link, no switch hop involved
-        # Keep each surviving switch's ORIGINAL index: its physical egress port is the port of
-        # the hop leaving IT, which is unaffected by whether the switches after it were filtered
-        # out as self-routing. Chaining past a skipped switch changes the next hop, not the wire
-        # the packet leaves on.
+        # Keep each surviving switch's ORIGINAL index. Its egress port is a property of the
+        # RAW wire leaving it, which is unaffected by whether the switches after it were
+        # filtered out as self-routing: chaining past a skipped switch changes where the packet
+        # ends up, not which socket it left this one by.
         kept = [(i, rank_map[s]) for i, s in enumerate(raw_key) if s in rank_map]
         if not kept:
             continue  # entirely self-routing (e.g. an intra-node NVSwitch hop)
         switch_path = [dense for _, dense in kept]
         flow_id, src, dst = (
             record['flow_id'], record['src'], record['dst'])
+        # The raw node sequence the wires actually follow. `dst` is dense, so the last hop's
+        # far end has to be translated back before it can be looked up as a port.
+        raw_dst = None if raw_gpu is None else raw_gpu.get(dst)
+        raw_path = (raw_key + (raw_dst,)) if raw_dst is not None else None
         for i, (orig_idx, switch) in enumerate(kept):
             is_last = i == len(switch_path) - 1
             next_hop_type = 'gpu' if is_last else 'switch'
             next_hop = dst if is_last else switch_path[i + 1]
-            entry = {
+            entry = {}
+            if physical_port is not None and raw_path is not None:
+                # `cables` carries one entry per HOP, so hop orig_idx+1 is the one LEAVING this
+                # switch; an unqualified key touches no multi-port link, so every cable is 0.
+                cable = cables[orig_idx + 1] if cables is not None else 0
+                port = physical_port(raw_key[orig_idx], raw_path[orig_idx + 1], cable)
+                if port is not None:
+                    entry['port'] = port
+            entry.update({
                 'next_hop_type': next_hop_type,
                 'next_hop': next_hop,
                 'src_gpu': src,
                 'dst_gpu': dst,
-            }
-            if ports is not None:
-                # ports has one entry per hop, so hop orig_idx+1 is the one LEAVING this switch.
-                entry['next_hop_port'] = ports[orig_idx + 1]
+            })
             routes[switch][flow_id] = entry
 
     return {
@@ -936,7 +977,7 @@ def build_algorithm(schedule, name='teccl', topology=None):
     if lp_format:
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
          sorted_epochs, flow_completion_epochs, flow_rates, root_dense,
-         pacing_gates) = parse_flows_lp(schedule, collective_name, port_qualify)
+         pacing_gates, gpu_rank_map) = parse_flows_lp(schedule, collective_name, port_qualify)
         collective = _build_collective(collective_name, num_nodes, root_dense)
     else:
         # parse_flows labels chunks src-major (rank_map[origin] * S + subchunk), so
@@ -948,7 +989,7 @@ def build_algorithm(schedule, name='teccl', topology=None):
                 "MILP-format schedules use src-major chunk labels, which cannot "
                 "represent alltoall's destination-major chunk identity.")
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-         sorted_epochs, flow_completion_epochs) = parse_flows(schedule, port_qualify)
+         sorted_epochs, flow_completion_epochs, gpu_rank_map) = parse_flows(schedule, port_qualify)
         flow_rates = {}
         collective = _build_collective(collective_name, num_nodes,
                                        schedule.get('0-Root'))
@@ -1022,7 +1063,7 @@ def build_algorithm(schedule, name='teccl', topology=None):
             piece_rate = chunk_size / epoch_duration
 
     return (algo, flow_path_keys, switch_rank_map, gpu_epoch_view, piece_rate,
-            pacing_gates)
+            pacing_gates, gpu_rank_map)
 
 
 def load_topology(name, chunk_size=1.0):
@@ -1119,7 +1160,7 @@ def main():
 
     real_topology = load_topology(args.topology) if args.topology else None
     (algo, flow_path_keys, switch_rank_map,
-     gpu_epoch_view, piece_rate, pacing_gates) = build_algorithm(
+     gpu_epoch_view, piece_rate, pacing_gates, gpu_rank_map) = build_algorithm(
         schedule, topology=real_topology)
 
     # Send pacing is enforced INSIDE ncclize by realizing the pacing_gates manifest (per-flow
@@ -1183,7 +1224,12 @@ def main():
             programmable = set(real_topology.programmable_switch_indices)
         else:
             programmable = None
-        routes = build_switch_routes(flow_manifest, switch_rank_map, programmable)
+        # The topology is what knows a port number; without --topology the table is emitted
+        # with its debug fields and no 'port', which is the honest output for "nobody said".
+        routes = build_switch_routes(
+            flow_manifest, switch_rank_map, programmable,
+            physical_port=(real_topology.physical_port if real_topology is not None else None),
+            gpu_rank_map=gpu_rank_map)
         with open(args.switch_routing_output, 'w') as f:
             json.dump(routes, f, indent=2)
         print(f'Wrote {args.switch_routing_output}')

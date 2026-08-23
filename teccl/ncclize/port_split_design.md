@@ -40,8 +40,46 @@ epoch). Below a piece there is nothing to partition.
 
 ## 1. Port declaration
 
-`Topology.ports[i][j]`, defaulting to 1 on every used edge, alongside `capacity`. Per-port
-bandwidth is `capacity[i][j] / ports[i][j]`. `TwoPodRailHostBound` sets `LEAF_SPINE_PORTS = (2, 1)`, making
+Ports come in TWO LAYERS, and keeping them apart is what makes the model both packable and
+physically honest.
+
+**Cable index**, `0..ports[i][j]-1`, names one of the parallel links realizing edge `(i, j)`.
+LINK-local, and meaningful on every edge of every topology. This is what the packing below
+assigns, and the whole reason it can: *leaving `u` on cable `c` of `(u,v)` IS arriving at `v` on
+cable `c`*, so a flow's choice follows it across hops. `Topology.ports[i][j]` is the count,
+defaulting to 1 on every used edge; per-cable bandwidth is `capacity[i][j] / ports[i][j]`.
+
+**Port number**, `0..radix-1`, names a socket on a specific NODE. Node-local, and what real
+hardware actually has: a 64-port leaf whose ports 0-31 take GPU downlinks and 32-63 take spine
+uplinks. `Topology.port_map[node][(neighbor, cable)]` is the plugging record, read through
+`physical_port(node, neighbor, cable)`.
+
+The two ends of one cable need not agree on a number, and generally do not:
+`DualPlaneHeteroCluster`'s leaf calls its first spine cable port 32 while the spine calls the
+same cable port 0. A port number is only ever meaningful relative to the node holding it.
+
+`port_order(node)` decides the numbering, and the default -- neighbors ascending, a neighbor's
+cables consecutive -- is not arbitrary: in a two-tier fabric GPUs hold the low node indices and
+spines the high ones, so downlinks land on the low ports and uplinks on the high ones by
+themselves. A topology whose real part pins a plug to a specific port overrides it;
+`_check_port_map` then enforces that the result is a permutation of the node's connections and
+fits `radix(node)`, so a wrong override fails at construction rather than emitting ports no
+switch has.
+
+**Only programmable switches are numbered.** A port number is a fiction unless something reads
+it, and the one consumer is the emitted forwarding table, which covers exactly those switches.
+GPUs and self-routing NVSwitches return `None` -- stating that nothing numbered their sockets,
+rather than carrying a number nobody checked. Note what is NOT skipped: a programmable switch
+numbers *all* of its connections, downlinks to unnumbered GPUs included, because a leaf's
+downlink is a port on the LEAF, which is the end being programmed.
+
+This is also why the packing keys on the CABLE and not the port. Hop 0 leaves a GPU, which has
+no port map; if the path key carried port numbers, every cable of a split GPU uplink would
+collapse to the same `None` and the channel allocator and `_send_uplink` would stop telling
+them apart. Cables are universal, so the identity is built on them and the port number is
+looked up only at emission.
+
+`TwoPodRailHostBound` sets `LEAF_SPINE_PORTS = (2, 1)`, making
 the fabric uniformly 25 GB/s per port at unchanged aggregate. It carries the declaration itself,
 rather than a test-only subclass doing so, because that name is what `scheduler.py`, ncclize's
 `--topology` and the sample inputs resolve -- so the whole workflow exercises the split. Its
@@ -52,6 +90,9 @@ Unequal-width ports would need `ports` to hold a list of capacities instead of a
 built; nothing needs it.
 
 ## 2. Ordering: sweep by HOP INDEX
+
+*Throughout sections 2-5, "port" means the CABLE INDEX of section 1 -- the packing works
+entirely in link-local terms. The node-local port NUMBER enters only at emission (section 6).*
 
 Process hop 0 of every flow, then hop 1, then hop 2, ... Within a hop, every out-link is an
 independent problem, because all of its inputs were decided at strictly earlier hops.
@@ -230,12 +271,27 @@ Two consumers need it, and both get it for free from the key:
   before and after. Only a SPLIT flow adds one. This is why in-port affinity is a tiebreak and
   not an objective -- it was never buying channels.
 * **Forwarding.** A flow id is a bijection with `(src, dst, path_key)`, so two flows down the
-  same switch sequence on different ports now get different flow ids and therefore different
-  entries. `build_switch_routes` emits `next_hop_port` on each entry: for a programmable switch
-  at original index i, that is `ports[i+1]`, the port of the hop LEAVING it. The original index
-  is kept while filtering non-programmable switches, because chaining past a self-routing switch
-  changes the next hop, not the wire the packet leaves on. The key is added only when the route
-  carries ports, so an unsplit table is byte-identical.
+  same switch sequence on different cables get different flow ids and therefore different
+  entries. **The entry is a flow id -> egress port mapping**: `'port'` is the only key a runtime
+  needs, and it is the port number on THIS switch, in its own `0..radix-1` numbering, of the
+  cable the route leaves on. `next_hop` / `next_hop_type` / `src_gpu` / `dst_gpu` remain in the
+  entry to be read by a human -- a reader can check a port against them; a runtime never has to.
+
+  `build_switch_routes` resolves it as `physical_port(raw_key[i], raw_next, cables[i+1])` for
+  the programmable switch at original index `i`. Three things have to line up there:
+
+  - `cables[i+1]`, because the cable tuple is one per HOP and hop `i+1` is the one LEAVING
+    switch `i`. An unqualified key (a route touching no multi-port link) means cable 0
+    everywhere, so a port is still emitted -- a port number is not conditional on the link being
+    split, it is what the switch is programmed with either way.
+  - the ORIGINAL index, kept while filtering non-programmable switches, because chaining past a
+    self-routing switch changes where the packet ends up, not which socket it left by.
+  - the RAW next hop, which for the last programmable switch is the destination GPU. The
+    manifest carries dense GPU ids and a port lookup is on raw ones, which is why the parsers
+    now return `gpu_rank_map` instead of discarding it.
+
+  Without a `--topology` there is nothing that knows a port number, so entries carry none rather
+  than a guessed one.
 
 ## 7. Validation
 
@@ -253,7 +309,14 @@ Two consumers need it, and both get it for free from the key:
 * Negative control: a random per-`(flow, link)` port hash is 0/20000 feasible, median max port
   load 72/48 = **1.50x** makespan inflation. The pass must produce <= 48.
 * Emission: channels per edge, route count and pacing-gate count all unchanged, and every
-  `next_hop_port` in the forwarding table matches its route's own port tuple.
+  `'port'` in the forwarding table checked against `topology.physical_port` directly -- not
+  against the tuple the emitter itself used, which would only prove it was self-consistent.
+  11520 entries verified on the reference schedule, 6336 of them on split links.
+* Port numbering: `DualPlaneHeteroCluster`'s leaf holds its 32 GPU downlinks on ports 0-31 and
+  its 2 x 16 spine uplinks on 32-63, filling its 64-port radix exactly, while the spine numbers
+  the far end of those same cables from 0. GPUs and NVSwitches report `None`.
+* A `port_order` override that double-books a port, drops a cable, or overruns the radix is
+  refused at construction, each with its own message.
 * Sub-flows: a partitioned flow emits one key per subflow, an unpartitioned one emits a single
   key for every piece (so its `(channel, peer)` connection stays single), and `only()` refuses a
   partitioned flow.
@@ -282,7 +345,7 @@ not compete. On an unsplit link that port is 0 for every send, so the grouping i
 3. DONE (go/no-go) -- port-granular capacity assert. Reference schedule: exact 25/25 GB/s per
    port on all 8 spine0 links, 0 flow splits, 4 combos per link (the floor).
 4. DONE -- port folded into the path key at parse time. Channels per edge `{1: 104, 2: 64}`,
-   route count and gate count all unchanged; forwarding table gains `next_hop_port` and changes
+   route count and gate count all unchanged; forwarding table gains the egress port and changes
    in no other way.
 5. DONE -- `two_pod_rail_allgather_flat` is the spine-bound (`GPU_LEAF_BW = 50`) instance and IS
    paced, so no new solve was needed. It is the only case that exercises the packing: with
@@ -300,3 +363,10 @@ here runs at exactly 100%, so per-port balance is forced by capacity and no fit 
 worse. A topology with sustained partial utilisation on a multi-port link -- or a link used at
 several hop indices AND declaring more than one port, which none of these have -- is what would
 first distinguish them on real data.
+
+6. DONE -- real port NUMBERING (section 1's second layer). `Topology.port_map` plus
+   `port_order` / `radix` / `physical_port`, built for every topology at construction and
+   populated on programmable switches only. The forwarding entry's `'port'` is now a socket on
+   the switch rather than a link-local index, and is emitted unconditionally rather than only
+   on split links. `DualPlaneHeteroCluster` declares its 32 leaf up-ports; every other topology
+   picks up the default numbering with no code of its own.

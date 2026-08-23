@@ -263,7 +263,7 @@ def _check_ncclize(info, tag):
         from teccl_ncclize import build_algorithm
     except ImportError as e:                     # lxml / z3 not installed locally
         return f"SKIPPED ({e})"
-    algo, _, _, _, piece_rate, pacing_gates = build_algorithm(info)
+    algo, _, _, _, piece_rate, pacing_gates, _ = build_algorithm(info)
     assert isinstance(piece_rate, dict) and piece_rate, (
         "the stitched schedule must supply per-flow rates, not a global scalar")
     unpaced = sum(1 for v in piece_rate.values() if v is None)

@@ -40,7 +40,7 @@ def generate_xml(schedule_path, hierarchical=False, topology=None):
 
     real_topology = load_topology(topology) if topology else None
     (algo, flow_path_keys, switch_rank_map,
-     gpu_epoch_view, piece_rate, pacing_gates) = build_algorithm(
+     gpu_epoch_view, piece_rate, pacing_gates, _gpu_rank_map) = build_algorithm(
         schedule, topology=real_topology)
     # The flat-axis feasibility check only applies to a SINGLE-LEVEL (flat) solve; a hierarchical
     # multi-level schedule interleaves per-level epoch grids, so its network-layer pacing is checked
