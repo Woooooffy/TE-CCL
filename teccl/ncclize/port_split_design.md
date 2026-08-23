@@ -41,8 +41,12 @@ epoch). Below a piece there is nothing to partition.
 ## 1. Port declaration
 
 `Topology.ports[i][j]`, defaulting to 1 on every used edge, alongside `capacity`. Per-port
-bandwidth is `capacity[i][j] / ports[i][j]`. `TwoPodRailHostBoundSplitPorts` sets
-`ports[leaf][spine0] = 2`, making the fabric uniformly 25 GB/s per port at unchanged aggregate.
+bandwidth is `capacity[i][j] / ports[i][j]`. `TwoPodRailHostBound` sets `LEAF_SPINE_PORTS = (2, 1)`, making
+the fabric uniformly 25 GB/s per port at unchanged aggregate. It carries the declaration itself,
+rather than a test-only subclass doing so, because that name is what `scheduler.py`, ncclize's
+`--topology` and the sample inputs resolve -- so the whole workflow exercises the split. Its
+unsplit twin, for A/B checks, is
+`two_pod_rail_variant(..., gpu_leaf_bw=25.0, leaf_spine_ports=(1, 1))`.
 
 Unequal-width ports would need `ports` to hold a list of capacities instead of a count. Not
 built; nothing needs it.
@@ -253,6 +257,21 @@ Two consumers need it, and both get it for free from the key:
 * Sub-flows: a partitioned flow emits one key per subflow, an unpartitioned one emits a single
   key for every piece (so its `(channel, peer)` connection stays single), and `only()` refuses a
   partitioned flow.
+* End to end, real `ncclize()`, split vs unsplit twin on the same schedule: the XML is
+  BYTE-IDENTICAL and the forwarding table differs only by the added `next_hop_port`. Every gate
+  edge stays on its own producer -- checked as a set, not a count.
+
+### Consumers must DECONSTRUCT a path key, never index it
+
+`_send_uplink` indexed `path_key[0]` for the first switch. On a qualified key that is the whole
+switch tuple, so every distinct ROUTE got its own contention pool and sends genuinely sharing an
+uplink stopped pacing against each other: 396 of 768 gate edges moved to a different producer,
+with the gate COUNT unchanged. Counting caught nothing; comparing the edge SET did.
+
+`unqualify_path_key` is the one place that knows the shape, and any new consumer must go through
+it. `_send_uplink` now also takes the first hop's PORT into its identity, which is the
+physically contended thing -- two sends leaving one GPU on different ports of a split uplink do
+not compete. On an unsplit link that port is 0 for every send, so the grouping is unchanged.
 
 ## 8. Build order
 

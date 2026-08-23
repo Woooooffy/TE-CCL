@@ -20,9 +20,14 @@ from teccl.input_data import TopologyParams                                  # n
 from teccl.ncclize.port_split import (Flow, FlowLoad, Piece, SubFlow,        # noqa: E402
                                       assign_ports, assert_port_capacity, flow_loads,
                                       occupancy_grid, port_loads, unqualify_path_key)
-from teccl.topologies.two_pod_rail import (TwoPodRailHostBound,              # noqa: E402
-                                           TwoPodRailHostBoundSplitPorts,
-                                           TwoPodRailSplitPorts)
+from teccl.topologies.two_pod_rail import (TwoPodRail, TwoPodRailHostBound,  # noqa: E402
+                                           TwoPodRailSplitPorts,
+                                           two_pod_rail_variant)
+
+# The unsplit twin of TwoPodRailHostBound: same graph, same capacities, one port per link.
+# Every "declaring ports changes nothing" check compares against this.
+TwoPodRailHostBoundOnePort = two_pod_rail_variant(
+    "TwoPodRailHostBoundOnePort", gpu_leaf_bw=25.0, leaf_spine_ports=(1, 1))
 
 SCHEDULE = 'Schedules/two_pod_rail_hostbound_allgather_fast_epoch_flat.json'
 SPINE_BOUND = 'Schedules/two_pod_rail_allgather_flat.json'
@@ -30,10 +35,10 @@ SPINE_BOUND = 'Schedules/two_pod_rail_allgather_flat.json'
 ALL_CASES = [
     ('two_pod_rail_allgather_flat', TwoPodRailSplitPorts),
     ('two_pod_rail_alltoall_flat', TwoPodRailSplitPorts),
-    ('two_pod_rail_hostbound_allgather_flat', TwoPodRailHostBoundSplitPorts),
-    ('two_pod_rail_hostbound_alltoall_flat', TwoPodRailHostBoundSplitPorts),
-    ('two_pod_rail_hostbound_allgather_fast_epoch_flat', TwoPodRailHostBoundSplitPorts),
-    ('two_pod_rail_hostbound_alltoall_fast_epoch_flat', TwoPodRailHostBoundSplitPorts),
+    ('two_pod_rail_hostbound_allgather_flat', TwoPodRailHostBound),
+    ('two_pod_rail_hostbound_alltoall_flat', TwoPodRailHostBound),
+    ('two_pod_rail_hostbound_allgather_fast_epoch_flat', TwoPodRailHostBound),
+    ('two_pod_rail_hostbound_alltoall_fast_epoch_flat', TwoPodRailHostBound),
 ]
 
 _passed = []
@@ -255,11 +260,12 @@ def test_hairpin_is_rejected():
 
 # ----------------------------------------------------------------------------------------------
 def test_topology_ports_do_not_touch_the_solve():
-    base = TwoPodRailHostBound(TopologyParams())
-    split = TwoPodRailHostBoundSplitPorts(TopologyParams())
+    base = TwoPodRailHostBoundOnePort(TopologyParams())
+    split = TwoPodRailHostBound(TopologyParams())
     assert base.capacity == split.capacity and base.alpha == split.alpha, \
         "declaring ports must not change what the solver sees"
     assert base.ports == [] and base.port_count(24, 28) == 1
+    assert TwoPodRail(TopologyParams()).ports == [], "TwoPodRail stays the unsplit reference"
     assert split.port_count(24, 28) == 2 and split.port_capacity(24, 28) == 25.0
     assert split.port_count(24, 29) == 1 and split.port_capacity(24, 29) == 25.0
     assert split.port_count(0, 24) == 1 and split.port_capacity(0, 24) == 25.0
@@ -267,7 +273,7 @@ def test_topology_ports_do_not_touch_the_solve():
 
 
 def _reference():
-    topo = TwoPodRailHostBoundSplitPorts(TopologyParams())
+    topo = TwoPodRailHostBound(TopologyParams())
     sched = json.load(open(SCHEDULE))
     loads = flow_loads(sched, occupancy_grid(sched))
     return topo, loads
@@ -400,8 +406,8 @@ def test_ncclize_emission():
         return fpk, routes, manifest, len(ids), len(gates), \
             collections.Counter(len(v) for v in per_edge.values())
 
-    f0, r0, _m0, n0, g0, c0 = emit(TwoPodRailHostBound(TopologyParams()))
-    f1, r1, m1, n1, g1, c1 = emit(TwoPodRailHostBoundSplitPorts(TopologyParams()))
+    f0, r0, _m0, n0, g0, c0 = emit(TwoPodRailHostBoundOnePort(TopologyParams()))
+    f1, r1, m1, n1, g1, c1 = emit(TwoPodRailHostBound(TopologyParams()))
 
     assert c0 == c1 == collections.Counter({1: 104, 2: 64}), (c0, c1)
     assert n0 == n1, f"route count changed: {n0} -> {n1}"
@@ -431,6 +437,63 @@ def test_ncclize_emission():
             checked += 1
     assert checked, "no port-qualified entry reached the forwarding table"
     ok(f"emission: channels/routes/gates unchanged, {checked} next_hop_port entries verified")
+
+
+def test_send_uplink_deconstructs_the_key():
+    """The contention pool must DECONSTRUCT a path key, never index it.
+
+    `_send_uplink` groups sends by the uplink they contend for, as (src, first_switch, port).
+    Indexing `path_key[0]` gives the first switch for a bare key but the WHOLE switch tuple for
+    a port-qualified one -- which silently hands every distinct route its own contention pool
+    and stops sends that really do share an uplink from pacing against each other. It cost 396
+    of 768 gate edges the first time, and nothing else would have caught it: the gate COUNT is
+    unchanged, only the producers move.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from teccl_ncclize import _send_uplink
+    except ImportError as e:
+        print(f"  [SKIP] send uplink ({e})")
+        return
+    bare = _send_uplink((7, 0, 10, (24, 28, 26)))
+    assert bare == (0, 24, 0), bare
+    # same route, port-qualified: same uplink, same pool
+    same = _send_uplink((7, 0, 10, ((24, 28, 26), (0, 1, 1, 0))))
+    assert same == (0, 24, 0), same
+    # a different route out of the SAME first switch shares the pool ...
+    assert _send_uplink((7, 0, 11, ((24, 29, 27), (0, 0, 0, 0)))) == (0, 24, 0)
+    # ... a different first switch does not ...
+    assert _send_uplink((7, 0, 11, ((25, 29, 27), (0, 0, 0, 0)))) != (0, 24, 0)
+    # ... and neither does the same first switch reached on a different PORT
+    assert _send_uplink((7, 0, 10, ((24, 28, 26), (1, 0, 0, 0)))) == (0, 24, 1)
+    assert _send_uplink((7, 0, 10, None)) == (0, None, 0)
+    ok("_send_uplink deconstructs the key and takes the first hop's port")
+
+
+def test_split_does_not_move_the_pacing_gates():
+    """End to end: declaring ports must leave every gate edge exactly where it was.
+
+    The gate manifest is keyed on (step, gpu, peer, path_key), so a key-shape change that any
+    consumer mishandles shows up here as gates pointing at different producers -- with the same
+    COUNT, which is why counting is not enough.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from teccl_ncclize import build_algorithm
+    except ImportError as e:
+        print(f"  [SKIP] gate stability ({e})")
+        return
+    sched = json.load(open(SCHEDULE))
+
+    def gates_of(topo):
+        _algo, _fpk, _srm, _v, _rate, gates = build_algorithm(sched, topology=topo)
+        strip = lambda k: k[:3] + (unqualify_path_key(k[3])[0],)      # noqa: E731
+        return {(strip(c), strip(p), kind) for c, p, kind in gates}
+
+    g0 = gates_of(TwoPodRailHostBoundOnePort(TopologyParams()))
+    g1 = gates_of(TwoPodRailHostBound(TopologyParams()))
+    assert g0 == g1, f"{len(g0 - g1)} gate edges moved when ports were declared"
+    ok(f"declaring ports moves none of the {len(g0)} pacing gate edges")
 
 
 def test_sub_flow_reaches_the_emitted_key():
@@ -534,6 +597,8 @@ def main():
     test_negative_control_random_hash()
     print(" emission")
     test_ncclize_emission()
+    test_send_uplink_deconstructs_the_key()
+    test_split_does_not_move_the_pacing_gates()
     test_sub_flow_reaches_the_emitted_key()
     print(f"\n{len(_passed)} passed")
 

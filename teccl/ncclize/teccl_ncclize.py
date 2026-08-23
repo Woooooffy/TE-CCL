@@ -31,6 +31,11 @@ MAX_DENOM = 64
 # unbounded M would blow up. Raise clearly instead.
 MAX_M = 128
 
+try:                                  # sibling module; this file runs both as a script
+    from port_split import unqualify_path_key                            # noqa: E402
+except ImportError:                   # ... and as part of the teccl package
+    from teccl.ncclize.port_split import unqualify_path_key
+
 FLOW_RE = re.compile(
     r'Chunk (\d+) from (\d+) traveled over (\d+)->(\d+)'
     r'(?:\s+with volume\s+(?P<volume>[\d.]+))?'
@@ -307,20 +312,32 @@ def _compute_subdivision(schedule):
 
 
 def _send_uplink(key):
-    """The physical outgoing link a send op contends for, from its key
+    """The physical outgoing PORT a send op contends for, from its key
     (step, src, dst, path_key).
 
     A send leaves its source GPU over that GPU's uplink to the first switch on its
     route, so the contended link is (src, first_switch); two sends from one GPU that
     enter the fabric at DIFFERENT first switches use different uplinks and do not
-    compete. path_key is the tuple of (raw) switch ids on the route, so path_key[0]
-    is that first switch. A send with no switch route (path_key is None -- a direct
-    hop) is keyed by (src, None); those all share one bucket, which is the safe
-    conservative grouping.
+    compete. A send with no switch route (path_key is None -- a direct hop) is keyed
+    by (src, None, 0); those all share one bucket, which is the safe conservative
+    grouping.
+
+    The key must be DECONSTRUCTED, not indexed. A port-qualified key (port_split) is
+    ((switches...), (ports...)), so path_key[0] on one of those is the whole switch
+    tuple rather than the first switch -- which would give every distinct ROUTE its
+    own contention pool and stop sends that really do share an uplink from pacing
+    against each other. unqualify_path_key is the one place that knows the shape.
+
+    When ports ARE present the first hop's port joins the identity, because that is
+    the physically contended thing: two sends leaving one GPU on different ports of
+    a split uplink do not compete. On an unsplit link the port is 0 for every send,
+    so the grouping is exactly what it was.
     """
     _step, src, _dst, path_key = key
-    first_switch = path_key[0] if path_key else None
-    return (src, first_switch)
+    switches, ports = unqualify_path_key(path_key)
+    first_switch = switches[0] if switches else None
+    first_port = ports[0] if ports else 0
+    return (src, first_switch, first_port)
 
 
 def _finish_before_start_gates(paced_sends):
@@ -705,11 +722,6 @@ def build_switch_routes(flow_manifest, switch_rank_map, programmable_switches=No
                     enumerate(sorted(s for s in switch_rank_map
                                      if s in programmable_switches))}
 
-    try:                                  # sibling module; see _build_port_qualifier
-        from port_split import unqualify_path_key
-    except ImportError:
-        from teccl.ncclize.port_split import unqualify_path_key
-
     routes = defaultdict(dict)
     for record in flow_manifest:
         raw_key, ports = unqualify_path_key(record['path_key'])
@@ -1037,6 +1049,7 @@ def load_topology(name, chunk_size=1.0):
         'RailOptimizedSpineLeaf': 'rail_optimized_spine_leaf:RailOptimizedSpineLeaf',
         'TwoPodRail': 'two_pod_rail:TwoPodRail',
         'TwoPodRailHostBound': 'two_pod_rail:TwoPodRailHostBound',
+        'TwoPodRailSplitPorts': 'two_pod_rail:TwoPodRailSplitPorts',
         'NestedCluster': 'nested_cluster:NestedCluster',
         'FatTreePod': 'fat_tree_pod:FatTreePod',
         'FatTreePodSingleSpine': 'fat_tree_pod_single_spine:FatTreePodSingleSpine',

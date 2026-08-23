@@ -136,7 +136,7 @@ class TwoPodRail(Topology):
 
     # Parallel physical ports per leaf<->spine link. The AGGREGATE stays LEAF_SPINE_BW, so the
     # solver is identical for any value here; only the post-solve port split (port_split.py)
-    # reads it. See TwoPodRailHostBoundSplitPorts.
+    # reads it. See TwoPodRailHostBound and TwoPodRailSplitPorts.
     LEAF_SPINE_PORTS = (1, 1)
 
     NVLINK_ALPHA = 0.35 * pow(10, -6)
@@ -294,16 +294,38 @@ class TwoPodRailHostBound(TwoPodRail):
     lands on a vertex, whose minimal support sits on the natural grid. The sample input
     two_pod_rail_hostbound_allgather.json sets both.
 
+    SPINE0 IS TWO PORTS HERE. Its 50 GB/s leaf<->spine0 links are declared as 2 x 25 GB/s
+    (LEAF_SPINE_PORTS below), which makes the whole fabric uniformly 25 GB/s per port: each leaf
+    has 4 downlinks, 2 up-ports to spine0 and 1 to spine1, for the same 75 GB/s of uplink.
+
+    That declaration is invisible to the solver -- `capacity[leaf][spine0]` is still 50, so
+    every solve, every schedule and every number above is unchanged. It is read only by the
+    post-solve pass in teccl/ncclize/port_split.py, which places each flow on one port. Carrying
+    it on the named class rather than on a separate subclass is deliberate: this name is what
+    scheduler.py, ncclize's --topology and the sample inputs resolve, so the whole workflow
+    exercises the split end to end instead of a test-only alias doing it.
+
+    It also makes the leaf a permanent fan-in/fan-out mismatch -- 4 single-port downlinks
+    against a 2-port and a 1-port uplink -- which is exactly the shape an in-port -> out-port
+    identity mapping cannot serve. See port_split_design.md section 6.
+
+    For an unsplit A/B on this same graph, build one:
+
+        two_pod_rail_variant("TwoPodRailHostBoundOnePort", gpu_leaf_bw=25.0,
+                             leaf_spine_ports=(1, 1))
+
     See TwoPodRail for the full derivation and for what this configuration gives up (the 2:1
     spine split stops being the unique optimum).
     """
     GPU_LEAF_BW = 25.0
+    LEAF_SPINE_PORTS = (2, 1)
 
 
 def two_pod_rail_variant(name: str = "TwoPodRailVariant",
                          gpu_leaf_bw: float = None,
                          leaf_spine_bw: Sequence[float] = None,
-                         nvlink_bw: float = None) -> Type[TwoPodRail]:
+                         nvlink_bw: float = None,
+                         leaf_spine_ports: Sequence[int] = None) -> Type[TwoPodRail]:
     """
     Build a TwoPodRail subclass with overridden bandwidths, for sweeping the design point.
 
@@ -315,6 +337,13 @@ def two_pod_rail_variant(name: str = "TwoPodRailVariant",
         rate_cfg      = TwoPodRailHostBound                          # H = 25, host-bound
         other_cfg     = two_pod_rail_variant("TwoPodRail_h40", gpu_leaf_bw=40.0)
 
+    `leaf_spine_ports` is the one knob the SOLVER does not see: it splits a leaf<->spine link
+    into that many equal ports for the post-solve port pass, leaving `capacity` alone. Use it to
+    build an unsplit twin of a split configuration for an A/B:
+
+        unsplit_hostbound = two_pod_rail_variant("TwoPodRailHostBoundOnePort",
+                                                 gpu_leaf_bw=25.0, leaf_spine_ports=(1, 1))
+
     See the TwoPodRail docstring for which cut binds at which H and why that decides what the
     configuration actually tests.
     """
@@ -325,34 +354,23 @@ def two_pod_rail_variant(name: str = "TwoPodRailVariant",
         attrs["LEAF_SPINE_BW"] = tuple(float(b) for b in leaf_spine_bw)
     if nvlink_bw is not None:
         attrs["NVLINK_BW"] = float(nvlink_bw)
+    if leaf_spine_ports is not None:
+        attrs["LEAF_SPINE_PORTS"] = tuple(int(p) for p in leaf_spine_ports)
     return type(name, (TwoPodRail,), attrs)
 
 
 class TwoPodRailSplitPorts(TwoPodRail):
     """`TwoPodRail` (the SPINE-BOUND config, H = 50) with spine0 as two 25 GB/s ports.
 
-    The sibling of TwoPodRailHostBoundSplitPorts, and the one that exercises the port split's
-    packing choices rather than just its arithmetic. In the host-bound config every leaf uplink
-    runs at exactly line rate, so per-port balance is FORCED by capacity and every fit rule and
-    bucket ordering produces the same assignment. Here the binding cut is the spine layer and
-    the GPU->leaf links carry slack, so the buckets arriving at a leaf are not all pinned and
-    the placement rule has something to decide.
-    """
-    LEAF_SPINE_PORTS = (2, 1)
+    The sibling of `TwoPodRailHostBound` (which splits spine0 too), and the one that exercises
+    the port split's packing CHOICES rather than just its arithmetic. Host-bound runs every leaf
+    uplink at exactly line rate, so per-port balance is forced by capacity and every fit rule
+    and bucket ordering produces the same assignment. Here the binding cut is the spine layer
+    and the GPU->leaf links carry slack, so the buckets arriving at a leaf are not all pinned
+    and the placement rule has something to decide -- one bucket outgrows a port and is broken
+    up, giving 5 combos per leaf->spine0 link against host-bound's 4.
 
-
-class TwoPodRailHostBoundSplitPorts(TwoPodRailHostBound):
-    """`TwoPodRailHostBound` with spine0's 50 GB/s links realized as TWO 25 GB/s ports.
-
-    Identical graph, identical capacities, identical solve -- `capacity[leaf][spine0]` is still
-    50, so the solver's feasibility statement is unchanged and every schedule this class
-    produces is byte-for-byte what TwoPodRailHostBound produces. The only difference is the
-    `ports` matrix, which nothing upstream of teccl/ncclize/port_split.py reads.
-
-    With the split the whole fabric is uniformly 25 GB/s per port: 4 downlinks + 2 up-ports to
-    spine0 + 1 up-port to spine1 on each leaf, for the same 75 GB/s of uplink. That makes the
-    leaf a permanent fan-in/fan-out mismatch (4 single-port downlinks against a 2-port and a
-    1-port uplink), which is exactly the case an in-port -> out-port identity mapping cannot
-    serve -- see port_split_design.md section 4.
+    Kept a separate class rather than folded into `TwoPodRail` so that `TwoPodRail` stays the
+    ports-undeclared reference every byte-identical check compares against.
     """
     LEAF_SPINE_PORTS = (2, 1)
