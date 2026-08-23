@@ -29,6 +29,7 @@ from teccl.topologies.dual_plane_hetero_cluster import (
     DualPlaneHeteroCluster, DualPlaneHeteroClusterScattered)
 from teccl.topologies.two_pod_rail import TwoPodRail, TwoPodRailHostBound
 from teccl.topologies.nested_cluster import NestedCluster
+from teccl.topologies.dsl_topology import DslTopology
 from teccl.topologies.topology import Topology
 
 
@@ -73,6 +74,10 @@ class TECCLSolver(object):
 
 
     def get_topology(self, topology_params: TopologyParams) -> Topology:
+        # A .topo file SELECTS the topology, ahead of the name chain: the DSL builds the graph
+        # from the file, so `name` is left free as the label the output filenames use.
+        if topology_params.topo_file:
+            return DslTopology(topology_params)
         if topology_params.name == "DGX1":
             return DGX1(topology_params)
         elif topology_params.name == "DGX2":

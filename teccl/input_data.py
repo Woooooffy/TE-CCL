@@ -11,6 +11,11 @@ class TopologyParams:
     alpha: tuple = (0 ,0) # (link alpha, switch alpha)
     side_length: int = 4 # Only for Mesh and Torus topology
     passive_node_indices: tuple = ()  # GPU indices present (can forward) but excluded from this collective's demand
+    # Path to a `.topo` file in the topology DSL (teccl/topologies/topology-dsl-frontend). When
+    # set it SELECTS the topology -- TECCLSolver.get_topology builds a DslTopology from the file
+    # instead of looking `name` up among the hand-written classes, and `name` stays a free-form
+    # label (it is what output filenames are built from). Empty => the named built-in.
+    topo_file: str = ""
     # Switch indices whose forwarding is externally programmable, i.e. the switches ncclize is
     # allowed to emit a routing table for. None => use the topology class's default (see
     # Topology.default_programmable_switch_indices, which permits every switch). Set it to
