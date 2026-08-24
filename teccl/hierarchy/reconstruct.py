@@ -514,8 +514,16 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
         commit(h, volume)
         return [(h, volume)]
 
+    # `total_room` is a SUM over candidates of a ledger that has itself been summed over every
+    # earlier commit in the whole resolution -- `tol` bounds one comparison, not a sum of them, so
+    # the deficit this comparison can legitimately see from pure accumulation is bigger than `tol`
+    # by the time many pieces have landed on the same (gpu, neighbor, epoch). `dust_threshold`
+    # already names exactly this "is a leftover amount real or is it residue" question -- it is
+    # what `_snap_group` uses to decide whether a group's shortfall against 1.0 is genuine -- so
+    # reuse it here rather than inventing a second noise budget.
+    budget = dust_threshold(tol)
     total_room = sum(max(room(h), 0.0) for h in candidates)
-    if total_room < volume - tol:
+    if total_room < volume - budget:
         raise RuntimeError(
             f"ingress capacity exhausted for cell {slot.piece.dst_cell} epoch {epoch}: "
             f"identity {identity} needs {volume:g} but candidates "
@@ -524,13 +532,16 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
             f"coarse solve routed more into this cell in one epoch than its fine downlinks can "
             f"absorb.")
 
-    # No single candidate fits, but the candidates collectively have exactly enough room -- spread
-    # the piece across them, largest room first (targets first) so it lands on as few GPUs as
-    # possible rather than smearing thinly.
+    # No single candidate fits, but the candidates collectively have (up to dust) enough room --
+    # spread the piece across them, largest room first (targets first) so it lands on as few GPUs
+    # as possible rather than smearing thinly. Any residue at or below `budget` when the candidates
+    # run dry is left uncommitted rather than forced onto a GPU past its own room: the identity's
+    # total across all its pieces then falls short of its true volume by at most `budget`, which is
+    # exactly the shortfall `_snap_group`'s own dust handling downstream is sized to absorb.
     remaining = volume
     picks: List[Tuple[int, float]] = []
     for h in sorted(candidates, key=lambda h: (h not in wanted, -room(h))):
-        if remaining <= tol:
+        if remaining <= budget:
             break
         take = min(room(h), remaining)
         if take <= tol:
@@ -538,7 +549,7 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
         commit(h, take)
         picks.append((h, take))
         remaining -= take
-    if remaining > tol:
+    if remaining > budget:
         raise RuntimeError(
             f"ingress capacity exhausted for cell {slot.piece.dst_cell} epoch {epoch}: "
             f"identity {identity} needs {volume:g} but only {volume - remaining:g} could be "
