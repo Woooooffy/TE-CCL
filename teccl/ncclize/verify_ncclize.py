@@ -157,8 +157,9 @@ def main():
                          'the flat-axis feasibility warnings (see generate_xml). The default '
                          'example suite is all flat, so omit it there.')
     p.add_argument('--topology', default=None,
-                    help='real fine Topology name for physical (one-per-link) channel allocation, '
-                         'passed through to build_algorithm. Omit for the flat example suite.')
+                    help='real fine Topology name, or a path to a `.topo` DSL file, for physical '
+                         '(one-per-link) channel allocation, passed through to build_algorithm. '
+                         'Omit for the flat example suite.')
     args = p.parse_args()
 
     schedules = args.schedules

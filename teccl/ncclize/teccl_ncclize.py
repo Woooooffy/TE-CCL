@@ -1067,7 +1067,7 @@ def build_algorithm(schedule, name='teccl', topology=None):
 
 
 def load_topology(name, chunk_size=1.0):
-    """Construct a real fine Topology by class name, for --topology.
+    """Construct a real fine Topology by class name or `.topo` DSL file path, for --topology.
 
     The fine topologies are all constructible from just their name + chunk_size (the structure is
     fixed in the class); chunk_size does not affect the link structure the channel allocator reads,
@@ -1081,6 +1081,15 @@ def load_topology(name, chunk_size=1.0):
         sys.path.insert(0, repo_root)
     from teccl.input_data import TopologyParams
     from teccl.topologies.topology import Topology
+
+    # A `.topo` file (topology DSL, teccl/topologies/topology-dsl-frontend) selects DslTopology
+    # directly, mirroring TECCLSolver.get_topology -- same rule as TopologyParams.topo_file.
+    if name.endswith('.topo'):
+        from teccl.topologies.dsl_topology import DslTopology
+        topo = DslTopology(TopologyParams(name=os.path.basename(name), chunk_size=chunk_size,
+                                           topo_file=name))
+        assert isinstance(topo, Topology)
+        return topo
 
     # name -> "module:ClassName" for the topologies that can appear at the ncclize boundary.
     registry = {
@@ -1103,7 +1112,8 @@ def load_topology(name, chunk_size=1.0):
     }
     if name not in registry:
         raise ValueError(
-            f"unknown --topology {name!r}; known: {', '.join(sorted(registry))}. "
+            f"unknown --topology {name!r}; known: {', '.join(sorted(registry))}, "
+            f"or a path to a `.topo` DSL file. "
             f"(Or call build_algorithm(schedule, topology=<Topology instance>) directly.)")
     module_name, class_name = registry[name].split(':')
     import importlib
@@ -1120,7 +1130,8 @@ def main():
     p.add_argument('-o', '--output', required=True, help='output XML file')
     p.add_argument('--topology', default=None,
                     help='name of the real fine Topology this schedule runs on (e.g. '
-                         'HeteroTaperedCluster). When given, the channel allocator uses physical '
+                         'HeteroTaperedCluster), or a path to a `.topo` DSL file (detected by its '
+                         '.topo extension). When given, the channel allocator uses physical '
                          '(one-per-link) channel counts and the tautological taccl bandwidth check '
                          'is skipped (TE-CCL verifies real capacity upstream). Omit for a flat '
                          'single-level teccl solve.')
