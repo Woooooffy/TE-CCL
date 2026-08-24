@@ -7,7 +7,10 @@
 
     "_known_failure": "The coarse LP can trip account_for_consume's 'assert consume == 0' on sub-feasibility-tol Gurobi flow noise (see the lp_extraction_feasibility_tol_noise note). feasibility_tol is tightened to 1e-6 here to make that less likely; if it still fires, that is the known extraction bug, not a topology problem.",
 
+    "_topology_note": "The topology comes from the .topo DSL file (teccl/topologies/topology-dsl-frontend/examples/dual_plane_hetero_scattered.topo), not from the hand-written DualPlaneHeteroClusterScattered class: topo_file SELECTS the topology, so TECCLSolver.get_topology builds a DslTopology from it and `name` is left as the free-form label the output filenames and Gurobi log are built from. The file is a verified port of the class -- same 114 node indices, same capacities, same ports/port order, same radix, same symmetry groups, same 8 cells -- so this input solves the same problem it did before, and the placement rule now lives in the .topo file rather than in DualPlaneHeteroClusterScattered._gpu_leaf. The path is relative to the repo root, i.e. to the directory `teccl solve` runs from.",
+
     "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/dual_plane_hetero_scattered.topo",
         "name": "DualPlaneHeteroClusterScattered",
         "chassis": 1,
         "chunk_size": 1
@@ -34,7 +37,7 @@
         "alpha_threshold": 0.1,
         "switch_pipeline": true,
         "symmetry": true,
-        "objective_type": 5,
+        "objective_type": 6,
         "solution_method": 1,
         "hierarchical": true,
         "hierarchy_prefix": "dual_plane_scattered_allgather",
