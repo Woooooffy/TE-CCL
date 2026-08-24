@@ -81,8 +81,12 @@ def test_tolerance_is_coupled_to_the_grid():
     # on TwoPodRailHostBound at feasibility_tol=1e-5, that chain costs ~2.3x (see
     # RECONSTRUCTION_NOISE_FACTOR); sourcing the tolerance verbatim rejected 20 of alltoall's 1024
     # assignment volumes.
-    assert snap_tolerance(_Solver(1e-6)) == 1e-6 * RECONSTRUCTION_NOISE_FACTOR
-    assert snap_tolerance(_Solver(1e-5)) == 1e-5 * RECONSTRUCTION_NOISE_FACTOR
+    # Capped by the grid whenever MAX_DENOM makes the amplified tolerance exceed it (see the `for
+    # feas` loop below for the general monotone/bounded property); at MAX_DENOM=64 neither of these
+    # two hits the cap, so this also covers the uncapped case.
+    for feas in (1e-6, 1e-5):
+        expected = min(feas * RECONSTRUCTION_NOISE_FACTOR, grid_resolution(MAX_DENOM) * 0.9)
+        assert snap_tolerance(_Solver(feas)) == expected
     # ... but never past what the grid resolves, and never below the solver's own bound, so this is
     # monotone and can only ever be more permissive than the raw tolerance.
     for feas in (1e-7, 1e-6, 1e-5, 3e-5, 1e-4):
@@ -219,8 +223,10 @@ def test_failure_modes_are_distinguishable():
     """Off-grid, non-partitioning, and too-finely-split must not all look like float noise."""
     tol = snap_tolerance(_Solver(1e-6))
 
-    # (a) A volume genuinely off the 1/MAX_DENOM grid: 1/97 needs a denominator above MAX_DENOM.
-    off = 1.0 / 97.0
+    # (a) A volume genuinely off the 1/MAX_DENOM grid: scaled off MAX_DENOM (not a literal like
+    # 1/97) so the witness stays off-grid whatever MAX_DENOM is tuned to. 2*MAX_DENOM+1 is always
+    # odd and larger than MAX_DENOM, so it cannot reduce to a denominator the grid already has.
+    off = 1.0 / (2 * MAX_DENOM + 1)
     _raises(lambda: _snap_group([off, 1 - off], tol, ((0, 0), 1)),
             f"not within {tol:g} of any rational with denominator <= {MAX_DENOM}")
 

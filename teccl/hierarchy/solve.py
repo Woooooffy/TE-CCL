@@ -52,7 +52,8 @@ from teccl.hierarchy.crossbar_solve import IntraFlow
 from teccl.hierarchy.problem import CoarseSolution, LevelDemand, LevelSolution, Subproblem
 from teccl.hierarchy.reconstruct import (IdentityResolution, IntraCellDemand,
                                          assign_identities_free, assign_identities_preserving,
-                                         build_child_problems, identity_sets, snap_tolerance)
+                                         build_child_problems, identity_sets, resolve_max_denom,
+                                         snap_tolerance)
 from teccl.hierarchy.scale import ChunkScale
 from teccl.hierarchy.flat_schedule import build_flat_schedule
 from teccl.hierarchy.flatten import assert_bands_fit, derive_grid, rebase
@@ -283,9 +284,11 @@ def gurobi_level_solver(problem: Subproblem, ctx: LevelContext, mapping, demand_
     # Carry the solver's own numeric tolerance forward: it is what the lowering half sizes its
     # rational snap against (reconstruct.snap_tolerance). Read it off `ui` rather than a default so
     # a level solved under a tightened feasibility_tol gets a correspondingly tighter grid check.
+    # max_denom rides the same path, for the same reason -- see InstanceParams.max_denom.
     return CoarseSolution(per_chunk_flow_paths=best.per_chunk_flow_paths, topology=best.topology,
                           epoch_duration=best.epoch_duration, preserves_identity=False,
-                          feasibility_tol=ui.gurobi.feasibility_tol)
+                          feasibility_tol=ui.gurobi.feasibility_tol,
+                          max_denom=ui.instance.max_denom)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -482,7 +485,8 @@ def _lower(solution: CoarseSolution, problem: Subproblem, coarse, mapping, fine_
 
     return build_child_problems(assignments, targets, mapping, fine_tensor, problem.topology,
                                 epoch, scale=problem.scale, relabel=relabel,
-                                snap_tol=snap_tolerance(solution))
+                                snap_tol=snap_tolerance(solution),
+                                max_denom=resolve_max_denom(solution))
 
 
 # ------------------------------------------------------------------------------------------------

@@ -73,6 +73,21 @@ Identity = Tuple[int, int]
 
 EPS = 1e-6
 
+# Largest denominator the identity-resolution grid represents; mirrors ncclize's MAX_DENOM
+# (teccl/ncclize/teccl_ncclize.py). Defined here, ahead of _pick_ingress, because it is a default
+# parameter value evaluated at function-definition time, not inside a function body where a later
+# definition would still be visible by call time.
+#
+# NOT safe to change here as a blanket global bump: MAX_DENOM and GurobiParams.feasibility_tol are
+# coupled through grid_resolution = 1/(2*MAX_DENOM^2) (see snap_tolerance), and this codebase's
+# feasibility_tol DEFAULT is 1e-4 (teccl/input_data.py), which is only legal up to MAX_DENOM~70 --
+# several existing hierarchical examples rely on that default. A single instance that needs a
+# larger grid (e.g. a scattered dual-plane host's uneven 6/5/5 GPU-per-leaf split driving a
+# proportional egress-split denominator, _build_slots, up to 125) should set
+# InstanceParams.max_denom instead of raising this constant -- see resolve_max_denom, which is
+# what every grid-sized comparison in this module actually reads.
+MAX_DENOM = 64
+
 
 @dataclass(frozen=True)
 class ResolvedPiece:
@@ -441,7 +456,7 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
                   target_gpus: Dict[Identity, Tuple[int, ...]],
                   epoch_capacity: Dict[int, float],
                   ledger: Dict[Tuple[int, int, int], float],
-                  tol: float = EPS) -> List[Tuple[int, float]]:
+                  tol: float = EPS, max_denom: int = MAX_DENOM) -> List[Tuple[int, float]]:
     """Choose the fine GPU(s) a piece lands on, preferring a target and respecting fine downlink
     capacity.
 
@@ -521,7 +536,7 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
     # already names exactly this "is a leftover amount real or is it residue" question -- it is
     # what `_snap_group` uses to decide whether a group's shortfall against 1.0 is genuine -- so
     # reuse it here rather than inventing a second noise budget.
-    budget = dust_threshold(tol)
+    budget = dust_threshold(tol, max_denom)
     total_room = sum(max(room(h), 0.0) for h in candidates)
     if total_room < volume - budget:
         raise RuntimeError(
@@ -560,9 +575,11 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
 # --------------------------------------------------------------------------------------------
 # Orchestration
 # --------------------------------------------------------------------------------------------
-# Mirrors ncclize's MAX_DENOM / MAX_M (teccl/ncclize/teccl_ncclize.py). Integerization now happens
-# HERE, at the recursion boundary, rather than at the ncclize boundary -- see _subdivision_factor.
-MAX_DENOM = 64
+# MAX_DENOM is defined near EPS, above _pick_ingress -- see the comment there for why it lives
+# there and how a single instance gets a larger grid without a global bump (InstanceParams.
+# max_denom / resolve_max_denom). Mirrors ncclize's MAX_M too (teccl/ncclize/teccl_ncclize.py).
+# Integerization now happens HERE, at the recursion boundary, rather than at the ncclize boundary
+# -- see _subdivision_factor.
 MAX_SUBDIVISION = 128
 # Relative slack when re-checking a paced rate against a link bandwidth. Relative, not absolute:
 # a rate is in GB/s and spans orders of magnitude across a heterogeneous fabric, so one absolute
@@ -591,7 +608,24 @@ def grid_resolution(max_denom: int = MAX_DENOM) -> float:
     return 1.0 / (2.0 * max_denom * max_denom)
 
 
-def snap_tolerance(coarse_solver=None, max_denom: int = MAX_DENOM) -> float:
+def resolve_max_denom(coarse_solver=None) -> int:
+    """This solve's identity-resolution grid size, from InstanceParams.max_denom if it overrides
+    the module default.
+
+    Mirrors snap_tolerance's own feasibility_tol lookup, because the two travel together (see
+    InstanceParams.max_denom): a `CoarseSolution` carries `max_denom` directly -- flattened out of
+    `ui.instance` at construction (teccl/hierarchy/solve.py), the same way it carries
+    `feasibility_tol` -- a raw solver object carries it nested under `.user_input.instance`, and
+    anything else (a closed-form row, a test shim) has neither, so it gets the module default.
+    """
+    md = getattr(coarse_solver, "max_denom", None)
+    if md is None:
+        instance = getattr(getattr(coarse_solver, "user_input", None), "instance", None)
+        md = getattr(instance, "max_denom", None)
+    return int(md) if md is not None else MAX_DENOM
+
+
+def snap_tolerance(coarse_solver=None, max_denom: Optional[int] = None) -> float:
     """How far a solved volume may sit from the 1/max_denom grid and still be snapped to it.
 
     THE ONE PLACE A NUMERIC TOLERANCE IS NAMED in the lowering half. Everything downstream of
@@ -614,7 +648,13 @@ def snap_tolerance(coarse_solver=None, max_denom: int = MAX_DENOM) -> float:
     the nearest grid point is not necessarily the right one, and snapping would silently invent a
     volume. Warns when the margin is under 4x, which is where MAX_DENOM = 64 against the default
     feasibility_tol = 1e-4 lands (grid resolution 1.22e-4): compatible, but only by 20%.
+
+    max_denom: None (the default) resolves via `resolve_max_denom(coarse_solver)`, i.e. this
+    solve's InstanceParams.max_denom override if it set one, else the module default. Passed
+    explicitly only by a caller intentionally checking a DIFFERENT grid than the one this solve
+    will actually use (see the coupling test in hierarchy_volume_snap_test.py).
     """
+    max_denom = resolve_max_denom(coarse_solver) if max_denom is None else max_denom
     resolution = grid_resolution(max_denom)
     raw = tol = getattr(coarse_solver, "feasibility_tol", None)
     if tol is None:
@@ -719,7 +759,8 @@ def dust_threshold(snap_tol: float, max_denom: int = MAX_DENOM) -> float:
     return max(snap_tol, DUST_FRACTION_OF_GRID / max_denom)
 
 
-def _snap_group(vols: Sequence[float], snap_tol: float, key) -> List[Fraction]:
+def _snap_group(vols: Sequence[float], snap_tol: float, key,
+                max_denom: int = MAX_DENOM) -> List[Fraction]:
     """Snap ONE (identity, dst_cell) group's volumes onto a shared rational grid summing to 1.
 
     Group-aware on purpose. Snapping each volume independently would be simpler, but the group's
@@ -750,7 +791,7 @@ def _snap_group(vols: Sequence[float], snap_tol: float, key) -> List[Fraction]:
             f"(tolerance {snap_tol * max(1, n):g} over {n} assignments). They must partition the "
             f"identity; this is an assignment defect, not rounding.")
 
-    dust_tol = dust_threshold(snap_tol)
+    dust_tol = dust_threshold(snap_tol, max_denom)
     live = [i for i, v in enumerate(vols) if abs(v) >= dust_tol]
     dust_total = sum(vols[i] for i in range(n) if i not in set(live))
     if not live:
@@ -763,7 +804,7 @@ def _snap_group(vols: Sequence[float], snap_tol: float, key) -> List[Fraction]:
     # its own grid point by up to that much. Using snap_tol alone here rejects the very siblings
     # that make dust droppable -- the residue has to come from somewhere.
     budget = snap_tol + abs(dust_total)
-    resolution = grid_resolution(MAX_DENOM)
+    resolution = grid_resolution(max_denom)
     if budget >= resolution:
         raise AssertionError(
             f"identity {key[0]} -> cell {key[1]}: {abs(dust_total):g} of residue across "
@@ -774,11 +815,11 @@ def _snap_group(vols: Sequence[float], snap_tol: float, key) -> List[Fraction]:
     dens = []
     for i in live:
         v = vols[i]
-        frac = Fraction(v).limit_denominator(MAX_DENOM)
+        frac = Fraction(v).limit_denominator(max_denom)
         if abs(float(frac) - v) > budget:
             raise AssertionError(
                 f"identity {key[0]} -> cell {key[1]}: volume {v!r} is not within {budget:g} of "
-                f"any rational with denominator <= {MAX_DENOM} (nearest is {frac} = "
+                f"any rational with denominator <= {max_denom} (nearest is {frac} = "
                 f"{float(frac)!r}), and it is too large ({dust_tol:g}) to be solver residue. The "
                 f"coarse solution is off the declared grid: either it is split more finely than "
                 f"MAX_DENOM admits (regularize the coarse LP) or the solver tolerance is looser "
@@ -817,18 +858,24 @@ def _snap_group(vols: Sequence[float], snap_tol: float, key) -> List[Fraction]:
             raise AssertionError(
                 f"identity {key[0]} -> cell {key[1]}: snapping volume {vols[i]!r} to {c}/{G} moved "
                 f"it by {abs(c / G - vols[i]):g}, beyond the {budget:g} budget. The group does "
-                f"not lie on a common 1/{MAX_DENOM} grid.")
+                f"not lie on a common 1/{max_denom} grid.")
         fracs[i] = Fraction(c, G)
     return fracs
 
 
-def _snap_volumes(assignments: Sequence[_Assignment], snap_tol: float) -> List[_Assignment]:
+def _snap_volumes(assignments: Sequence[_Assignment], snap_tol: float,
+                  max_denom: int = MAX_DENOM) -> List[_Assignment]:
     """Populate `_Assignment.exact` for every assignment: the float -> rational boundary.
 
     This is the seam the whole integerization rests on. Above it everything is float and tolerant
     (the coarse LP, the slot split, the scipy assignment); below it everything is exact Fraction
     arithmetic and no step carries an epsilon. Grouping is by (identity, dst_cell) because that is
     the set `_emit_refined` requires to partition the identity.
+
+    `max_denom` should be `resolve_max_denom(coarse_solver)`, paired with a `snap_tol` sourced from
+    the SAME solver (`snap_tolerance(coarse_solver)`) -- the two are coupled (see
+    InstanceParams.max_denom), so mixing a tolerance from one solve with a grid size from another
+    would check volumes against a budget that was never actually derived for that grid.
     """
     by_id_dst: Dict[Tuple[Identity, int], List[int]] = defaultdict(list)
     for i, a in enumerate(assignments):
@@ -836,7 +883,8 @@ def _snap_volumes(assignments: Sequence[_Assignment], snap_tol: float) -> List[_
 
     out = list(assignments)
     for key, idxs in sorted(by_id_dst.items()):
-        for i, frac in zip(idxs, _snap_group([assignments[i].volume for i in idxs], snap_tol, key)):
+        vols = [assignments[i].volume for i in idxs]
+        for i, frac in zip(idxs, _snap_group(vols, snap_tol, key, max_denom)):
             out[i] = replace(assignments[i], exact=frac)
     return out
 
@@ -1051,6 +1099,7 @@ def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
     # single comparison, not that accumulation, so use the same amplified budget `_snap_volumes`
     # trusts for exactly this chain (see snap_tolerance / RECONSTRUCTION_NOISE_FACTOR).
     ingress_tol = snap_tolerance(coarse_solver)
+    ingress_max_denom = resolve_max_denom(coarse_solver)
 
     for (U, V), identities in sorted(id_sets.items()):
         pieces = pieces_by_pair.get((U, V), [])
@@ -1099,7 +1148,8 @@ def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
         for (d, j), vol in sorted(x.items(), key=lambda kv: (-kv[1], kv[0][1], kv[0][0])):
             slot = slots[j]
             cap = _ingress_epoch_capacity(slot, mapping, fine_topology, epoch_duration)
-            for h, v in _pick_ingress(slot, d, vol, tgt, cap, ingress_ledger, tol=ingress_tol):
+            for h, v in _pick_ingress(slot, d, vol, tgt, cap, ingress_ledger, tol=ingress_tol,
+                                      max_denom=ingress_max_denom):
                 assignments.append(_Assignment(
                     src_cell=U, dst_cell=V, identity=d, piece=slot.piece,
                     egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=v,
@@ -1177,7 +1227,8 @@ def build_child_problems(assignments: Sequence[_Assignment],
                          epoch_duration: float,
                          scale: Optional[ChunkScale] = None,
                          relabel=None,
-                         snap_tol: Optional[float] = None) -> IdentityResolution:
+                         snap_tol: Optional[float] = None,
+                         max_denom: Optional[int] = None) -> IdentityResolution:
     """STEP B: turn this level's `_Assignment`s into its flows plus THE NEXT LEVEL'S PROBLEM.
 
     This runs at EVERY level, whatever produced the assignments, and it is not optional plumbing:
@@ -1197,11 +1248,16 @@ def build_child_problems(assignments: Sequence[_Assignment],
            None => snap_tolerance()'s no-solver default. A caller holding the solver that produced
            these volumes should pass snap_tolerance(solver) so the grid is checked against the
            tolerance the volumes were actually computed to.
+    max_denom: the grid `snap_tol` was sized against. None => resolve_max_denom()'s no-solver
+           default (the module MAX_DENOM). Must be paired with a `snap_tol` from the SAME solver
+           (see resolve_max_denom / InstanceParams.max_denom) -- passing one solver's tolerance
+           with another's grid size checks volumes against a budget nobody actually derived.
     """
     # The float -> exact boundary, and the only tolerant step below this line. Everything after it
     # is Fraction arithmetic, which is what lets the refinement and the partition check be exact.
     assignments = _snap_volumes(
-        assignments, snap_tolerance() if snap_tol is None else snap_tol)
+        assignments, snap_tolerance() if snap_tol is None else snap_tol,
+        resolve_max_denom() if max_denom is None else max_denom)
     q = _subdivision_factor(assignments)
     root = scale or ChunkScale(bytes_per_chunk=fine_topology.chunk_size,
                                num_chunks=_num_fine_chunks(fine_demand))
@@ -1233,7 +1289,8 @@ def resolve_identities(coarse_solver, mapping: HierarchyMapping,
         coarse_solver, mapping, fine_demand, fine_topology, level_chunk=level_chunk)
     return build_child_problems(assignments, targets, mapping, fine_demand, fine_topology,
                                 epoch_duration, scale=scale,
-                                snap_tol=snap_tolerance(coarse_solver))
+                                snap_tol=snap_tolerance(coarse_solver),
+                                max_denom=resolve_max_denom(coarse_solver))
 
 
 def _num_fine_chunks(fine_demand) -> int:

@@ -241,7 +241,8 @@ class CoarseSolution:
 
     def __init__(self, per_chunk_flow_paths, topology, epoch_duration: float,
                  preserves_identity: bool = False,
-                 feasibility_tol: Optional[float] = None) -> None:
+                 feasibility_tol: Optional[float] = None,
+                 max_denom: Optional[int] = None) -> None:
         self.per_chunk_flow_paths = per_chunk_flow_paths
         self.topology = topology
         self.epoch_duration = epoch_duration
@@ -250,6 +251,10 @@ class CoarseSolution:
         # constant (see reconstruct.snap_tolerance). None = not solver-produced, i.e. a closed-form
         # row whose volumes are exact.
         self.feasibility_tol = feasibility_tol
+        # This level's InstanceParams.max_denom override, carried the same way feasibility_tol is
+        # (flattened out of `ui`, not a nested `.user_input` lookup) so reconstruct.resolve_max_denom
+        # finds it without needing the raw solver object. None = the module default.
+        self.max_denom = max_denom
         # Which step-A variant this solver's output needs. False = the solution is identity-free and
         # `assign_identities_free` must recover identity from it; True = the solver kept identity and
         # the assignment is read off directly (which is also what keeps Q == 1 at that level).
