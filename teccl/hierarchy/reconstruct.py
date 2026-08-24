@@ -440,7 +440,8 @@ def _solve_assignment(identities: Sequence[Identity],
 def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
                   target_gpus: Dict[Identity, Tuple[int, ...]],
                   epoch_capacity: Dict[int, float],
-                  ledger: Dict[Tuple[int, int, int], float]) -> List[Tuple[int, float]]:
+                  ledger: Dict[Tuple[int, int, int], float],
+                  tol: float = EPS) -> List[Tuple[int, float]]:
     """Choose the fine GPU(s) a piece lands on, preferring a target and respecting fine downlink
     capacity.
 
@@ -468,6 +469,14 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
     coarse link backed by 6 fine downlinks, each capped near its own epoch budget, delivering one
     piece that only one of them alone can't absorb. In that case the piece is split across however
     many candidates it takes, biggest room first, rather than raising.
+
+    `tol` bounds how much "room" and "volume" may disagree and still be treated as equal. It
+    should be `snap_tolerance(coarse_solver)`, not the bare EPS default: `room` is a per-(gpu,
+    neighbor, epoch) ledger accumulated across every piece placed so far in the whole resolution,
+    so by the time a late identity is placed it carries the SUM of many upstream floats -- the
+    coarse LP, `_solve_assignment`'s scipy LP, and every earlier `commit` in this same ledger --
+    and a comparison at the bare 1e-6 module EPS can reject a piece that fits to within noise, the
+    same way `_snap_group` would reject an off-by-noise volume without its own amplified budget.
     """
     candidates = list(slot.ingress_candidates)
     if not candidates:
@@ -489,7 +498,7 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
         commit(candidates[0], volume)
         return [(candidates[0], volume)]
 
-    fits = [h for h in candidates if room(h) >= volume - EPS]
+    fits = [h for h in candidates if room(h) >= volume - tol]
     on_target = [h for h in fits if h in wanted]
     if on_target:
         # BEST fit (tightest room that still fits), not least-loaded: leaving the roomiest
@@ -506,7 +515,7 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
         return [(h, volume)]
 
     total_room = sum(max(room(h), 0.0) for h in candidates)
-    if total_room < volume - EPS:
+    if total_room < volume - tol:
         raise RuntimeError(
             f"ingress capacity exhausted for cell {slot.piece.dst_cell} epoch {epoch}: "
             f"identity {identity} needs {volume:g} but candidates "
@@ -521,15 +530,15 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
     remaining = volume
     picks: List[Tuple[int, float]] = []
     for h in sorted(candidates, key=lambda h: (h not in wanted, -room(h))):
-        if remaining <= EPS:
+        if remaining <= tol:
             break
         take = min(room(h), remaining)
-        if take <= EPS:
+        if take <= tol:
             continue
         commit(h, take)
         picks.append((h, take))
         remaining -= take
-    if remaining > EPS:
+    if remaining > tol:
         raise RuntimeError(
             f"ingress capacity exhausted for cell {slot.piece.dst_cell} epoch {epoch}: "
             f"identity {identity} needs {volume:g} but only {volume - remaining:g} could be "
@@ -1024,6 +1033,13 @@ def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
     # by every source cell sending to it.
     ingress_ledger: Dict[Tuple[int, int, int], float] = {}
     assignments: List[_Assignment] = []
+    # _pick_ingress compares a piece's volume against `room`, a ledger accumulated across every
+    # earlier commit in the WHOLE resolution -- by the time a late identity is placed that ledger
+    # carries noise from the coarse LP, from `_solve_assignment`'s own scipy LP, and from every
+    # prior float addition into the same accumulator. The bare EPS module default is sized for a
+    # single comparison, not that accumulation, so use the same amplified budget `_snap_volumes`
+    # trusts for exactly this chain (see snap_tolerance / RECONSTRUCTION_NOISE_FACTOR).
+    ingress_tol = snap_tolerance(coarse_solver)
 
     for (U, V), identities in sorted(id_sets.items()):
         pieces = pieces_by_pair.get((U, V), [])
@@ -1072,7 +1088,7 @@ def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
         for (d, j), vol in sorted(x.items(), key=lambda kv: (-kv[1], kv[0][1], kv[0][0])):
             slot = slots[j]
             cap = _ingress_epoch_capacity(slot, mapping, fine_topology, epoch_duration)
-            for h, v in _pick_ingress(slot, d, vol, tgt, cap, ingress_ledger):
+            for h, v in _pick_ingress(slot, d, vol, tgt, cap, ingress_ledger, tol=ingress_tol):
                 assignments.append(_Assignment(
                     src_cell=U, dst_cell=V, identity=d, piece=slot.piece,
                     egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=v,
@@ -1116,6 +1132,10 @@ def assign_identities_preserving(carried: Sequence[Tuple["_CoarsePiece", Identit
     """
     ingress_ledger: Dict[Tuple[int, int, int], float] = {}
     assignments: List[_Assignment] = []
+    # No coarse_solver here to source a feasibility_tol from (see assign_identities_free's
+    # ingress_tol) -- snap_tolerance()'s no-solver default is the same comfortable margin
+    # `_snap_volumes` falls back to for volumes it cannot trace to a solver either.
+    ingress_tol = snap_tolerance()
 
     for piece, identity in carried:
         U, V = piece.src_cell, piece.dst_cell
@@ -1131,7 +1151,8 @@ def assign_identities_preserving(carried: Sequence[Tuple["_CoarsePiece", Identit
         on_native = [s for s in slots if s.egress_gpu == native]
         slot = on_native[0] if on_native else max(slots, key=lambda s: (s.capacity, -s.egress_gpu))
         cap = _ingress_epoch_capacity(slot, mapping, fine_topology, epoch_duration)
-        for h, v in _pick_ingress(slot, identity, piece.volume, targets, cap, ingress_ledger):
+        for h, v in _pick_ingress(slot, identity, piece.volume, targets, cap, ingress_ledger,
+                                  tol=ingress_tol):
             assignments.append(_Assignment(
                 src_cell=U, dst_cell=V, identity=identity, piece=piece,
                 egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=v,
