@@ -440,8 +440,8 @@ def _solve_assignment(identities: Sequence[Identity],
 def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
                   target_gpus: Dict[Identity, Tuple[int, ...]],
                   epoch_capacity: Dict[int, float],
-                  ledger: Dict[Tuple[int, int], float]) -> int:
-    """Choose the fine GPU a piece lands on, preferring a target and respecting fine downlink
+                  ledger: Dict[Tuple[int, int], float]) -> List[Tuple[int, float]]:
+    """Choose the fine GPU(s) a piece lands on, preferring a target and respecting fine downlink
     capacity.
 
     This replaces taking `boundary_gpu[...][0]` unconditionally, which had two defects. It ignored
@@ -453,6 +453,13 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
 
     `ledger` is keyed (gpu, arrival_epoch) and spans the WHOLE resolution, not one demand pair,
     because a destination cell's ingress link is shared by every source cell sending to it.
+
+    Usually returns a single (gpu, volume) pair. But the SUM of the candidates' fine downlinks is
+    exactly what the coarse capacity was built from, so a piece can legitimately need more than any
+    single fine downlink has room for while still fitting the candidates collectively -- e.g. a
+    coarse link backed by 6 fine downlinks, each capped near its own epoch budget, delivering one
+    piece that only one of them alone can't absorb. In that case the piece is split across however
+    many candidates it takes, biggest room first, rather than raising.
     """
     candidates = list(slot.ingress_candidates)
     if not candidates:
@@ -465,27 +472,60 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
     def room(h: int) -> float:
         return epoch_capacity[h] - ledger.get((h, epoch), 0.0)
 
-    def commit(h: int) -> int:
-        ledger[(h, epoch)] = ledger.get((h, epoch), 0.0) + volume
-        return h
+    def commit(h: int, v: float) -> None:
+        ledger[(h, epoch)] = ledger.get((h, epoch), 0.0) + v
 
     if len(candidates) == 1:
         # Forced by the coarse path; capacity is still checked by the caller's assert.
-        return commit(candidates[0])
+        commit(candidates[0], volume)
+        return [(candidates[0], volume)]
 
     fits = [h for h in candidates if room(h) >= volume - EPS]
-    on_target = sorted(h for h in fits if h in wanted)
+    on_target = [h for h in fits if h in wanted]
     if on_target:
-        return commit(on_target[0])
+        # BEST fit (tightest room that still fits), not least-loaded: leaving the roomiest
+        # candidates untouched is what keeps them available for a LATER, larger volume in this
+        # same epoch. Least-loaded (worst fit) spreads small volumes evenly across every downlink
+        # instead, fragmenting them -- which is exactly the shape that forces the split fallback
+        # below to trigger on a piece that a less fragmented packing would have placed whole.
+        h = min(sorted(on_target), key=lambda h: room(h))
+        commit(h, volume)
+        return [(h, volume)]
     if fits:
-        # Least loaded, deterministic tie-break, so a sibling downlink is used before overloading.
-        return commit(max(sorted(fits), key=lambda h: room(h)))
-    raise RuntimeError(
-        f"ingress capacity exhausted for cell {slot.piece.dst_cell} epoch {epoch}: "
-        f"identity {identity} needs {volume:g} but candidates "
-        f"{ {h: round(room(h), 6) for h in candidates} } have no room "
-        f"(per-epoch capacities { {h: round(epoch_capacity[h], 6) for h in candidates} }). The "
-        f"coarse solve routed more into this cell in one epoch than its fine downlinks can absorb.")
+        h = min(sorted(fits), key=lambda h: room(h))
+        commit(h, volume)
+        return [(h, volume)]
+
+    total_room = sum(max(room(h), 0.0) for h in candidates)
+    if total_room < volume - EPS:
+        raise RuntimeError(
+            f"ingress capacity exhausted for cell {slot.piece.dst_cell} epoch {epoch}: "
+            f"identity {identity} needs {volume:g} but candidates "
+            f"{ {h: round(room(h), 6) for h in candidates} } have no room "
+            f"(per-epoch capacities { {h: round(epoch_capacity[h], 6) for h in candidates} }). The "
+            f"coarse solve routed more into this cell in one epoch than its fine downlinks can "
+            f"absorb.")
+
+    # No single candidate fits, but the candidates collectively have exactly enough room -- spread
+    # the piece across them, largest room first (targets first) so it lands on as few GPUs as
+    # possible rather than smearing thinly.
+    remaining = volume
+    picks: List[Tuple[int, float]] = []
+    for h in sorted(candidates, key=lambda h: (h not in wanted, -room(h))):
+        if remaining <= EPS:
+            break
+        take = min(room(h), remaining)
+        if take <= EPS:
+            continue
+        commit(h, take)
+        picks.append((h, take))
+        remaining -= take
+    if remaining > EPS:
+        raise RuntimeError(
+            f"ingress capacity exhausted for cell {slot.piece.dst_cell} epoch {epoch}: "
+            f"identity {identity} needs {volume:g} but only {volume - remaining:g} could be "
+            f"placed across candidates {candidates} after splitting.")
+    return picks
 
 
 # --------------------------------------------------------------------------------------------
@@ -1013,14 +1053,21 @@ def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
 
         tgt = {d: targets[(d, V)] for d in identities}
         x = _solve_assignment(identities, native, tgt, slots)
-        for (d, j), vol in sorted(x.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        # Largest volume first: _pick_ingress commits greedily against a shared per-(gpu, epoch)
+        # ledger, so whichever assignment it sees first gets the roomiest pick. Descending volume
+        # means a piece that genuinely needs a big chunk of a downlink claims one before smaller
+        # pieces have fragmented every candidate's remaining room -- the same fragmentation the
+        # best-fit tie-break inside _pick_ingress guards against, but at the granularity of
+        # processing order rather than of a single choice. (kv[0][1], kv[0][0]) only breaks ties
+        # among equal volumes, for determinism.
+        for (d, j), vol in sorted(x.items(), key=lambda kv: (-kv[1], kv[0][1], kv[0][0])):
             slot = slots[j]
             cap = _ingress_epoch_capacity(slot, mapping, fine_topology, epoch_duration)
-            h = _pick_ingress(slot, d, vol, tgt, cap, ingress_ledger)
-            assignments.append(_Assignment(
-                src_cell=U, dst_cell=V, identity=d, piece=slot.piece,
-                egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=vol,
-                holder=native[d] if holder_of else -1))
+            for h, v in _pick_ingress(slot, d, vol, tgt, cap, ingress_ledger):
+                assignments.append(_Assignment(
+                    src_cell=U, dst_cell=V, identity=d, piece=slot.piece,
+                    egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=v,
+                    holder=native[d] if holder_of else -1))
 
     return assignments, targets, epoch_duration
 
@@ -1075,11 +1122,11 @@ def assign_identities_preserving(carried: Sequence[Tuple["_CoarsePiece", Identit
         on_native = [s for s in slots if s.egress_gpu == native]
         slot = on_native[0] if on_native else max(slots, key=lambda s: (s.capacity, -s.egress_gpu))
         cap = _ingress_epoch_capacity(slot, mapping, fine_topology, epoch_duration)
-        h = _pick_ingress(slot, identity, piece.volume, targets, cap, ingress_ledger)
-        assignments.append(_Assignment(
-            src_cell=U, dst_cell=V, identity=identity, piece=piece,
-            egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=piece.volume,
-            holder=native))
+        for h, v in _pick_ingress(slot, identity, piece.volume, targets, cap, ingress_ledger):
+            assignments.append(_Assignment(
+                src_cell=U, dst_cell=V, identity=identity, piece=piece,
+                egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=v,
+                holder=native))
     return assignments
 
 
