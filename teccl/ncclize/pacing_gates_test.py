@@ -152,8 +152,226 @@ def main():
            ((4, 9, 0, None), (0, 9, 0, None), 'send'),
            ((7, 9, 0, None), (4, 9, 0, None), 'send')])
 
+    remote_derivation_tests()
     realization_tests()
+    remote_realization_tests()
+    remote_emission_tests()
     print("pacing gate tests OK")
+
+
+def remote_derivation_tests():
+    """P4, the EXPERIMENTAL remote pool: when neither local clock pins a send, gate it on a
+    paced delivery into its DESTINATION -- the remote op holding the capacity it is waiting
+    behind. Off unless remote_gates=True, and never spent when a local gate already pins."""
+
+    def rcheck(name, paced, expect, remote=True):
+        got = sorted(gates(paced, remote_gates=remote), key=repr)
+        if got != sorted(expect, key=repr):
+            raise AssertionError(f"{name}: expected {sorted(expect, key=repr)}, got {got}")
+        print(f"  [OK] {name}")
+
+    # gpu0's own uplink went quiet at 1 and nothing lands on gpu0, so no local clock pins its
+    # send at 3. What actually holds that send is the receiver: gpu5 is taking delivery from
+    # gpu9 through epoch 2, finishing exactly at 3. Gate on that arrival -- the producer key is
+    # the RECV MIRROR at gpu5, whose op carries remotenotify back to gpu0.
+    stalled = {(0, 0, 5, None): (0, 1),     # gpu0's stale send, freed the uplink at 1
+               (2, 9, 5, None): (2, 3),     # delivery into gpu5 (the destination), lands at 3
+               (3, 0, 5, None): (3, 4)}     # the send to pin
+    rcheck("p4: an arrival at the DESTINATION pins a send no local clock can",
+           stalled, [((3, 0, 5, None), (2, 5, 9, None), 'remote')])
+
+    # Same fixture with the pool disabled: the derivation falls back to the stale local netdep,
+    # which is best-effort only (finishes at 1, the send is due at 3) -- i.e. the residual.
+    rcheck("p4: off by default, falls back to the stale local gate",
+           stalled, [((3, 0, 5, None), (0, 0, 5, None), 'send')], remote=False)
+
+    # A local clock that DOES pin is never traded for a notification: gpu0's own send frees the
+    # uplink exactly at 3, so the free netdep wins and no remote edge is emitted.
+    rcheck("p4: not spent when a local send already pins",
+           {(0, 0, 5, None): (0, 3),
+            (2, 9, 5, None): (2, 3),
+            (3, 0, 5, None): (3, 4)},
+           [((3, 0, 5, None), (0, 0, 5, None), 'send')])
+
+    # A remote arrival that lands EARLY does not pin either, and a gate that does not pin is not
+    # worth a notification: fall back to the local best-effort edge.
+    rcheck("p4: a stale remote arrival is not worth a notification",
+           {(0, 0, 4, None): (0, 1),   # gpu0's stale send, to a peer other than the one below
+            (1, 9, 5, None): (1, 2),   # into gpu5, but lands at 2 while the send is due at 3
+            (3, 0, 5, None): (3, 4)},
+           [((3, 0, 5, None), (0, 0, 4, None), 'send')])
+
+    # Two arrivals land at the destination at the same time over DIFFERENT ingress links. The
+    # tie goes to the one sharing the gated send's own ingress link (last switch 9), which is
+    # the link the send is actually queued behind.
+    # Two sends from one GPU to one peer, due at the SAME instant on different planes. Either
+    # arrival pins both, so they share ONE notification -- per-consumer ingress-link picks would
+    # otherwise emit two for one instant, which is also the only way a stream can issue two
+    # notifications in a single step (the case the ordinal's no-reordering assumption misses).
+    rcheck("p4: sends due at one instant share a single notification",
+           {(3, 8, 5, (7, 9)): (3, 4),
+            (3, 9, 5, (7, 8)): (3, 4),
+            (4, 0, 5, (7, 9)): (4, 5),
+            (4, 0, 5, (7, 8)): (4, 5)},
+           [((4, 0, 5, (7, 9)), (3, 5, 9, (7, 8)), 'remote'),
+            ((4, 0, 5, (7, 8)), (3, 5, 9, (7, 8)), 'remote')])
+
+    rcheck("p4: tie prefers the arrival on the same ingress link",
+           {(2, 8, 5, (7, 9)): (2, 3),
+            (2, 9, 5, (7, 8)): (2, 3),
+            (3, 0, 5, (7, 9)): (3, 4)},
+           [((3, 0, 5, (7, 9)), (2, 5, 8, (7, 9)), 'remote')])
+
+
+def remote_realization_tests():
+    """A 'remote' edge lands on remote_dep/remote_notify, numbered per ordered (notifier,
+    waiter) pair in the notifier's own step order, and the deadlock check follows it."""
+    T = _load_taccl_ncclize()
+
+    def send(gpu, peer, step):
+        return T._Op(gpu, peer, step, True, 's', 'i', 0, 'o', 0, 1, [])
+
+    def recv(gpu, peer, step):
+        return T._Op(gpu, peer, step, False, 'r', 'i', 0, 'o', 0, 1, [])
+
+    def build(specs):
+        """specs: {gpu: [(rbid, [ops]), ...]} -> gpus dict."""
+        gpus = {}
+        for rank, tb_specs in specs.items():
+            gpu = T._Gpu([], {}, {}, 0, 0)
+            gpu.threadblocks = []
+            for rbid, ops in tb_specs:
+                tb = T._Threadblock(channel=0, rbid=rbid)
+                tb.steps = list(ops)
+                tb.ops = list(ops)
+                for op in ops:
+                    op.block_rbid = rbid
+                gpu.threadblocks.append(tb)
+            gpus[rank] = gpu
+        return gpus
+
+    # The basic edge: gpu5's recv notifies gpu0, gpu0's send waits for notification #1 from
+    # gpu5. Neither local carrier is touched -- this is not a local dependency and must not
+    # become one.
+    r5, s0 = recv(5, 9, 2), send(0, 5, 3)
+    gpus = build({5: [(0, [r5])], 0: [(0, [s0])]})
+    T._realize_pacing_gates(gpus, [((3, 0, 5, None), (2, 5, 9, None), 'remote')])
+    assert s0.remote_dep == (r5, 1), f"remote gate not realized: {s0.remote_dep}"
+    assert r5.remote_notify == [0], f"notifier did not record the waiter: {r5.remote_notify}"
+    assert s0.net_dep is None and s0.depends == [], "remote gate leaked onto a local carrier"
+    print("  [OK] remote: gate lands on remote_dep/remote_notify, not a local carrier")
+
+    # Ordinals count within the ordered PAIR, in the notifier's step order: gpu5's two recvs
+    # notify gpu0 as #1 and #2 even though a third recv (to gpu7) sits between them. gpu7's
+    # stream is numbered independently, from 1.
+    a, b, c = recv(5, 9, 1), recv(5, 9, 2), recv(5, 9, 3)
+    w1, w2, w3 = send(0, 5, 2), send(7, 5, 3), send(0, 5, 4)
+    gpus = build({5: [(0, [a, b, c])], 0: [(0, [w1]), (1, [w3])], 7: [(0, [w2])]})
+    T._realize_pacing_gates(gpus, [((2, 0, 5, None), (1, 5, 9, None), 'remote'),
+                                   ((3, 7, 5, None), (2, 5, 9, None), 'remote'),
+                                   ((4, 0, 5, None), (3, 5, 9, None), 'remote')])
+    assert w1.remote_dep == (a, 1) and w3.remote_dep == (c, 2), \
+        f"gpu5->gpu0 stream misnumbered: {w1.remote_dep[1]}, {w3.remote_dep[1]}"
+    assert w2.remote_dep == (b, 1), f"gpu5->gpu7 stream not numbered independently: {w2.remote_dep}"
+    assert a.remote_notify == [0] and b.remote_notify == [7] and c.remote_notify == [0]
+    print("  [OK] remote: ordinals count per (notifier, waiter) pair in the notifier's order")
+
+    # One recv serving two sends on the same waiter is ONE notification: both sends wait for
+    # ordinal 1 and the notifier lists the waiter once. (A recv feeding two DIFFERENT waiters
+    # does carry two list entries, each numbered in its own stream.)
+    r, x, y, z = recv(5, 9, 1), send(0, 5, 2), send(0, 6, 2), send(7, 5, 2)
+    gpus = build({5: [(0, [r])], 0: [(0, [x]), (1, [y])], 7: [(0, [z])]})
+    T._realize_pacing_gates(gpus, [((2, 0, 5, None), (1, 5, 9, None), 'remote'),
+                                   ((2, 0, 6, None), (1, 5, 9, None), 'remote'),
+                                   ((2, 7, 5, None), (1, 5, 9, None), 'remote')])
+    assert x.remote_dep == (r, 1) and y.remote_dep == (r, 1) and z.remote_dep == (r, 1)
+    assert r.remote_notify == [0, 7], f"notify list wrong: {r.remote_notify}"
+    print("  [OK] remote: one recv serving several waiters notifies each stream once")
+
+    # A remote gate is the only edge here that crosses GPUs on its own, so it is the one that
+    # can deadlock: gpu0's send waits on gpu5's recv, which sits behind a recv of gpu0's LATER
+    # send in program order. The check must follow remote_dep to see it.
+    T._assert_gates_acyclic(gpus)   # the fixtures above are legitimate
+    g = send(0, 5, 1)
+    p = recv(5, 0, 1)               # the far end's recv of g -- so g must happen first ...
+    q = recv(5, 9, 1)               # ... and q, behind p in program order, gates g. Cycle.
+    p.depends = [g]
+    g.remote_dep = (q, 1)
+    q.remote_notify = [0]
+    cyc = build({5: [(0, [p, q])], 0: [(0, [g])]})
+    try:
+        T._assert_gates_acyclic(cyc)
+    except ValueError as e:
+        assert 'deadlock' in str(e), e
+        print("  [OK] remote: the deadlock check follows a cross-GPU remote gate")
+    else:
+        raise AssertionError("a deadlocking remote gate was accepted")
+
+
+def remote_emission_tests():
+    """The XML carries remotedep/remotedeps on the gated send and remotenotify on the remote
+    recv -- and carries NOTHING when no remote gate was derived, so enabling the pool cannot
+    perturb a schedule that does not need it."""
+    import json
+    import os
+    schedule_path = 'Schedules/two_pod_rail_hostbound_allgather_flat.json'
+    try:
+        from teccl_ncclize import build_algorithm
+        from taccl_ncclize import ncclize, ChannelPolicy
+    except ImportError as e:
+        print(f"  [SKIP] remote emission ({e})")
+        return
+    if not os.path.exists(schedule_path):
+        print(f"  [SKIP] remote emission (no {schedule_path})")
+        return
+    sched = json.load(open(schedule_path))
+    algo, fpk, _srm, _view, rate, derived, _grm = build_algorithm(sched)
+
+    def emit(gate_list):
+        return ncclize(algo, channel_policy=ChannelPolicy.MatchTopology, old_format=True,
+                       use_scratch=True, flow_path_keys=fpk, piece_rate=rate,
+                       pacing_gates=gate_list)
+
+    base = emit(derived)
+    assert 'remotedep' not in base and 'remotenotify' not in base, \
+        "a schedule with no remote gate must emit no remote attributes"
+    print("  [OK] remote emission: no remote gate derived -> no attributes emitted")
+
+    # Inject one remote edge over the real op graph: take a send and gate it on a recv that
+    # lives on the peer it sends to. (The derivation is unit-tested above; this exercises
+    # realization and serialization against real threadblocks and nop expansion.)
+    sends = _send_keys(algo, fpk)
+    recvs = _recv_keys(algo, fpk)
+    pair = next((((step, src, dst, pk), r)
+                 for (step, src, dst, pk) in sends
+                 for r in recvs
+                 if r[1] == dst and r[0] < step and r[2] != src), None)
+    if pair is None:
+        print("  [SKIP] remote emission (no suitable recv on the destination)")
+        return
+    consumer, producer = pair
+    step, src, dst, pk = consumer
+    xml = emit([(consumer, producer, 'remote')])
+    assert f'remotedep="{dst}"' in xml, "the gated send did not carry remotedep"
+    assert 'remotedeps="1"' in xml, "the gated send did not carry an ordinal"
+    assert f'remotenotify="{src}"' in xml, "the remote recv did not carry remotenotify"
+    print("  [OK] remote emission: remotedep/remotedeps on the send, remotenotify on the recv")
+
+
+def _send_keys(algo, fpk):
+    """Op keys (step, src, dst, path_key) for every send in the algorithm, in step order."""
+    seen = []
+    for si, step in enumerate(algo.steps):
+        for addr, src, dst in step.sends:
+            key = (si, src, dst, fpk.get((si, addr, src, dst)))
+            if key not in seen:
+                seen.append(key)
+    return seen
+
+
+def _recv_keys(algo, fpk):
+    """The mirror keys (step, dst, src, path_key) -- one per recv op."""
+    return [(si, dst, src, pk) for (si, src, dst, pk) in _send_keys(algo, fpk)]
 
 
 def _load_taccl_ncclize():

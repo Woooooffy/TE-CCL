@@ -31,6 +31,14 @@ MAX_DENOM = 64
 # unbounded M would blow up. Raise clearly instead.
 MAX_M = 128
 
+# EXPERIMENTAL: P4 remote pacing gates. A send that neither of the LOCAL clocks (P2/P3) can pin
+# to its epoch is instead gated on a paced delivery into its DESTINATION GPU -- the remote op
+# holding the network capacity this send is waiting for -- realized as remotedep/remotedeps on
+# the send and remotenotify on the remote recv. Off by default because it emits XML attributes a
+# stock runtime does not read; set TECCL_REMOTE_PACING_GATES=1 to derive them.
+REMOTE_PACING_GATES = os.environ.get('TECCL_REMOTE_PACING_GATES', '0').lower() not in (
+    '0', '', 'false', 'no', 'off')
+
 try:                                  # sibling module; this file runs both as a script
     from port_split import unqualify_path_key                            # noqa: E402
 except ImportError:                   # ... and as part of the teccl package
@@ -349,7 +357,28 @@ def _send_uplink(key):
     return (src, first_switch, first_cable)
 
 
-def _finish_before_start_gates(paced_sends):
+def _recv_downlink(key, mirrored=False):
+    """The physical INGRESS link a transfer lands on, from its key.
+
+    The mirror of _send_uplink at the far end: a transfer arrives at its destination GPU over
+    that GPU's downlink from the LAST switch on its route, so the contended link is
+    (last_switch, last_cable, receiver). Used only to break ties in the P4 remote pool toward
+    the arrival that shares the gated send's own ingress link -- the link that is actually
+    saturated when a receiver-side bottleneck is what holds the send back.
+
+    `mirrored` says the key is a RECV mirror (step, dst, src, path_key), whose GPU field is
+    already the receiver; a plain send key (step, src, dst, path_key) names it third. Like
+    _send_uplink the key must be deconstructed, never indexed: a port-qualified path_key is
+    ((switches...), (cables...)).
+    """
+    _step, gpu, peer, path_key = key
+    switches, cables = unqualify_path_key(path_key)
+    last_switch = switches[-1] if switches else None
+    last_cable = cables[-1] if cables else 0
+    return (last_switch, last_cable, gpu if mirrored else peer)
+
+
+def _finish_before_start_gates(paced_sends, remote_gates=False):
     """Derive pacing gate edges from per-send link-occupancy windows.
 
     `paced_sends` maps a send op key (step_idx, src, dst, path_key) to its
@@ -396,15 +425,45 @@ def _finish_before_start_gates(paced_sends):
     and costs no XML step -- while a recv-sourced one is a depid/deps edge that may cost
     an expansion nop, so the recv pool is only reached for a send the uplink cannot pin.
 
-    Returns a list of (consumer_key, producer_key, kind) edges, kind being 'send' or
-    'recv'. The kind picks the RUNTIME CARRIER and cannot be inferred from the keys:
+    A third pool is derived only when `remote_gates` is set (EXPERIMENTAL, P4):
+
+      REMOTE pool (P4) -- paced deliveries into S's DESTINATION GPU, timed by their
+        ARRIVAL. When neither local clock ticks at S's start, the thing S is really
+        waiting on is usually not on S's GPU at all: it is the remote op holding the
+        capacity S needs -- typically the ingress downlink of S's own receiver, which
+        is saturated in the preceding epoch (a receiver-side bottleneck no sender-side
+        clock can observe). Gating S on that arrival pins it, at the price of a
+        cross-GPU notification: the remote GPU's recv carries `remotenotify` back to
+        S's GPU and S carries `remotedep`/`remotedeps` ("wait for the i-th notification
+        from GPU k"). A remote edge is only emitted when it lands EXACTLY at S's start
+        AND no local candidate does -- a remote gate costs a notification, so it is
+        never spent to reproduce a pin a free local netdep already gives, nor on a
+        stale producer that would not pin S anyway. Among eligible arrivals a tie
+        prefers one sharing S's INGRESS link (same last switch), which is the link
+        actually contended.
+
+        Every send from one GPU due at one instant shares a SINGLE notification. An
+        arrival is a clock, and one tick per instant is all a clock owes: two sends
+        from g to k due at the same epoch are pinned equally well by either arrival
+        at k, so the per-consumer preference above is applied once per
+        (notifier, waiter, instant) group and every consumer in it takes that same
+        producer. Letting each consumer keep its own pick would emit two notifications
+        for one instant -- redundant traffic, and worse, the ONLY way one stream can
+        issue two notifications in a single step, which is precisely the case the
+        no-reordering assumption behind the ordinals does not cover. Collapsing here
+        means the numbering downstream never has to break such a tie.
+
+    Returns a list of (consumer_key, producer_key, kind) edges, kind being 'send',
+    'recv' or 'remote'. The kind picks the RUNTIME CARRIER and cannot be inferred from
+    the keys:
     a recv key (step, dst, src, path_key) is indistinguishable from the key of a real
     send on the reverse edge at the same step, which bidirectional traffic produces.
     A 'send' edge orders one send behind another ON THE WIRE and is carried by
     netdepid/netdeps, which the proxy thread enforces against the NIC. A 'recv' edge
     is discharged the moment the proxy marks the recv slot filled -- exactly the event
     depid/deps already encodes and the GPU kernel already waits on -- so it rides that
-    path instead; see taccl_ncclize._realize_pacing_gates.
+    path instead. A 'remote' edge names a recv on ANOTHER GPU and rides
+    remotedep/remotedeps + remotenotify. See taccl_ncclize._realize_pacing_gates.
     """
     from collections import defaultdict as _dd
     by_src = _dd(list)     # sending gpu -> [(finish, uplink, send key)]
@@ -415,6 +474,7 @@ def _finish_before_start_gates(paced_sends):
         arrivals[dst].append((finish, (step, dst, src, path_key)))
 
     edges = []
+    remote = []            # (consumer key, producer recv mirror key), canonicalized below
     for key, (cstart, _cfin) in paced_sends.items():
         csrc = key[1]
         cuplink = _send_uplink(key)
@@ -432,8 +492,34 @@ def _finish_before_start_gates(paced_sends):
         for arrival, rkey in arrivals.get(csrc, ()):
             if arrival <= cstart and (best is None or (arrival, 0, 0) > best[:3]):
                 best = (arrival, 0, 0, rkey)
+        if remote_gates and (best is None or best[0] < cstart):
+            # No local clock pins S. Fall back to the remote op holding the capacity S
+            # needs: a delivery into S's own destination. Only an arrival landing exactly
+            # at cstart is worth a notification.
+            cdst = key[2]
+            cingress = _recv_downlink(key)
+            rbest = None
+            for arrival, rkey in arrivals.get(cdst, ()):
+                if arrival != cstart:
+                    continue
+                cand = (arrival, 1 if _recv_downlink(rkey, mirrored=True) == cingress else 0, rkey)
+                if rbest is None or cand[:2] > rbest[:2]:
+                    rbest = cand
+            if rbest is not None:
+                remote.append((key, rbest[2]))
+                continue
         if best is not None:
             edges.append((key, best[3], 'send' if best[1] == 1 else 'recv'))
+
+    # One notification per (notifier, waiter, instant). The group key needs no arrival
+    # time of its own: a remote edge exists only when the arrival lands exactly at the
+    # consumer's start, so the consumer's start IS the instant. Iterating in sorted
+    # order makes the representative deterministic.
+    canonical = {}
+    for key, rkey in sorted(remote, key=repr):
+        canonical.setdefault((key[2], key[1], paced_sends[key][0]), rkey)
+    for key, rkey in remote:
+        edges.append((key, canonical[(key[2], key[1], paced_sends[key][0])], 'remote'))
     return edges
 
 
@@ -685,7 +771,8 @@ def parse_flows_lp(schedule, collective_name, port_qualify=None):
             duration = max(1, round(chunk_size / (M * rate * delta)))
             paced_sends[(step_idx, src, dst, path_key)] = (hop_epoch, hop_epoch + duration)
 
-    pacing_gates = _finish_before_start_gates(paced_sends)
+    pacing_gates = _finish_before_start_gates(paced_sends,
+                                              remote_gates=REMOTE_PACING_GATES)
 
     return (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
             sorted_epochs, flow_completion_epochs, flow_rates, root_dense,

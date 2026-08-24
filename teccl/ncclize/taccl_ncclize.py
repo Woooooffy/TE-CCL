@@ -5,6 +5,7 @@ from lxml import etree as ET
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 import math
+import sys
 import threading, queue
 from enum import Enum
 from z3 import *
@@ -72,6 +73,15 @@ class _Op:
     # be posted. Emitted as netdepid/netdeps, a separate axis from depends/depid/deps
     # -- see _realize_pacing_gates. None means this send is ungated.
     net_dep: object = None
+    # EXPERIMENTAL remote pacing gate (P4): (producer_recv_op, ordinal). This send waits
+    # for the `ordinal`-th notification from producer_recv_op.gpu, emitted as
+    # remotedep (the remote GPU) / remotedeps (the ordinal). The op is kept, not just the
+    # rank, so the deadlock check can follow the edge. None means no remote gate.
+    remote_dep: object = None
+    # Ranks this (recv) op must notify when it completes, emitted as a comma-separated
+    # remotenotify list. Each entry is one waiter GPU; the ordinal it sees is this op's
+    # position among all notifications this GPU sends to that waiter.
+    remote_notify: list = field(default_factory=list)
 
     def __eq__(self, other):
         return self is other
@@ -428,6 +438,25 @@ def _realize_pacing_gates(gpus, pacing_gates):
     instead discharge it the moment the producer's FIFO tail bumps -- the producer's data
     being *readable*, not *sent* -- which is not the constraint.
 
+    ``kind='remote'`` -> ``remote_dep`` (emitted as ``remotedep``/``remotedeps`` on the gated
+    send, and ``remotenotify`` on the producing recv, which lives on ANOTHER GPU). EXPERIMENTAL.
+    "This send must not start until GPU k has taken delivery of the bytes it is waiting behind."
+    Neither existing carrier can express it: ``depid``/``deps`` and ``netdepid``/``netdeps`` both
+    name a (threadblock, step) on the LOCAL GPU, and a remote GPU's threadblock and post-expansion
+    step index are not reliably knowable to the waiter at runtime. So the edge is addressed by
+    COUNT instead of by location: the waiter waits for the i-th notification from GPU k, and k's
+    recv fires one notification to each rank named in its ``remotenotify`` list. Ordinals are
+    assigned per ORDERED PAIR (notifier -> waiter) in the notifier's own step order, so the i-th
+    notification k sends to g is the i-th one g waits for. That numbering is only sound if
+    notifications from one GPU to another cannot be REORDERED in flight, which is the standing
+    assumption of this feature: remote gates are meant to be spaced further apart than one local
+    send's serialization time. Two notifications for the same pair in the same step are the case
+    that assumption does not cover, and are reported as a warning rather than silently numbered.
+    The derivation already rules out the way that normally arises -- several sends due at one
+    instant collapse onto ONE notification there (see _finish_before_start_gates) -- so what
+    survives to be warned about is a genuine oddity: two deliveries into the notifier that begin
+    in the same step but, having different durations, land at different times.
+
     ``kind='recv'`` -> ``depends`` (emitted as ``depid``/``deps``). "This send must not start
     until those bytes have arrived." That event is precisely the one the proxy already signals
     to the kernel when it marks a recv slot filled, and ``depid``/``deps`` is precisely the
@@ -446,7 +475,8 @@ def _realize_pacing_gates(gpus, pacing_gates):
     here keeps both kinds symmetric and keeps a redundant edge from reaching the cycle check.)
 
     ``_finish_before_start_gates`` emits at most one edge per consumer key, so a send carries
-    at most one gate -- which is what the single ``netdepid``/``netdeps`` pair can express.
+    at most one gate -- which is what the single ``netdepid``/``netdeps`` pair, and equally the
+    single ``remotedep``/``remotedeps`` pair, can express.
     Several sends in ONE threadblock may each carry their own gate; that is an ordinary
     schedule and is not reduced here. Requires ``op.block_rbid`` to be assigned already;
     ``op.idx`` is read later, at XML emission. A ``send`` edge must therefore run before nop
@@ -460,14 +490,26 @@ def _realize_pacing_gates(gpus, pacing_gates):
             for op in tb.steps:
                 index = send_ops if op.is_send else recv_ops
                 index[(op.step, op.gpu, op.peer, op.path_key)].append(op)
+    # (notifier gpu, waiter gpu) -> {producer recv op: [consumer send ops]}, filled by the
+    # 'remote' edges and numbered below, once every pair is known.
+    remote_pairs = defaultdict(lambda: defaultdict(list))
     for consumer_key, producer_key, kind in pacing_gates:
-        if kind not in ('send', 'recv'):
+        if kind not in ('send', 'recv', 'remote'):
             raise ValueError(f'unknown pacing gate kind {kind!r} for consumer {consumer_key}')
         producers = (send_ops if kind == 'send' else recv_ops).get(producer_key)
         consumers = send_ops.get(consumer_key)
         if not producers or not consumers:
             continue
         producer = producers[-1]  # last in threadblock order: its completion covers the key
+        if kind == 'remote':
+            # A remote gate is addressed by rank + count, so it is NOT dropped for sharing a
+            # threadblock (it cannot: the endpoints are on different GPUs by construction).
+            for op in consumers:
+                assert op.gpu != producer.gpu, (
+                    f'remote pacing gate for a send on gpu {op.gpu} names a recv on the same '
+                    f'gpu; that is a local dependency and belongs on depid/deps')
+                remote_pairs[(producer.gpu, op.gpu)][producer].append(op)
+            continue
         for op in consumers:
             if op.block_rbid == producer.block_rbid:
                 continue  # same connection: the FIFO already orders these
@@ -480,6 +522,44 @@ def _realize_pacing_gates(gpus, pacing_gates):
                 # Already a data dependency? Then the wait exists and the gate is satisfied
                 # by it; adding a duplicate would only cost an expansion nop.
                 op.depends.append(producer)
+    _number_remote_notifications(remote_pairs)
+
+
+def _number_remote_notifications(remote_pairs):
+    """Turn the collected remote gate pairs into notification ordinals on both endpoints.
+
+    ``remote_pairs`` maps (notifier gpu, waiter gpu) -> {producer recv op: [consumer send ops]}.
+    For each ordered pair the notifier's recvs are numbered 1..n in the notifier's own step
+    order, which is the order it will issue them; the waiter's sends record the same ordinal.
+    One recv serving several sends on one waiter is ONE notification they all wait for, and a
+    recv notifying several waiters carries several list entries, each numbered in its own pair's
+    stream.
+
+    Sorting is by (step, block_rbid) -- a step is an epoch, and the intra-step tiebreak by
+    threadblock only makes the numbering DETERMINISTIC, not correct: two notifications to the
+    same waiter within one step are exactly the case the no-reordering assumption does not
+    cover, so they are warned about here. Sends due at the same instant do NOT reach that case;
+    they share one notification, collapsed in the derivation.
+    """
+    ambiguous = []
+    for (notifier, waiter), by_producer in sorted(remote_pairs.items()):
+        ordered = sorted(by_producer, key=lambda op: (op.step, op.block_rbid))
+        for i, producer in enumerate(ordered, start=1):
+            producer.remote_notify.append(waiter)
+            for op in by_producer[producer]:
+                assert op.remote_dep is None or op.remote_dep[0] is producer, (
+                    f'send on gpu {op.gpu} step {op.step} was given two different remote pacing '
+                    f'gates; the XML carries one remotedep/remotedeps per step')
+                op.remote_dep = (producer, i)
+        steps = [op.step for op in ordered]
+        if len(set(steps)) != len(steps):
+            ambiguous.append((notifier, waiter))
+    if ambiguous:
+        print(f'WARNING: {len(ambiguous)} remote pacing gate stream(s) issue more than one '
+              f'notification in a single step, e.g. {ambiguous[:4]}. Ordinals assume '
+              f'notifications from one GPU to another cannot be reordered; within one step '
+              f'that spacing assumption does not hold and the gate may be discharged by the '
+              f'wrong notification.', file=sys.stderr)
 
 
 def _assert_gates_acyclic(gpus):
@@ -491,9 +571,12 @@ def _assert_gates_acyclic(gpus):
     quantifiers over step ranges are needed: the classic failure is a gate A.1 -> B.0 crossed with
     a data dependency B.1 -> A.0, which closes through the two threadblocks' program order.
 
-    Both gate carriers are covered without special-casing: a send-sourced gate is read off
-    ``net_dep``, and a recv-sourced one is already indistinguishable from a data dependency here
-    because it IS one on the wire (see _realize_pacing_gates) and arrives through ``depends``.
+    All three gate carriers are covered: a send-sourced gate is read off ``net_dep``, a
+    recv-sourced one is already indistinguishable from a data dependency here because it IS one
+    on the wire (see _realize_pacing_gates) and arrives through ``depends``, and a remote one is
+    followed through ``remote_dep``. The remote gate is the only edge here that crosses GPUs on
+    its own (the others do so only through the send/recv pairing implied by the schedule), which
+    is exactly why it is the one that most needs this check.
 
     A within-pass check is sufficient because every runtime edge points forward across passes:
     data dependencies compare the same loop iteration, gates carry a per-pass target, and program
@@ -514,6 +597,8 @@ def _assert_gates_acyclic(gpus):
                     succ[dep].append(op)           # data dependency
                 if op.net_dep is not None:
                     succ[op.net_dep].append(op)    # pacing gate
+                if op.remote_dep is not None:
+                    succ[op.remote_dep[0]].append(op)   # remote pacing gate (cross-GPU)
                 prev = op
 
     WHITE, GREY, BLACK = 0, 1, 2
@@ -531,7 +616,7 @@ def _assert_gates_acyclic(gpus):
                     cycle = path[path.index(nxt):] + [nxt]
                     raise ValueError(
                         'send-pacing gates would deadlock: cycle over threadblock program '
-                        'order, data dependencies and gates: ' +
+                        'order, data dependencies, gates and remote gates: ' +
                         ' -> '.join(f'gpu{o.gpu}/tb{o.block_rbid}/step{o.step}({o.op_type})'
                                     for o in cycle))
                 if colour[nxt] == WHITE:
@@ -1220,6 +1305,24 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                         f'{op.gpu}')
                     op_elem.set('netdepid', str(nd.block_rbid))
                     op_elem.set('netdeps', str(nd.idx))
+                # EXPERIMENTAL remote pacing gate (P4). Addressed by RANK AND COUNT, not by
+                # (threadblock, step): the producer lives on another GPU, whose threadblock
+                # layout and post-expansion step indices this GPU cannot track at runtime.
+                # remotedep names the notifying rank, remotedeps the ordinal ("the i-th
+                # notification from that rank"), and the far end's recv carries the matching
+                # remotenotify. Both attributes are omitted when unused, so a schedule derived
+                # without remote gates emits byte-identical XML.
+                if op.remote_dep is not None:
+                    producer, ordinal = op.remote_dep
+                    assert op.is_send and not producer.is_send, (
+                        'remotedep/remotedeps gate a SEND on a remote RECV; got '
+                        f'{op.op_type} <- {producer.op_type} on gpu {op.gpu}')
+                    op_elem.set('remotedep', str(producer.gpu))
+                    op_elem.set('remotedeps', str(ordinal))
+                if op.remote_notify:
+                    # One entry per waiting rank, in the order the ordinals were assigned.
+                    op_elem.set('remotenotify',
+                                ','.join(str(rank) for rank in op.remote_notify))
                 if op.has_dependence:
                     op_elem.set('hasdep', '1')
                 elif old_format:
