@@ -440,7 +440,7 @@ def _solve_assignment(identities: Sequence[Identity],
 def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
                   target_gpus: Dict[Identity, Tuple[int, ...]],
                   epoch_capacity: Dict[int, float],
-                  ledger: Dict[Tuple[int, int], float]) -> List[Tuple[int, float]]:
+                  ledger: Dict[Tuple[int, int, int], float]) -> List[Tuple[int, float]]:
     """Choose the fine GPU(s) a piece lands on, preferring a target and respecting fine downlink
     capacity.
 
@@ -451,8 +451,16 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
     it implements. And it ignored the destination, so an identity wanted by a boundary GPU would
     land elsewhere and pay an avoidable intra-cell hop.
 
-    `ledger` is keyed (gpu, arrival_epoch) and spans the WHOLE resolution, not one demand pair,
-    because a destination cell's ingress link is shared by every source cell sending to it.
+    `ledger` is keyed (gpu, ingress_neighbor, arrival_epoch) and spans the WHOLE resolution, not
+    one demand pair, because a destination cell's ingress link is shared by every source cell
+    sending to it. The neighbor is part of the key, not just the gpu, because a gpu can own MORE
+    THAN ONE independent ingress port -- e.g. a dual-plane host, where every gpu has a separate
+    physical link into each plane's leaf. Two pieces arriving over different planes in the same
+    epoch are not competing for the same budget, even though they land on the same gpu; keying on
+    (gpu, epoch) alone would wrongly merge two independent ports into one shared budget and see
+    "no room" on the second plane while its own physical port sits untouched -- exactly the
+    accounting `_assert_rate_within_capacity` avoids by keying ingress on
+    (via_switches[-1], gpu, epoch).
 
     Usually returns a single (gpu, volume) pair. But the SUM of the candidates' fine downlinks is
     exactly what the coarse capacity was built from, so a piece can legitimately need more than any
@@ -467,13 +475,14 @@ def _pick_ingress(slot: _Slot, identity: Identity, volume: float,
             f"no ingress boundary GPU for cell {slot.piece.dst_cell} from coarse neighbor "
             f"{slot.piece.ingress_neighbor}")
     epoch = slot.piece.arrival_epoch
+    neighbor = slot.piece.ingress_neighbor
     wanted = set(target_gpus.get(identity, ()))
 
     def room(h: int) -> float:
-        return epoch_capacity[h] - ledger.get((h, epoch), 0.0)
+        return epoch_capacity[h] - ledger.get((h, neighbor, epoch), 0.0)
 
     def commit(h: int, v: float) -> None:
-        ledger[(h, epoch)] = ledger.get((h, epoch), 0.0) + v
+        ledger[(h, neighbor, epoch)] = ledger.get((h, neighbor, epoch), 0.0) + v
 
     if len(candidates) == 1:
         # Forced by the coarse path; capacity is still checked by the caller's assert.
@@ -1013,7 +1022,7 @@ def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
 
     # Spans the whole resolution, not one demand pair: a destination cell's ingress link is shared
     # by every source cell sending to it.
-    ingress_ledger: Dict[Tuple[int, int], float] = {}
+    ingress_ledger: Dict[Tuple[int, int, int], float] = {}
     assignments: List[_Assignment] = []
 
     for (U, V), identities in sorted(id_sets.items()):
@@ -1105,7 +1114,7 @@ def assign_identities_preserving(carried: Sequence[Tuple["_CoarsePiece", Identit
     IntraCellDemand that produced this flow, NOT `identity[0]`: below the root an identity has
     already been relayed and its native source may not even be in this cell.
     """
-    ingress_ledger: Dict[Tuple[int, int], float] = {}
+    ingress_ledger: Dict[Tuple[int, int, int], float] = {}
     assignments: List[_Assignment] = []
 
     for piece, identity in carried:
