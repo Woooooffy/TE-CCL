@@ -1,0 +1,46 @@
+cpu-bind=MASK - lanka30, task  0  0 [337329]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka30, task  0  0 [337739]: mask 0xff0000ff set
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/bin/teccl", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/__main__.py", line 21, in main
+    if handler(args, args.command):
+       ~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/cli/solve.py", line 41, in handler
+    solver.solve()
+    ~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 370, in solve
+    self.solve_hierarchy(start)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 338, in solve_hierarchy
+    info, solution = solve_hierarchical(
+                     ~~~~~~~~~~~~~~~~~~^
+        topology, level_input, instance.collective, num_chunks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        prefix=prefix, debug=instance.debug, level_chunk=instance.level_chunk)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 634, in solve_hierarchical
+    solution = solve_level(root, ctx)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 314, in solve_level
+    return _solve_recursive(problem, ctx)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 393, in _solve_recursive
+    res = _lower(solution, problem, coarse, mapping, fine_tensor, g, level_demand)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 486, in _lower
+    return build_child_problems(assignments, targets, mapping, fine_tensor, problem.topology,
+                                epoch, scale=problem.scale, relabel=relabel,
+                                snap_tol=snap_tolerance(solution),
+                                max_denom=resolve_max_denom(solution))
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/reconstruct.py", line 1258, in build_child_problems
+    assignments = _snap_volumes(
+        assignments, snap_tolerance() if snap_tol is None else snap_tol,
+        resolve_max_denom() if max_denom is None else max_denom)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/reconstruct.py", line 887, in _snap_volumes
+    for i, frac in zip(idxs, _snap_group(vols, snap_tol, key, max_denom)):
+                             ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/reconstruct.py", line 820, in _snap_group
+    raise AssertionError(
+    ...<5 lines>...
+        f"than the grid can resolve (see snap_tolerance).")
+AssertionError: identity (0, 17) -> cell 1: volume 0.22159999999998947 is not within 4e-06 of any rational with denominator <= 128 (nearest is 27/122 = 0.22131147540983606), and it is too large (7.8125e-05) to be solver residue. The coarse solution is off the declared grid: either it is split more finely than MAX_DENOM admits (regularize the coarse LP) or the solver tolerance is looser than the grid can resolve (see snap_tolerance).
+srun: error: lanka30: task 0: Exited with exit code 1
