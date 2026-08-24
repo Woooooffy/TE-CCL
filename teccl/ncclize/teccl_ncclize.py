@@ -362,11 +362,20 @@ def _finish_before_start_gates(paced_sends):
     Each send S is gated on the latest paced event that lands at or before S starts,
     drawn from two pools:
 
-      SEND pool (P2)  -- sends contending for the same physical uplink (see
-        _send_uplink), timed by their link-occupancy FINISH: the send that frees the
-        uplink is what lets S onto the wire.
+      SEND pool (P2)  -- OTHER PACED SENDS FROM THE SAME GPU, timed by their
+        link-occupancy FINISH. A send completing is a rate-paced tick the GPU's proxy
+        observes, and that is all a clock has to be: the pool is per SOURCE GPU, not
+        per uplink. Grouping it per uplink -- "only the send that frees THIS link may
+        release S" -- describes link contention correctly but is the wrong rule for
+        pacing, and on a multi-uplink GPU (dual-plane, multi-rail) it throws away every
+        cross-uplink tick and leaves sends unpinned that the GPU could perfectly well
+        clock itself. The netdep carrier does not care which NIC the producer used: it
+        is an op-completion edge between two threadblocks on one GPU, which cross-peer
+        gates on a single uplink already are. A tie at equal finish still prefers a
+        producer on S's OWN uplink, which is the physically stronger claim (it frees the
+        link S needs, not just the clock).
       RECV pool (P3)  -- paced deliveries INTO S's source GPU, timed by their ARRIVAL.
-        A send at epoch k whose uplink was idle through k-1 has no send to wait on;
+        A send at epoch k whose GPU sent nothing that finishes at k has no send to wait on;
         a recv landing exactly at k is then the only rate-paced clock tick available,
         and gating on it pins S to k. This is what closes the residual the stitch
         reports (flat_schedule.check_network_pacing) for a GPU that goes quiet on an
@@ -381,8 +390,7 @@ def _finish_before_start_gates(paced_sends):
     gate each other (a same-epoch P has finish > start_S, so it is not a candidate),
     and a multi-epoch send does not serialize a later send that runs alongside its
     tail on freed capacity (that P is excluded; the send that truly frees the link is
-    picked). Grouping is per physical uplink (src, first_switch), so a multi-uplink
-    GPU paces each of its uplinks independently.
+    picked).
 
     Ties prefer the SEND pool. A send-sourced gate is free -- it rides netdepid/netdeps
     and costs no XML step -- while a recv-sourced one is a depid/deps edge that may cost
@@ -399,30 +407,33 @@ def _finish_before_start_gates(paced_sends):
     path instead; see taccl_ncclize._realize_pacing_gates.
     """
     from collections import defaultdict as _dd
-    by_link = _dd(list)
+    by_src = _dd(list)     # sending gpu -> [(finish, uplink, send key)]
     arrivals = _dd(list)   # receiving gpu -> [(arrival_epoch, recv mirror key)]
     for key, (start, finish) in paced_sends.items():
         step, src, dst, path_key = key
-        by_link[_send_uplink(key)].append((start, finish, key))
+        by_src[src].append((finish, _send_uplink(key), key))
         arrivals[dst].append((finish, (step, dst, src, path_key)))
 
     edges = []
-    for sends in by_link.values():
-        for cstart, _cfin, ckey in sends:
-            csrc = ckey[1]
-            # (time, kind_rank, key), maximised: the latest-landing eligible producer. The rank
-            # breaks a tie at equal time toward the SEND pool, so it ranks ABOVE recv here.
-            best = None
-            for _pstart, pfin, pkey in sends:
-                if pkey == ckey:
-                    continue
-                if pfin <= cstart and (best is None or (pfin, 1) > (best[0], best[1])):
-                    best = (pfin, 1, pkey)
-            for arrival, rkey in arrivals.get(csrc, ()):
-                if arrival <= cstart and (best is None or (arrival, 0) > (best[0], best[1])):
-                    best = (arrival, 0, rkey)
-            if best is not None:
-                edges.append((ckey, best[2], 'send' if best[1] == 1 else 'recv'))
+    for key, (cstart, _cfin) in paced_sends.items():
+        csrc = key[1]
+        cuplink = _send_uplink(key)
+        # (time, kind_rank, uplink_rank, key), maximised: the latest-landing eligible
+        # producer. kind_rank breaks a tie at equal time toward the SEND pool (a netdep
+        # costs no XML step); uplink_rank then breaks a tie among sends toward S's own
+        # uplink, whose producer frees the very link S needs.
+        best = None
+        for pfin, puplink, pkey in by_src.get(csrc, ()):
+            if pkey == key or pfin > cstart:
+                continue
+            cand = (pfin, 1, 1 if puplink == cuplink else 0, pkey)
+            if best is None or cand[:3] > best[:3]:
+                best = cand
+        for arrival, rkey in arrivals.get(csrc, ()):
+            if arrival <= cstart and (best is None or (arrival, 0, 0) > best[:3]):
+                best = (arrival, 0, 0, rkey)
+        if best is not None:
+            edges.append((key, best[3], 'send' if best[1] == 1 else 'recv'))
     return edges
 
 

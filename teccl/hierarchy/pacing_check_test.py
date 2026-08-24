@@ -3,8 +3,8 @@
 The check reports which paced sends no clock pins to their coarse epoch. It must stay the
 mirror of the ncclize gate manifest (teccl_ncclize._finish_before_start_gates, covered by
 teccl/ncclize/pacing_gates_test.py) so that what it reports is exactly what that manifest
-cannot pin: P2 (a send on the same uplink freeing it at k) and P3 (a paced delivery arriving
-at the sending GPU at k).
+cannot pin: P2 (one of the GPU's own paced sends completing at k) and P3 (a paced delivery
+arriving at the sending GPU at k). Both pools are per GPU, not per uplink.
 
 The function is extracted by AST rather than imported, so these run in a bare env: the
 hierarchy package pulls in numpy and gurobipy at import time for everything else.
@@ -61,13 +61,23 @@ run('P3 arrival at the wrong epoch does not pin',
 run('P3 pins across a different uplink',
     [P(0,5,(9,),2,1,1)] + deliverer((8,)), [])
 
+# P2 is per GPU: gpu0's send on uplink 8 completes at 2 and pins its send on uplink 9 at 2.
+# Grouping P2 per uplink would report (0, 2) here -- the dual-plane/multi-rail gap.
+run('P2 pins across the GPU\'s other uplink',
+    [P(0,5,(8,),0,1,1), P(0,5,(8,),1,1,1), P(0,6,(9,),2,1,1)], [])
+
+# Same epoch on two uplinks is concurrency, not a clock: neither pins the other, and the
+# epoch-2 pair has nothing finishing at 2.
+run('P2 same-epoch sends on two uplinks do not pin each other',
+    [P(0,5,(8,),0,1,1), P(0,5,(8,),2,1,1), P(0,6,(9,),2,1,1)], [(0,2)])
+
 run('epoch 0 is never a residual', [P(0,5,(9,),0,1,1)], [])
 
 run('unpaced flows supply no clock',
     [P(0,5,(9,),0,1,1), P(0,5,(9,),2,1,1),
      P(7,4,(9,),0,1,1), P(7,0,(9,),1,1,None)], [(0,2)])
 
-run('residual deduped per (gpu, epoch)',
+run('residual reported once per (gpu, epoch)',
     [P(0,5,(9,),0,1,1), P(0,5,(9,),2,1,1), P(0,6,(8,),2,1,1)], [(0,2)])
 
 print('check_network_pacing tests OK')

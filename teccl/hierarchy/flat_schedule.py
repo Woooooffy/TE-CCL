@@ -398,10 +398,10 @@ def check_network_pacing(res: IdentityResolution, coarse_epoch: float) -> List[T
     under the fill-one-epoch rate rule, more for a sub-rate multi-epoch send). A send at epoch k is
     held to k if either clock ticks at k:
 
-      P2 -- some send on the SAME UPLINK finishes at k (occupied the link through k-1 and freed it
-        at the boundary), so the uplink itself releases the send; or
-      P3 -- some paced delivery ARRIVES at the sending GPU at k. The uplink may be idle going into
-        k while the GPU is still receiving, and a recv landing at k is then the only rate-paced
+      P2 -- some paced send FROM THE SAME GPU finishes at k (it occupied one of that GPU's uplinks
+        through k-1 and completed at the boundary), so the GPU has an op completion to gate on; or
+      P3 -- some paced delivery ARRIVES at the sending GPU at k. The GPU may be sending nothing
+        into k while it is still receiving, and a recv landing at k is then the only rate-paced
         tick available. ncclize realizes this one as a depid/deps edge on the send, which the
         kernel discharges when the proxy marks the recv slot filled.
 
@@ -411,36 +411,34 @@ def check_network_pacing(res: IdentityResolution, coarse_epoch: float) -> List[T
     have -- the remaining cases are GPUs that neither send nor receive anything paced in the
     preceding epoch.
 
-    Grouping by physical uplink rather than GPU matters for P2 once a GPU has multiple uplinks:
-    sends on different uplinks do not free each other's link. P3 is per GPU, not per uplink: an
-    arrival is a fact about the GPU and can pin a send on any of its uplinks. Using FINISH rather
-    than "starts at k-1" is what makes a multi-epoch send correctly pin a later send that begins
-    as it completes.
+    BOTH pools are per GPU, not per uplink, and that is deliberate. A pacing clock only has to be
+    a rate-paced event the sending GPU's proxy observes; it does not have to free the particular
+    link this send needs. Restricting P2 to the same uplink is the right rule for link CONTENTION
+    and the wrong one for pacing -- on a multi-uplink GPU (dual-plane, multi-rail) it discards
+    every cross-uplink completion and reports residuals the gate manifest can in fact pin, since a
+    netdep is an op-completion edge between two threadblocks of one GPU either way. Using FINISH
+    rather than "starts at k-1" is what makes a multi-epoch send correctly pin a later send that
+    begins as it completes.
     """
     chunk = res.scale.bytes_per_chunk
-    # uplink -> the coarse epochs at which some paced send finishes occupying that link, and the
-    # epochs at which a send starts (the sends we must pin). arrivals is per GPU, not per uplink.
-    finishes: Dict[Tuple[int, Optional[int]], set] = defaultdict(set)
-    starts: Dict[Tuple[int, Optional[int]], set] = defaultdict(set)
+    # gpu -> the coarse epochs at which one of its paced sends finishes, at which it starts a send
+    # (the sends we must pin), and at which a paced delivery lands on it.
+    finishes: Dict[int, set] = defaultdict(set)
+    starts: Dict[int, set] = defaultdict(set)
     arrivals: Dict[int, set] = defaultdict(set)
     for p in res.pieces:
         if p.rate is None:
             continue  # an unpaced network flow imposes no pacing (and none exists today)
-        uplink = (p.egress_gpu, p.via_switches[0] if p.via_switches else None)
         duration = max(1, round(p.volume * chunk / (p.rate * coarse_epoch)))
-        finishes[uplink].add(p.send_epoch + duration)
-        starts[uplink].add(p.send_epoch)
+        finishes[p.egress_gpu].add(p.send_epoch + duration)
+        starts[p.egress_gpu].add(p.send_epoch)
         arrivals[p.ingress_gpu].add(p.send_epoch + duration)
     residual: List[Tuple[int, int]] = []
-    seen = set()
-    for uplink, epochs in sorted(starts.items()):
-        gpu = uplink[0]
+    for gpu, epochs in sorted(starts.items()):
         for k in sorted(epochs):
-            if k == 0 or k in finishes[uplink] or k in arrivals[gpu]:
+            if k == 0 or k in finishes[gpu] or k in arrivals[gpu]:
                 continue
-            if (gpu, k) not in seen:
-                seen.add((gpu, k))
-                residual.append((gpu, k))
+            residual.append((gpu, k))
     return residual
 
 
@@ -467,13 +465,13 @@ def build_flat_schedule(res: IdentityResolution, intra_flows: Sequence[IntraFlow
     # Network-layer pacing residuals (paced sends neither clock can pin). Reported, not fatal.
     residual = check_network_pacing(res, coarse_epoch)
     if residual:
-        print(f"[flat] network pacing: {len(residual)} paced send(s) fire early -- at epoch k no "
-              f"send on the same uplink finishes serializing (P2) and no paced delivery arrives at "
-              f"the GPU (P3), so nothing pins them to their coarse epoch [(gpu, epoch)]: "
+        print(f"[flat] network pacing: {len(residual)} (gpu, epoch) send group(s) fire early -- at "
+              f"epoch k no send from that GPU finishes serializing (P2) and no paced delivery "
+              f"arrives at it (P3), so nothing pins them to their coarse epoch [(gpu, epoch)]: "
               f"{residual[:8]}")
     else:
-        print("[flat] network pacing: every paced send is pinned to its coarse epoch, by a send "
-              "freeing its uplink (P2) or by a delivery arriving at the GPU (P3)")
+        print("[flat] network pacing: every paced send is pinned to its coarse epoch, by one of "
+              "the GPU's own sends completing (P2) or by a delivery arriving at it (P3)")
 
     # Bands 0..K-1 are pinned to the network sends, so they must fit inside a coarse epoch.
     num_coarse_epochs = max((p.send_epoch for p in res.pieces), default=-1) + 1

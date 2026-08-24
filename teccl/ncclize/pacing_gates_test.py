@@ -10,8 +10,10 @@ it correct for two cases a plain sort gets wrong:
   2. A send paced to span multiple epochs must not serialize a later send that runs
      alongside its tail on capacity a *different*, earlier send already freed.
 
-There are two clocks. P2 is a SEND on the same physical uplink freeing it; P3 is a
-paced RECV ARRIVING at the sending GPU, which pins a send whose uplink was idle. They
+There are two clocks. P2 is another paced SEND FROM THE SAME GPU completing; P3 is a
+paced RECV ARRIVING at the sending GPU, which pins a send whose GPU sent nothing in
+time. Both pools are per source GPU -- a clock only has to be a rate-paced event that
+GPU's proxy observes, not one that frees the particular link the send needs. They
 ride different runtime carriers -- netdepid/netdeps for P2 (the proxy withholds the
 isend against the NIC) and depid/deps for P3 (the kernel already waits on the proxy
 marking a recv slot filled) -- so the manifest tags each edge with its kind.
@@ -70,17 +72,33 @@ def main():
           {(0, 0, 1, None): (0, 1), (3, 0, 1, None): (3, 4)},
           [((3, 0, 1, None), (0, 0, 1, None), 'send')])
 
-    # Sends from different source GPUs share no uplink -> never gate each other.
-    check("cross-gpu: independent uplinks, no edges",
+    # Sends from different source GPUs are never in each other's pool -> no edges.
+    check("cross-gpu: independent senders, no edges",
           {(0, 0, 1, None): (0, 1), (1, 7, 1, None): (1, 2)},
           [])
 
     # Multi-uplink: one GPU, two sends entering the fabric at DIFFERENT first
-    # switches (path (9,..) vs (10,..)) use different uplinks, so even across an
-    # epoch boundary they do NOT gate each other.
-    check("multi-uplink: different first switch, independent, no edges",
+    # switches (path (9,..) vs (10,..)). The send pool is per SOURCE GPU, so the
+    # completion on uplink 9 is a valid clock for the send leaving on uplink 10 --
+    # it is an op-completion edge between two threadblocks of one GPU, which is what
+    # a netdep already is. (Per-uplink grouping would leave this send unpinned; that
+    # is the dual-plane/multi-rail gap.)
+    check("multi-uplink: a completion on the other uplink still pins",
           {(0, 0, 1, (9, 5)): (0, 1), (1, 0, 2, (10, 5)): (1, 2)},
+          [((1, 0, 2, (10, 5)), (0, 0, 1, (9, 5)), 'send')])
+
+    # Same epoch on two uplinks is still concurrency, not a chain: neither finishes
+    # before the other starts.
+    check("multi-uplink: same epoch on two uplinks is not serialized",
+          {(0, 0, 1, (9, 5)): (0, 1), (0, 0, 2, (10, 5)): (0, 1)},
           [])
+
+    # Tie at equal finish prefers a producer on the CONSUMER's OWN uplink: it frees the
+    # very link the gated send needs, not just the clock.
+    check("multi-uplink: tie at equal finish prefers the same uplink",
+          {(0, 0, 1, (9, 5)): (0, 1), (0, 0, 2, (10, 5)): (0, 1),
+           (1, 0, 3, (10, 5)): (1, 2)},
+          [((1, 0, 3, (10, 5)), (0, 0, 2, (10, 5)), 'send')])
 
     # Same first switch (same uplink) DOES chain across the epoch boundary, even
     # when the downstream switch path differs.
