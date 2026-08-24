@@ -217,6 +217,18 @@ class InstanceParams:
     # per-level list forms of epoch_type / epoch_duration select their entry. A flat solve leaves
     # it at 0, where a list of length 1 and a scalar behave identically.
     level_depth: int = 0
+    # Override for teccl.hierarchy.reconstruct.MAX_DENOM (default 64), the largest denominator the
+    # identity-resolution grid represents. None => the module default. COUPLED to GurobiParams.
+    # feasibility_tol, not independent: grid_resolution = 1/(2*max_denom^2), so raising this makes
+    # the grid finer and SHRINKS how coarse feasibility_tol may be before snap_tolerance refuses
+    # (see reconstruct.snap_tolerance) -- the default feasibility_tol=1e-4 is only legal up to
+    # max_denom~70. Raise this ONLY on an instance whose feasibility_tol is tight enough to still
+    # clear that check (reconstruct.snap_tolerance raises at construction time if not), e.g. a
+    # topology with an uneven fine-to-coarse grouping (a scattered host's 6/5/5 GPUs-per-leaf
+    # split) whose proportional egress split (reconstruct._build_slots) drives a denominator, like
+    # 5^3=125, past the default 64. Per-instance rather than global because most inputs run at the
+    # default feasibility_tol=1e-4, which a global raise would break outright (not just make thin).
+    max_denom: int = None
     
 @dataclass
 class UserInputParams:
