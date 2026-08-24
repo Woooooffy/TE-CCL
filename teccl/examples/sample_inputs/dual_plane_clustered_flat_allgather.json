@@ -40,6 +40,7 @@
         "objective_type": 6,
         "solution_method": 2,
         "hierarchical": false,
+        "intra_algo": "ring",
         "hierarchy_prefix": "",
         "hierarchy_side_outputs": false,
         "schedule_output_file": "Schedules/dual_plane_clustered_allgather_flatsolve_1chunk.json"

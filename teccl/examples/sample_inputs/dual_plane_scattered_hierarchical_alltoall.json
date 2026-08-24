@@ -42,6 +42,7 @@
         "objective_type": 6,
         "solution_method": 1,
         "hierarchical": true,
+        "intra_algo": "ring",
         "max_denom": 128,
         "hierarchy_prefix": "dual_plane_scattered_alltoall",
         "hierarchy_side_outputs": true,

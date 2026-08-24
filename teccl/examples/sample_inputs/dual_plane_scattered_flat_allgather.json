@@ -40,6 +40,7 @@
         "objective_type": 6,
         "solution_method": 1,
         "hierarchical": false,
+        "intra_algo": "ring",
         "hierarchy_prefix": "",
         "hierarchy_side_outputs": false,
         "schedule_output_file": "Schedules/dual_plane_scattered_allgather_flatsolve.json"
