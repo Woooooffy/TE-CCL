@@ -1,6 +1,0 @@
-cpu-bind=MASK - lanka27, task  0  0 [3553085]: mask 0xffffffffffff set
-cpu-bind=MASK - lanka27, task  0  0 [3553786]: mask 0xff0000ff set
-WARNING:root:Not_Optimal_ALLTOALL_LP_Status-10_TwoPodRailHostBound_14-nodes_1-chunks_80-epochs_0.35000153124999994-epoch_duration
-WARNING:root:Not_Optimal_ALLTOALL_LP_Status-10_TwoPodRailHostBound_14-nodes_1-chunks_80-epochs_0.17500076562499997-epoch_duration
-WARNING:root:Not_Optimal_ALLTOALL_LP_Status-10_TwoPodRailHostBound_14-nodes_1-chunks_80-epochs_0.08750038281249999-epoch_duration
-WARNING:root:identity-grid margin is thin: snap tolerance 4e-05 (feasibility_tol 1e-05 amplified 4x for the reconstruction chain) against a snap radius of 0.00012207 (MAX_DENOM=64). Volumes will snap, but a slightly noisier solve would not. Consider feasibility_tol <= 7.62939e-06.

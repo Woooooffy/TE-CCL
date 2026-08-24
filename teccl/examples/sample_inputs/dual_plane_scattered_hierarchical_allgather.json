@@ -16,7 +16,7 @@
         "chunk_size": 1
     },
     "GurobiParams": {
-        "time_limit": 8,
+        "time_limit": 1,
         "feasibility_tol": 1e-6,
         "optimality_tol": 1e-6,
         "output_flag": 1,
