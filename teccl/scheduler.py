@@ -24,6 +24,8 @@ from teccl.topologies.odd_pod import OddPod
 from teccl.topologies.star import Star
 from teccl.topologies.incast_switch import IncastSwitch
 from teccl.topologies.rail_optimized_spine_leaf import RailOptimizedSpineLeaf
+from teccl.topologies.bridged_islands_cluster import (BridgedIslandsCluster,
+                                                      BridgedIslandsSplitCluster)
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
 from teccl.topologies.dual_plane_hetero_cluster import (
     DualPlaneHeteroCluster, DualPlaneHeteroClusterScattered)
@@ -104,6 +106,10 @@ class TECCLSolver(object):
             return RailOptimizedSpineLeaf(topology_params)
         elif topology_params.name == "HeteroTaperedCluster":
             return HeteroTaperedCluster(topology_params)
+        elif topology_params.name == "BridgedIslandsCluster":
+            return BridgedIslandsCluster(topology_params)
+        elif topology_params.name == "BridgedIslandsSplitCluster":
+            return BridgedIslandsSplitCluster(topology_params)
         elif topology_params.name == "DualPlaneHeteroCluster":
             return DualPlaneHeteroCluster(topology_params)
         elif topology_params.name == "DualPlaneHeteroClusterScattered":

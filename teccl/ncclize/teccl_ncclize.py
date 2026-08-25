@@ -1192,6 +1192,8 @@ def load_topology(name, chunk_size=1.0):
     # name -> "module:ClassName" for the topologies that can appear at the ncclize boundary.
     registry = {
         'HeteroTaperedCluster': 'hetero_tapered_cluster:HeteroTaperedCluster',
+        'BridgedIslandsCluster': 'bridged_islands_cluster:BridgedIslandsCluster',
+        'BridgedIslandsSplitCluster': 'bridged_islands_cluster:BridgedIslandsSplitCluster',
         'DualPlaneHeteroCluster': 'dual_plane_hetero_cluster:DualPlaneHeteroCluster',
         'DualPlaneHeteroClusterScattered': 'dual_plane_hetero_cluster:DualPlaneHeteroClusterScattered',
         'RailOptimizedSpineLeaf': 'rail_optimized_spine_leaf:RailOptimizedSpineLeaf',
