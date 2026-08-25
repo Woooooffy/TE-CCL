@@ -5,21 +5,30 @@ Design note for the gap documented in `reconstruct._origin_diagnosis` and
 CELL, `A -> sw -> B -> sw -> C`, where `B` is a transit host that neither
 produces nor wants the data.
 
+> **Revision note.** §3 and §4 were rewritten. The earlier draft assigned
+> identities to `(route, gateway TUPLE)` slots, pricing every leg's gateway
+> inside one LP. That is rejected here: the downstream gateway choice is
+> identity-INDEPENDENT (§6), so putting it in the identity LP pays a
+> combinatorial product for nothing. The unit of assignment still becomes the
+> route (§2 stands, and is load-bearing), but the LP still sees ONE gateway per
+> slot and the downstream legs are placed by a forward pass afterwards. §5, §6
+> and §7 are unchanged and are common to both variants.
+
 ## 1. Why it breaks today
 
 Two independent assumptions, both in `assign_identities_free`:
 
-* `_extract_pieces` walks each coarse path and emits one `_CoarsePiece` per
-  maximal switch-run, keyed by its PHYSICAL endpoints. A transit path yields
-  legs filed under `(A,B)` and `(B,C)`, both carrying `origin=(A,C)`. The leg
-  is the unit of assignment, so the two halves of one delivery are never
-  related to each other.
+* `_extract_pieces` (`reconstruct.py:219`) walks each coarse path and emits one
+  `_CoarsePiece` per maximal switch-run, keyed by its PHYSICAL endpoints. A
+  transit path yields legs filed under `(A,B)` and `(B,C)`, both carrying
+  `origin=(A,C)`. The leg is the unit of assignment, so the two halves of one
+  delivery are never related to each other.
 * `identity_sets` is demand-driven: `B` wants none of `A`'s data, so
   `id_sets[(A,B)]` does not exist and `id_sets[(A,C)]` has no pieces.
 
 Result is fail-loud, in one of two places: `no coarse pieces for demanded pair
-(A,C)`, or the `total_cap == len(identities)` balance assert on `(A,B)` (which
-now carries foreign volume).
+(A,C)`, or the `total_cap == len(identities)` balance assert
+(`reconstruct.py:1130`) on `(A,B)` (which now carries foreign volume).
 
 The key observation is that **the leg is the wrong unit**. Everything below
 follows from changing the unit of assignment from a leg to a whole coarse
@@ -35,10 +44,45 @@ class _CoarseRoute:
     volume: float
 ```
 
-`_extract_pieces` becomes `_extract_routes`: the switch-run walk it already
-does is per `each_path`, and successive runs of ONE path are exactly the legs
-of one route — the chaining is free, no reassembly heuristic needed. Legs of a
-path share a volume; take `min` and assert agreement within `EPS`.
+### 2.1 The chaining is EXACT, not reconstructed
+
+This is the fact the whole design rests on, so it is worth pinning down.
+`per_chunk_flow_paths[(s,d,c)]` entries are WHOLE source-to-dest paths:
+`dig_to_source` (`solvers/lp_formulation.py:812`) back-traces from the
+destination all the way to the source, and files one complete path at
+`lp_formulation.py:872-878`. `_extract_pieces`'s switch-run walk
+(`reconstruct.py:246`, the `while start < len(chunk_path)` loop) then iterates
+successive runs of ONE such path and drops the relation between them three
+lines after having it.
+
+So "which arriving leg at `B` feeds which departing leg at `B`" is not missing
+information to be recovered — it is information currently being discarded.
+`_extract_pieces` becomes `_extract_routes` and simply stops discarding it: the
+chaining is free, no reassembly heuristic and no matching pass. Legs of a path
+share a volume (`dig_to_source` decomposes at the path bottleneck); take `min`
+and assert agreement within `EPS`.
+
+**Rejected alternative — deriving transit identities by matching.** The
+tempting cheaper-looking route is to leave `_extract_pieces` alone, resolve only
+the identities a cell natively holds, and then at each transit cell `B` match
+what landed against what departs. It is worse on three counts, all avoidable:
+
+* it is a MATCHING, not a derivation — every identity in the pool `ID(A,C)` is
+  interchangeable at `B`, so something must choose;
+* it takes on a temporal proof obligation the route form never incurs: an
+  identity arriving in epoch `k` can only feed a send in epoch `>= k+1`.
+  Feasibility does hold (the coarse LP's per-commodity per-epoch conservation is
+  exactly the cumulative staircase condition, so earliest-arrival-first greedy
+  realizes it) but that argument has to be made and tested;
+* it fights `_emit_refined` (`reconstruct.py:985`). Sub-chunk indices are
+  allocated per `(identity, dst_cell)` and the `cursor == q` partition check is
+  this module's integrity anchor. A transit chain needs the SAME `sub` index on
+  both legs. With routes, one `_Assignment` emits one `ResolvedPiece` per leg
+  sharing that index and the check is untouched; with independently assigned
+  legs the matching would have to run post-refinement at whole-sub-chunk
+  granularity, or chain indices across separately refined groups.
+
+### 2.2 Why origin-keying is what fixes the anchor
 
 Routes are keyed by `origin`, not by physical endpoints. That single change
 makes the demand anchor hold again:
@@ -56,67 +100,94 @@ without touching the demand side.
 Non-transit topologies are unaffected: every route has exactly one leg and the
 program is character-for-character the one that runs today.
 
-## 3. Slots: one gateway choice per leg
+## 3. Slots: still ONE gateway, chosen on the FIRST leg
 
 A slot today is `(piece, egress gateway)` with
 
     capacity = piece.volume * cap_g / cap_sum
 
 and the proportional split of EVERY piece is what makes the per-(U,V)
-decomposition sound (per-epoch load on gateway `g` is bounded by coarse
-feasibility, by construction, without a global constraint).
+decomposition sound (`_Slot`'s docstring, `reconstruct.py:305`): per-epoch load
+on gateway `g` is bounded by coarse feasibility, by construction, without a
+global constraint.
 
-Generalize a slot to `(route, gateway tuple)` — one egress gateway per leg —
-with
+**Keep that.** A slot becomes `(route, first-leg egress gateway)` with the
+capacity formula unchanged — it reads `legs[0]` where it used to read the only
+leg. LP width is unchanged, `_build_slots` (`reconstruct.py:325`) keeps its
+tested soundness argument, and there is no column budget to guard.
 
-    capacity = route.volume * prod over legs (cap_{g_leg} / cap_sum_leg)
+### 3.1 Why not gateway tuples
 
-This is the only generalization that preserves the soundness argument: summing
-the product over all combinations containing `g` at leg `i` gives back exactly
-`route.volume * cap_g / cap_sum` at that leg, so the per-fine-uplink per-epoch
-bound holds at EVERY leg, not just the first. Column count is
-`prod |gateways(leg)|`; guard it with a budget (e.g. 64 columns per route) and
-raise rather than silently degrade — single-homed and dual-homed cells, which
-is everything realistic, stay at 1–4.
+The generalization to `(route, gateway tuple)` with
+`capacity = route.volume * prod over legs (cap_{g_leg} / cap_sum_leg)` is sound
+— summing the product over all combinations containing `g` at leg `i` gives
+back exactly `route.volume * cap_g / cap_sum` at that leg — but it costs a
+`prod |gateways(leg)|` column count needing a budget-and-raise, and it replaces
+an accounting argument with an averaging one.
 
-`ingress_candidates` becomes per-leg as well; `_pick_ingress` runs once per leg
-against the same global ledger, so a transit cell's downlink is budgeted
-exactly like a destination cell's.
+It buys nothing, and §6 is why: whether leg `i`'s landing GPU co-locates with
+leg `i+1`'s egress gateway is a property of THE PIECE AND THE TOPOLOGY, not of
+which chunk rides it. Every identity on that route pays the same transit cost.
+Pricing an identity-independent decision inside the identity LP is a
+combinatorial product spent on a term that is constant across the rows it
+would discriminate between.
 
-## 4. Cost function: transit relay is HARD, and joins tier 1
+### 3.2 Downstream legs: a forward pass against an EGRESS ledger
 
-Current tiers: (1) egress relay at the source cell, big-M; (2) ingress relay at
-the destination, weight 1; (3) epoch preference for relayed identities, tiny.
+After the LP has assigned identities to `(route, first gateway)`, walk each
+route's remaining legs in order and place them per PIECE:
 
-A transit cell adds one more forced-work term: if the GPU that LANDS leg `i` is
-not the GPU that EGRESSES leg `i+1`, an intra-cell relay inside `B` is
-required, and that relay is HARD — a network send is waiting on it, exactly
-like `egress_stage` at the source. So it belongs in **tier 1**, summed with the
-source egress term:
+* leg `i+1`'s egress gateway: prefer the GPU that landed leg `i` — co-location,
+  which §6 shows is a hard requirement under a default coarse solve, not a
+  preference;
+* leg `i`'s landing GPU: `_pick_ingress` (`reconstruct.py:455`) with
+  `preferred = {leg i+1's egress gateway}` at a transit cell, and today's
+  `target_gpus` rule at the final cell. One parameter change — pass
+  `preferred: Set[int]` instead of consulting `target_gpus` internally.
 
-    tier1(slot, d) = W_EGRESS * ( [g_0 != holder(d)]
-                                + sum over i of [gateways(leg i+1) disjoint from
-                                                 ingress_candidates(leg i)] )
+Budget that placement against an **egress ledger mirroring the existing
+`ingress_ledger`** (`reconstruct.py:1093`): same key shape
+`(gpu, neighbor, epoch)`, same running-room comparison, same best-fit tie-break,
+same amplified `ingress_tol`. This is the honest version of what §3.1's product
+formula approximates — the product bounds the expected per-epoch load, the
+ledger accounts for the actual one — and it reuses machinery that is already
+written, already tested, and already carries the float-noise handling this
+chain needs.
 
-Priced against the CANDIDATE SETS, not against a chosen GPU — the same
-technique tier 2 already uses, because `_pick_ingress` runs after the LP. Then
-`_pick_ingress` realizes what the LP priced, by generalizing its notion of a
-preferred landing GPU:
+### 3.3 What this decomposition gives up
 
-* at the final cell: prefer a GPU in `targets[(identity, V)]` (today's rule);
-* at a transit cell: prefer the next leg's egress gateway.
+Exactly one thing, and it is worth writing into the `assign_identities_free`
+docstring: when a commodity `(A,C)` SPLITS across routes with different
+downstream ingress costs at `C`, the first-leg LP chooses identities blind to
+that difference.
 
-One parameter change — pass `preferred: Set[int]` instead of consulting
-`target_gpus` internally — and the transit relay disappears entirely whenever
-the boundary permits it. On a bridged-island topology where one host owns both
-uplinks, transit costs zero intra work.
+When a commodity uses a single route shape it is exactly optimal — the whole
+pool `ID(A,C)` transits `B`, so the final-cell landing preference is fully
+recoverable by the forward pass. And the loss is confined to tier 2, which is
+SOFT (see §4). It can never cost feasibility, only an avoidable intra-cell hop
+at the destination.
 
-At a transit cell this preference is in fact a REQUIREMENT under a default
-coarse solve, for timing reasons — see §6, which qualifies this section.
+## 4. Cost function: one line changes
 
-`W_EGRESS = nD + 1` must become `W_EGRESS = (nD + 1) * (max legs)` (or simply
-scale by the max relay count per route) so tier 1 still strictly dominates the
-sum of all tier-2 and tier-3 costs.
+Current tiers in `_solve_assignment` (`reconstruct.py:360`): (1) egress relay at
+the source cell, big-M; (2) ingress relay at the destination, weight 1; (3)
+epoch preference for relayed identities, tiny.
+
+Under §3 the only change is **which leg tier 2 reads**:
+
+* tier 1 is the source-cell egress relay, `legs[0].egress_gpu != holder(d)` —
+  unchanged, and `W_EGRESS = nD + 1` needs no rescaling, because no per-leg
+  transit term is being summed into it;
+* tier 2 is priced against `legs[-1].ingress_candidates` rather than the only
+  leg's — the route knows its last leg, so this is a one-line change. It stays
+  priced against the CANDIDATE SET, not a chosen GPU, exactly as today, because
+  `_pick_ingress` still runs after the LP;
+* tier 3 is unchanged.
+
+The transit relay does NOT appear in the objective. §6 makes it infeasible
+rather than costly, so it is a constraint on the §3.2 forward pass ("land on a
+GPU that also owns the outgoing uplink, or fail"), not a term to trade against
+ingress savings.
 
 ## 5. Representing the transit relay: `egress_stage` + an explicit release
 
@@ -133,8 +204,9 @@ IntraCellDemand(cell=B, kind="egress_stage", identity=sub,
 
 The one thing the current record cannot express is that the data is not there
 yet. Today `IntraCellDemand.deadline_epoch` doubles as a release for
-`ingress_distribution` (`bands.release_of` returns `deadline_epoch + 1`) and as
-a deadline for `egress_stage`. A transit demand needs BOTH numbers, so:
+`ingress_distribution` (`bands.release_of`, `bands.py:75`, returns
+`deadline_epoch + 1`) and as a deadline for `egress_stage`. A transit demand
+needs BOTH numbers, so:
 
 * add `release_band: Optional[int] = None` and `hard: Optional[bool] = None` to
   `IntraCellDemand`;
@@ -143,12 +215,13 @@ a deadline for `egress_stage`. A transit demand needs BOTH numbers, so:
 * `bands.assign_bands` already reads `hard` off the demand via `getattr` and
   its docstring already anticipates this caller — no change needed there;
 * `crossbar_solve._to_jobs` hardcodes `release=PROLOGUE_BAND` for
-  `egress_stage` (line ~345). It must call `bands.release_of` instead. This is
-  load-bearing: left as is, the child level would schedule the forwarding relay
-  in the prologue, before the data has arrived.
-* `_coalesce_egress` merges `egress_stage` by `(cell, identity, src, dst)`
-  keeping the MIN deadline; it must also keep the MAX release, and raise if the
-  merged window is empty.
+  `egress_stage` (`crossbar_solve.py:345`, and the kind test at `:356`). It must
+  call `bands.release_of` instead. This is load-bearing: left as is, the child
+  level would schedule the forwarding relay in the prologue, before the data has
+  arrived.
+* `_coalesce_egress` (`reconstruct.py:1303`) merges `egress_stage` by
+  `(cell, identity, src, dst)` keeping the MIN deadline; it must also keep the
+  MAX release, and raise if the merged window is empty.
 
 Downstream needs nothing else. Each leg is already its own `ResolvedPiece`, so
 `_assert_rate_within_capacity`, `pieces_as_flows` and the flat stitch see two
@@ -181,20 +254,13 @@ only feed a send from epoch `k+2`. So:
 | co-located (one GPU owns both links) | arrival + 1 | arrival + 1 | feasible, zero intra work |
 | relayed (landing GPU != gateway) | arrival + 2 | arrival + 1 | INFEASIBLE |
 
-This inverts §4's framing. Eliminating the transit relay by co-locating ingress
-and egress is not a preference the lexicographic objective expresses — under a
-default coarse solve it is the **only feasible option**, so it is a hard
-constraint on `_pick_ingress` at a transit cell: land the piece on a GPU that
-also owns the outgoing uplink, or fail. Capacity may make that impossible (all
-transit volume forced onto the bridging GPUs, exceeding their per-epoch
-downlink); the ingress ledger already fails loud on it, and that failure is a
-true statement about the topology.
-
-The tier-1 transit term in §4 therefore prices something that can no longer be
-chosen freely. Keep it — it still steers the assignment toward routes whose
-transit happens to be co-located when several are available — but the emitted
-`egress_stage` at a transit cell (§5) is reachable only under the two-epoch
-dwell below.
+This is what makes the transit relay a CONSTRAINT rather than a cost, and it is
+why §3.2 places downstream legs by co-location and §4 leaves the objective
+alone. Capacity may make co-location impossible (all transit volume forced onto
+the bridging GPUs, exceeding their per-epoch downlink); the ingress ledger
+already fails loud on it, and that failure is a true statement about the
+topology. The `egress_stage` at a transit cell (§5) is therefore reachable only
+under the two-epoch dwell below.
 
 ### Cells with no bridging GPU
 
@@ -230,12 +296,14 @@ common enough that the extra epoch is worth pipelining for.
 ## 7. Checks to add
 
 * per route: legs chain (`dst_cell == next.src_cell`), epochs strictly
-  increase, no cell repeats — an LP flow decomposition can emit a cycle, and a
-  route that revisits a cell must fail loud rather than deadlock a child level.
-* per `(U,V)`: `sum(route.volume) == |ID(U,V)|` (the existing balance assert,
-  now over routes; `_origin_diagnosis` becomes a debugging aid rather than a
-  gap explainer and can keep its DISPLACED/FOREIGN reporting for genuinely
-  malformed extractions).
+  increase, **no cell repeats**. Prioritize this one. `dig_to_source` carries a
+  path-local cycle-avoidance band-aid rather than a real time-expanded flow
+  decomposition, so a cyclic path is a live possibility, and a route that
+  revisits a cell must fail loud rather than deadlock a child level.
+* per `(U,V)`: `sum(route.volume) == |ID(U,V)|` (the existing balance assert at
+  `reconstruct.py:1130`, now over routes; `_origin_diagnosis` becomes a
+  debugging aid rather than a gap explainer and can keep its DISPLACED/FOREIGN
+  reporting for genuinely malformed extractions).
 * the existing replay-test invariants extend unchanged, since delivery coverage
   already computes "required = max over demands, delivered = total inbound", so
   a two-leg chain counts correctly.
@@ -258,8 +326,11 @@ needed:
 * Gurobi-free unit fixtures in `hierarchy_identity_resolution_test.py`:
   hand-built two-leg routes asserting (i) the transit `egress_stage` is emitted
   with the right release/deadline pair, (ii) zero transit relays in the
-  co-located variant, (iii) tier-1 dominance when a transit relay trades
-  against an ingress saving.
+  co-located variant, (iii) both legs of one route carry the SAME sub-chunk
+  index out of `_emit_refined` and the `cursor == q` partition check still
+  holds, (iv) the §3.2 egress ledger refuses a second route whose co-located
+  gateway is already saturated in that epoch, rather than silently
+  oversubscribing it.
 * extend `hierarchy_pipeline_replay_test.py` with a transit route so the
   cross-stage invariants (coverage, capacity both ends, rounds <= m) are
   checked end to end.
@@ -268,7 +339,7 @@ needed:
 
 | file | change |
 | --- | --- |
-| `reconstruct.py` | `_CoarseRoute`; `_extract_pieces` -> `_extract_routes` keyed by origin; `_build_slots` over gateway tuples with product capacity + column budget; `_solve_assignment` tier-1 sums transit relays, `W_EGRESS` rescaled; `_pick_ingress` takes `preferred`; `_Assignment` holds a route and emits one `ResolvedPiece` per leg plus the transit demands; `_coalesce_egress` merges releases; route validity checks |
+| `reconstruct.py` | `_CoarseRoute`; `_extract_pieces` -> `_extract_routes` keyed by origin (stop discarding the path's own chaining, §2.1); `_build_slots` reads `legs[0]`, capacity formula UNCHANGED; `_solve_assignment` tier 2 reads `legs[-1].ingress_candidates`, weights unchanged; `_pick_ingress` takes `preferred`; forward pass placing legs 1..n against a new egress ledger; `_Assignment` holds a route and emits one `ResolvedPiece` per leg (all sharing the sub-chunk index) plus the transit demands; `_coalesce_egress` merges releases; route validity checks |
 | `bands.py` | `release_of` honours an explicit `release_band` |
 | `crossbar_solve.py` | `_to_jobs` uses `bands.release_of` instead of hardcoding `PROLOGUE_BAND` for `egress_stage` |
 | `topologies/` | `BridgedIslandsCluster` fixture (two variants) |
@@ -276,10 +347,20 @@ needed:
 | `abstract.py` | per-cell forwarding dwell derived from `boundary_gpu` (§6) — only for the no-bridging-GPU case |
 | `lp_formulation.py` | honour that dwell for FORWARDED flow, without delaying `consumed_at_k` (§6) — same |
 
-Sequencing: §5 (record + release plumbing) and §8's co-located fixture are
-independent of §2–§4 and can land first, each with its own test; the route
-reformulation is one commit after that, and is a no-op on every existing
-topology. Together those cover co-located transit completely. The last two rows
-are a separate, larger piece of work in the coarse formulation and are the only
-thing standing between this design and the forced-relay case — they should not
-be bundled in.
+`assign_identities_preserving` needs a mechanical touch only: it builds
+`_Assignment`s directly, so it constructs single-leg routes. `make_piece` is
+unaffected; a one-leg route around it keeps that path character-for-character
+what it is today.
+
+Sequencing:
+
+1. §5 (record + release plumbing) — independent of everything else, own test.
+2. §8's co-located `BridgedIslandsCluster` fixture, asserting the current
+   failure message. Pins the gap before changing it.
+3. §2 route-keyed extraction + §7 checks. A no-op on every existing topology
+   (single-leg routes), so it lands green on its own.
+4. §3.2 forward pass + egress ledger, and §4's one-line tier-2 move. This is
+   what closes the co-located case.
+5. The last two rows of the table — the coarse forwarding dwell — are a separate,
+   larger piece of work in the coarse formulation and are the only thing standing
+   between this design and the forced-relay case. They should not be bundled in.
