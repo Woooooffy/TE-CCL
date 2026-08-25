@@ -34,6 +34,13 @@ Checked here:
      DEFINES a round, so refinement changes a round's duration, not its capacity), so this also
      doubles as a scale-invariance check.
 
+  5. The same four, on a route that STORE-AND-FORWARDS through an intermediate cell
+     (BridgedIslandsCluster). The cross-stage invariants are what a transit chain is most likely to
+     break, because a delivery is now two network flows rather than one: coverage has to count a
+     two-leg chain as arriving once, and both legs have to fit their own end's link budget. The
+     hetero replay above cannot cover it -- no real solved schedule in this repo contains a
+     transit, which is exactly why the case stayed dormant.
+
 Run from the repo root (in the teccl env):
     python -m teccl.examples.hierarchy_pipeline_replay_test
 """
@@ -42,7 +49,7 @@ import json
 import os
 
 from teccl.examples.hierarchy_identity_resolution_test import (
-    _fake_solver, _replay_per_chunk_flow_paths,
+    _bridged_paths, _fake_solver, _replay_per_chunk_flow_paths,
 )
 from teccl.hierarchy.abstract import abstract
 from teccl.hierarchy.crossbar_solve import band_rounds, schedule_cell
@@ -50,6 +57,7 @@ from teccl.hierarchy.reconstruct import resolve_identities
 from teccl.hierarchy.flatten import aligned_band, derive_grid
 from teccl.input_data import Collective, TopologyParams
 from teccl.solvers.demand import build_demand
+from teccl.topologies.bridged_islands_cluster import BridgedIslandsCluster
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
 
 def _coarse_epoch(schedule_json) -> float:
@@ -215,11 +223,86 @@ def replay(tag: str, collective: Collective) -> bool:
     return True
 
 
+
+
+def _run_stages(topo, mapping, res, coarse_epoch, fine_chunks):
+    """The cross-stage half of `replay`, factored out so the transit fixture runs exactly the same
+    checks rather than a parallel set that could drift from them."""
+    _check_refinement(res, topo, fine_chunks)
+    worst_e, worst_i = _check_link_capacity(res, topo, coarse_epoch)
+    by_cell = collections.defaultdict(list)
+    for d in res.intra_demands:
+        by_cell[d.cell].append(d)
+    flows = []
+    for cid in sorted(mapping.coarse_cells):
+        if by_cell.get(cid):
+            flows += schedule_cell(cid, mapping.coarse_cells[cid], by_cell[cid],
+                                   switch_copy=False, debug=False,
+                                   subdivision=res.subdivision)
+    n_required = _check_delivery_coverage(res, flows)
+    peak, m, hot = _check_intra_fits_epoch(res, flows, topo, coarse_epoch)
+    return flows, worst_e, worst_i, n_required, peak, m, hot
+
+
+def replay_transit() -> bool:
+    """The cross-stage invariants on a coarse solution containing a HOST TRANSIT.
+
+    Needs no checked-in schedule: the coarse flow is the hand-built one from the resolution test,
+    which is the only way to get a transit at all -- no solved schedule in this repo has one.
+    """
+    topo = BridgedIslandsCluster(TopologyParams(name="BridgedIslandsCluster", chunk_size=1))
+    coarse, mapping = abstract(topo)
+    coarse_epoch = 0.02
+    fine_demand = build_demand(Collective.ALLGATHER, topo, 1)
+    solver = _fake_solver(_bridged_paths(), switch_indices=list(coarse.switch_indices),
+                          epoch_duration=coarse_epoch)
+    res = resolve_identities(solver, mapping, fine_demand, topo)
+
+    flows, worst_e, worst_i, n_required, peak, m, hot = _run_stages(
+        topo, mapping, res, coarse_epoch, fine_chunks=1)
+
+    # The transit-specific structure, on top of the shared checks: the two legs of each
+    # store-and-forward delivery are one commodity, and cell B (the bridge) really is relaying
+    # traffic it neither produces nor wants.
+    legs_by_id = collections.defaultdict(list)
+    for pc in res.pieces:
+        legs_by_id[pc.identity].append(pc)
+    chains = {i: sorted(ps, key=lambda p: p.send_epoch)
+              for i, ps in legs_by_id.items() if len(ps) > 2}
+    assert chains, "the bridged fixture must produce store-and-forward chains"
+    n_forwarded = 0
+    for identity, ps in chains.items():
+        forwarded = [p for p in ps if p.src_cell == 1 and p.send_epoch > 0]
+        for f in forwarded:
+            inbound = [p for p in ps if p.dst_cell == 1 and p.arrival_epoch < f.send_epoch]
+            assert inbound, f"{identity}: leg {f} forwards data that never arrived at the bridge"
+            latest = max(p.arrival_epoch for p in inbound)
+            assert f.send_epoch >= latest + 1, (
+                f"{identity}: forwarded in epoch {f.send_epoch} but its data lands in {latest}")
+            # Co-located bridge: whoever landed it is whoever re-sends it, so no intra hop.
+            assert f.egress_gpu in {p.ingress_gpu for p in inbound}, (
+                f"{identity}: forwarded from gpu {f.egress_gpu}, which did not land the data")
+            n_forwarded += 1
+
+    print(f"  transit (BridgedIslandsCluster): Q={res.subdivision} {res.scale}")
+    print(f"    {len(res.pieces)} pieces, {len(res.intra_demands)} intra demands, "
+          f"{len(flows)} fine intra flows")
+    print(f"    fine-link peak occupancy: egress {100 * worst_e:.0f}%, ingress "
+          f"{100 * worst_i:.0f}%  (no violations)")
+    print(f"    delivery coverage: all {n_required} (identity, gpu) pairs satisfied")
+    print(f"    intra fits epoch: peak {peak} rounds vs m={m:.0f} at cell/gap {hot}")
+    print(f"    {n_forwarded} forwarded legs across {len(chains)} chains, every one dwelling "
+          f">= 1 epoch on the GPU that landed it")
+    return True
+
+
 def main() -> None:
     print("hierarchical pipeline replay (identity resolution + phase-3, Gurobi-free)")
     ran = False
     for tag, coll in (("allgather", Collective.ALLGATHER), ("alltoall", Collective.ALLTOALL)):
         ran |= replay(tag, coll)
+    # Needs no checked-in schedule, so it runs even where the hetero ones are absent.
+    ran |= replay_transit()
     if not ran:
         print("no coarse LP schedules found under Schedules/ -- run the coarse solve first")
         return

@@ -66,9 +66,11 @@ def band_of(release_gap: int, deadline_gap: float, hard: bool, what: str = "work
         if band < release_gap:
             raise RuntimeError(
                 f"{what} cannot run before band {int(release_gap)} but must complete before band "
-                f"{int(deadline_gap)}; there is no band it can run in. This is the host-transit "
-                f"case (data that arrives and must be forwarded onward too soon after), which is "
-                f"unmodelled.")
+                f"{int(deadline_gap)}; there is no band it can run in. For a transit forward this "
+                f"means the coarse solve gave the cell a one-epoch dwell but the relay between "
+                f"its two NICs needs two -- see cell_relay_design.md §6 (the per-cell forwarding "
+                f"dwell). Identity resolution normally refuses such a route before it gets here, "
+                f"so reaching this point means a caller built the demand directly.")
     return band
 
 

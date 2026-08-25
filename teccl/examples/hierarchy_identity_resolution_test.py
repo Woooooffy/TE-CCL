@@ -28,6 +28,11 @@ demands against hand-derived oracles. Covers:
      one while a sibling idles.
   9. Sub-chunk refinement: every emitted volume is exactly 1.0, the sub-chunks of one identity
      partition it, and the ChunkScale conserves the per-GPU payload.
+ 10. CELL RELAY (host transit) on BridgedIslandsCluster, where A -> C has no route but
+     A -> T0 -> B -> T1 -> C: both legs of one delivery carry the SAME sub-chunk identity, the
+     co-located variant emits ZERO transit relays, the split variant fails loud with the §6
+     forwarding-dwell message, a non-co-located forward gets the right release/deadline pair, a
+     saturated bridge is refused rather than oversubscribed, and a cyclic route is rejected.
 
 Run from the repo root (in the teccl env):
     python -m teccl.examples.hierarchy_identity_resolution_test
@@ -37,13 +42,22 @@ import json
 import os
 import re
 from collections import defaultdict
+from dataclasses import replace
+from fractions import Fraction
 from types import SimpleNamespace
 
 import numpy as np
 
 from teccl.hierarchy.abstract import abstract, coarsify_demand, level_chunk_units
 from teccl.hierarchy.cell import Cell
-from teccl.hierarchy.reconstruct import HierarchyMapping, identity_sets, resolve_identities
+from teccl.hierarchy.reconstruct import (HierarchyMapping, _Assignment, _CoarsePiece,
+                                          _CoarseRoute, _emit_refined,
+                                          _place_downstream_legs, _validate_route,
+                                          identity_sets, resolve_identities)
+from teccl.hierarchy.bands import PROLOGUE_BAND, assign_bands, release_of
+from teccl.hierarchy.scale import ChunkScale
+from teccl.topologies.bridged_islands_cluster import (BridgedIslandsCluster,
+                                                      BridgedIslandsSplitCluster)
 from teccl.input_data import Collective, TopologyParams
 from teccl.solvers.demand import build_demand
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
@@ -522,6 +536,264 @@ def test_level_chunk_unit_invariance():
           "mismatched g still rejected OK")
 
 
+
+
+# ------------------------------------------------------------------------------------------
+# 10. CELL RELAY: a coarse path that store-and-forwards through an intermediate CELL.
+# ------------------------------------------------------------------------------------------
+# Coarse node ids on BridgedIslandsCluster: cells A=0, B=1, C=2; top switches T0=3, T1=4.
+_A, _B, _C, _T0, _T1 = 0, 1, 2, 3, 4
+
+
+def _bridged_paths():
+    """A coarse AllGather flow on BridgedIslandsCluster, DEST-first as dig_to_source emits.
+
+    Every link here absorbs 2 units per epoch (100 GB/s x 0.02 s, 1 GB chunks), and the schedule
+    is laid out to stay inside that -- the point of the fixture is the TRANSIT, so nothing else
+    should be able to fail first. A -> C and C -> A have no route but the bridge, and each dwells
+    exactly one epoch at host B (arrival + 1, which is what the coarse solve's midFC gives).
+    """
+    def hop(s, i, j, vol, k):
+        return (s, i, j, 0, vol, k)
+    return {
+        # epoch 0: the four direct neighbour deliveries
+        (_A, _B, 0): [[hop(_A, _T0, _B, 2.0, 0), hop(_A, _A, _T0, 2.0, 0)]],
+        (_B, _A, 0): [[hop(_B, _T0, _A, 2.0, 0), hop(_B, _B, _T0, 2.0, 0)]],
+        (_B, _C, 0): [[hop(_B, _T1, _C, 2.0, 0), hop(_B, _B, _T1, 2.0, 0)]],
+        (_C, _B, 0): [[hop(_C, _T1, _B, 2.0, 0), hop(_C, _C, _T1, 2.0, 0)]],
+        # epochs 1 -> 2: the two TRANSIT deliveries through the bridge host
+        (_A, _C, 0): [[hop(_A, _T1, _C, 2.0, 2), hop(_A, _B, _T1, 2.0, 2),
+                       hop(_A, _T0, _B, 2.0, 1), hop(_A, _A, _T0, 2.0, 1)]],
+        (_C, _A, 0): [[hop(_C, _T0, _A, 2.0, 2), hop(_C, _B, _T0, 2.0, 2),
+                       hop(_C, _T1, _B, 2.0, 1), hop(_C, _C, _T1, 2.0, 1)]],
+    }
+
+
+def _resolve_bridged(cls, paths=None):
+    topo = cls(TopologyParams(name=cls.__name__, chunk_size=1))
+    coarse, m = abstract(topo)
+    fine_demand = build_demand(Collective.ALLGATHER, topo, num_chunks=1)
+    solver = _fake_solver(paths or _bridged_paths(), list(coarse.switch_indices),
+                          epoch_duration=0.02)
+    return resolve_identities(solver, m, fine_demand, topo)
+
+
+def test_transit_route_both_legs_one_identity():
+    """The two halves of a transit delivery are ONE commodity, and that is what makes the chain
+    expressible: they share a sub-chunk identity, so the intervening demand orders them and the
+    per-(identity, dst_cell) partition check still holds.
+
+    Keyed by leg -- the old shape -- the halves would be unrelated, filed under (A,B) and (B,C),
+    and neither the demand anchor nor the sub-chunk index could relate them.
+    """
+    res = _resolve_bridged(BridgedIslandsCluster)
+    # A's chunks are (0, 0) and (1, 0); they reach cell C only through the bridge.
+    for identity in ((0, 0), (1, 0)):
+        legs = sorted((p for p in res.pieces if p.identity == identity
+                       and (p.src_cell, p.dst_cell) in ((_A, _B), (_B, _C))
+                       and p.send_epoch >= 1),
+                      key=lambda p: p.send_epoch)
+        assert len(legs) == 2, f"{identity}: expected 2 transit legs, got {len(legs)}"
+        first, second = legs
+        assert (first.src_cell, first.dst_cell) == (_A, _B)
+        assert (second.src_cell, second.dst_cell) == (_B, _C)
+        assert first.identity == second.identity, "the two legs must be the same commodity"
+        # The dwell the coarse solve budgets: land at the end of epoch k, leave in k+1.
+        assert second.send_epoch == first.arrival_epoch + 1, (
+            f"{identity}: transit dwell is {second.send_epoch - first.arrival_epoch}, want 1")
+        # And it really is the bridge host doing the forwarding, on the co-located GPU.
+        assert first.ingress_gpu == second.egress_gpu == 2, (
+            f"{identity}: expected the bridge GPU 2 to land and re-send, got "
+            f"{first.ingress_gpu} -> {second.egress_gpu}")
+    print("  [10a] transit: both legs of one delivery carry the same identity, dwell 1 epoch, "
+          "forwarded by the bridge GPU OK")
+
+
+def test_colocated_transit_costs_no_intra_work():
+    """When one GPU owns both of the bridge host's uplinks, forwarding is free: the bytes land on
+    the GPU that also sends them onward, so there is no intra-cell hop and no relay demand.
+
+    This is the design's §6 claim made checkable. Any egress_stage at the bridge cell must be a
+    NATIVE staging (some non-gateway GPU handing its own chunk to the gateway), never a forward.
+    """
+    res = _resolve_bridged(BridgedIslandsCluster)
+    transit_ids = {(0, 0), (1, 0), (4, 0), (5, 0)}   # A's and C's chunks -- the ones that transit
+    forwards = [d for d in res.intra_demands
+                if d.kind == "egress_stage" and d.cell == _B and d.identity in transit_ids]
+    assert not forwards, f"co-located transit should need no relay, got {forwards}"
+    # The bridge cell's own staging is unaffected: g3 still hands its native chunk to gateway g2.
+    native_staging = [d for d in res.intra_demands
+                      if d.kind == "egress_stage" and d.cell == _B]
+    assert all(d.src_gpu == 3 and d.dst_gpus == (2,) for d in native_staging), native_staging
+    assert all(d.release_band is None for d in native_staging), (
+        "native staging is available from the prologue and must carry no explicit release")
+    print(f"  [10b] co-located transit needs zero relay work ({len(native_staging)} native "
+          f"stagings at the bridge, all prologue-released) OK")
+
+
+def test_split_bridge_fails_loud():
+    """With the bridge host's two uplinks on DIFFERENT GPUs there is no co-located transit at all,
+    and no amount of work in identity resolution fixes it: forwarding needs arrival + 2 and the
+    coarse solve budgets arrival + 1. The failure is a true statement about the topology, so it
+    must be a clear one -- and it must point at the coarse forwarding dwell (§6), which is the
+    actual fix and is deliberately not attempted here."""
+    try:
+        _resolve_bridged(BridgedIslandsSplitCluster)
+    except RuntimeError as e:
+        msg = str(e)
+        assert "no GPU owns both links" in msg, msg
+        assert "forwarding dwell" in msg, msg
+        print("  [10c] split bridge (no co-located GPU) fails loud, pointing at the coarse "
+              "forwarding dwell OK")
+        return
+    raise AssertionError("a bridge host with no co-located GPU must be refused, not resolved")
+
+
+def _transit_assignment(leg_gpus, send_epochs=(1, 2), arrival_epochs=(1, 2)):
+    """A hand-built two-leg A -> B -> C assignment, so the emission can be checked without a
+    solver and with the leg placement chosen rather than derived."""
+    legs = (
+        _CoarsePiece(src_cell=_A, dst_cell=_B, egress_neighbor=_T0, ingress_neighbor=_T0,
+                     via_switches=(9,), volume=1.0, send_epoch=send_epochs[0],
+                     arrival_epoch=arrival_epochs[0], origin=(_A, _C)),
+        _CoarsePiece(src_cell=_B, dst_cell=_C, egress_neighbor=_T1, ingress_neighbor=_T1,
+                     via_switches=(10,), volume=1.0, send_epoch=send_epochs[1],
+                     arrival_epoch=arrival_epochs[1], origin=(_A, _C)),
+    )
+    route = _CoarseRoute(origin=(_A, _C), legs=legs, volume=1.0)
+    return _Assignment(src_cell=_A, dst_cell=_C, identity=(0, 0), route=route,
+                       egress_gpu=leg_gpus[0][0], ingress_gpu=leg_gpus[-1][1], volume=1.0,
+                       leg_gpus=leg_gpus, exact=Fraction(1))
+
+
+def test_transit_forward_release_and_deadline():
+    """A forward that is NOT co-located gets both of its bounds, and they are different numbers.
+
+    Unreachable through the resolver while co-location is required, so it is exercised here on a
+    hand-placed assignment -- the record has to be right BEFORE the coarse dwell makes it
+    reachable, or the dwell work would land on a representation that silently drops one bound.
+    The release is the inbound leg's arrival + 1 (a piece lands at the END of its epoch); the
+    deadline is the outbound leg's send.
+    """
+    a = _transit_assignment(leg_gpus=((0, 2), (3, 4)))   # lands on g2, leaves from g3
+    res = _emit_refined([a], {((0, 0), _C): (4, 5)}, q=1,
+                        scale=ChunkScale(bytes_per_chunk=1, num_chunks=1), coarse_epoch=0.02)
+    fwd = [d for d in res.intra_demands if d.kind == "egress_stage" and d.cell == _B]
+    assert len(fwd) == 1, f"expected one transit forward, got {fwd}"
+    d = fwd[0]
+    assert (d.src_gpu, d.dst_gpus) == (2, (3,)), d
+    assert d.release_band == 2, f"release must be inbound arrival + 1 = 2, got {d.release_band}"
+    assert d.deadline_epoch == 2, f"deadline must be the outbound send = 2, got {d.deadline_epoch}"
+    assert d.hard is True, "a network send waits on a forward, so it is hard"
+    # And the band policy actually reads both: released in band 2, deadline 2, so band_of must
+    # pull it back to band 1 rather than dropping it in the prologue.
+    assert release_of(d) == 2, release_of(d)
+    # A native staging in the same cell still gets the prologue -- the override is per demand.
+    native = [x for x in res.intra_demands if x.kind == "egress_stage" and x.cell == _A]
+    assert all(release_of(x) == PROLOGUE_BAND for x in native), native
+    print("  [10d] a non-co-located forward carries release=arrival+1 AND deadline=send, and "
+          "bands.release_of honours it OK")
+
+
+def test_transit_legs_share_subchunk_index():
+    """Both legs of one route must carry the SAME sub-chunk index out of _emit_refined, and the
+    cursor == q partition check -- this module's integrity anchor -- must still hold.
+
+    This is what a leg-keyed design could not do: sub-chunk indices are allocated per (identity,
+    dst_cell), so independently assigned legs would have to chain indices across separately
+    refined groups.
+    """
+    a = _transit_assignment(leg_gpus=((0, 2), (2, 4)))
+    res = _emit_refined([a], {((0, 0), _C): (4, 5)}, q=1,
+                        scale=ChunkScale(bytes_per_chunk=1, num_chunks=1), coarse_epoch=0.02)
+    assert len(res.pieces) == 2, f"a two-leg route must emit two flows, got {len(res.pieces)}"
+    assert res.pieces[0].identity == res.pieces[1].identity, res.pieces
+    assert (res.pieces[0].src_cell, res.pieces[0].dst_cell) == (_A, _B)
+    assert (res.pieces[1].src_cell, res.pieces[1].dst_cell) == (_B, _C)
+    # Fractional split: two half-volume assignments over the same route must still partition the
+    # identity exactly, and every leg of both must share its own half's index.
+    halves = [_transit_assignment(leg_gpus=((0, 2), (2, 4))),
+              _transit_assignment(leg_gpus=((1, 2), (2, 5)))]
+    halves = [replace(h, volume=0.5, exact=Fraction(1, 2)) for h in halves]
+    res2 = _emit_refined(halves, {((0, 0), _C): (4, 5)}, q=2,
+                         scale=ChunkScale(bytes_per_chunk=1, num_chunks=1), coarse_epoch=0.02)
+    assert len(res2.pieces) == 4, len(res2.pieces)
+    by_sub = defaultdict(list)
+    for p in res2.pieces:
+        by_sub[p.identity].append((p.src_cell, p.dst_cell))
+    assert len(by_sub) == 2, f"q=2 must produce 2 sub-chunks, got {sorted(by_sub)}"
+    for ident, legs in by_sub.items():
+        assert sorted(legs) == [(_A, _B), (_B, _C)], f"{ident}: legs {legs}"
+    print("  [10e] both legs of a route share one sub-chunk index; the cursor == q partition "
+          "check holds for whole and split volumes OK")
+
+
+def test_saturated_bridge_is_refused():
+    """The egress ledger must refuse a forward the bridge GPU has no room for, rather than
+    silently oversubscribing it.
+
+    Co-location makes this a real risk rather than a theoretical one: ALL of a cell's transit
+    volume is forced onto the GPUs that bridge the two islands, so a bridge that is wide enough in
+    aggregate can still be too narrow per epoch. And nothing upstream covers it -- `_build_slots`'
+    proportional split bounds a FIRST leg's gateway by construction, but no such split exists for
+    a forwarded leg, because the coarse level cannot see it. The ledger is the only accounting
+    there is.
+
+    Driven straight at `_place_downstream_legs` with a shared ledger rather than through a whole
+    schedule: it is the second route landing on an already-full bridge that must be refused, and a
+    hand-built pair says that without depending on how a coarse solve happened to pack epochs.
+    (Routed through `resolve_identities`, an oversubscription like this would also trip the
+    downstream `_assert_rate_within_capacity` -- but that is a last-line check on emitted flows,
+    not the accounting that is supposed to catch it first.)
+    """
+    topo = BridgedIslandsCluster(TopologyParams(name="BridgedIslandsCluster", chunk_size=1))
+    _, m = abstract(topo)
+    epoch_duration = 0.02                      # 100 GB/s x 0.02 s = 2 chunk-units per epoch
+    ingress_ledger, egress_ledger = {}, {}
+    route = _transit_assignment(leg_gpus=((0, 2), (2, 4))).route
+
+    def place(volume):
+        return _place_downstream_legs(
+            route, (0, 0), first_egress_gpu=0, volume=volume, target_gpus={4, 5},
+            mapping=m, fine_topology=topo, epoch_duration=epoch_duration,
+            ingress_ledger=ingress_ledger, egress_ledger=egress_ledger,
+            tol=1e-6, max_denom=64)
+
+    placed = place(2.0)                        # fills the bridge's outbound link for that epoch
+    assert placed == [(((0, 2), (2, 4)), 2.0)], placed
+    try:
+        place(2.0)                             # a second route wanting the same epoch
+    except RuntimeError as e:
+        msg = str(e)
+        assert "forwarding egress capacity exhausted" in msg, msg
+        print("  [10f] the egress ledger refuses a second route whose co-located bridge GPU is "
+              "already saturated in that epoch OK")
+        return
+    raise AssertionError("an oversubscribed bridge GPU must be refused")
+
+
+def test_cyclic_route_rejected():
+    """A route that revisits a cell must fail loud. dig_to_source carries a path-local
+    cycle-avoidance band-aid rather than a real time-expanded flow decomposition, so a cyclic path
+    is a live possibility -- and one would ask a child level to forward bytes whose arrival
+    depends on a later leg of itself."""
+    legs = (
+        _CoarsePiece(src_cell=_A, dst_cell=_B, egress_neighbor=_T0, ingress_neighbor=_T0,
+                     via_switches=(9,), volume=1.0, send_epoch=0, arrival_epoch=0,
+                     origin=(_A, _A)),
+        _CoarsePiece(src_cell=_B, dst_cell=_A, egress_neighbor=_T0, ingress_neighbor=_T0,
+                     via_switches=(9,), volume=1.0, send_epoch=1, arrival_epoch=1,
+                     origin=(_A, _A)),
+    )
+    try:
+        _validate_route(_CoarseRoute(origin=(_A, _A), legs=legs, volume=1.0))
+    except AssertionError as e:
+        assert "revisits a cell" in str(e), e
+        print("  [10g] a route revisiting a cell is rejected OK")
+        return
+    raise AssertionError("a cyclic route must be rejected")
+
+
 def main() -> None:
     test_identity_sets_match_coarsify()
     test_hostB_forced_relay()
@@ -531,6 +803,13 @@ def main() -> None:
     test_lexicographic_egress_dominates()
     test_ingress_prefers_target()
     test_level_chunk_unit_invariance()
+    test_transit_route_both_legs_one_identity()
+    test_colocated_transit_costs_no_intra_work()
+    test_split_bridge_fails_loud()
+    test_transit_forward_release_and_deadline()
+    test_transit_legs_share_subchunk_index()
+    test_saturated_bridge_is_refused()
+    test_cyclic_route_rejected()
     print("identity resolution structural tests OK")
 
 

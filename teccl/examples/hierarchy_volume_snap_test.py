@@ -37,7 +37,8 @@ from dataclasses import replace
 from fractions import Fraction
 
 from teccl.hierarchy.reconstruct import (
-    MAX_DENOM, MAX_SUBDIVISION, _Assignment, _CoarsePiece, _snap_group, _snap_volumes,
+    MAX_DENOM, MAX_SUBDIVISION, _Assignment, _CoarsePiece, _CoarseRoute, _snap_group,
+    _snap_volumes,
     RECONSTRUCTION_NOISE_FACTOR, _subdivision_factor, dust_threshold, grid_resolution,
     snap_tolerance,
 )
@@ -52,8 +53,11 @@ class _Solver:
 
 def _assignment(volume, identity=(0, 0), dst_cell=1):
     piece = _CoarsePiece(src_cell=0, dst_cell=dst_cell, egress_neighbor=2, ingress_neighbor=2,
-                         via_switches=(2,), volume=volume, send_epoch=0, arrival_epoch=0)
-    return _Assignment(src_cell=0, dst_cell=dst_cell, identity=identity, piece=piece,
+                         via_switches=(2,), volume=volume, send_epoch=0, arrival_epoch=0,
+                         origin=(0, dst_cell))
+    # A one-leg route: snapping is about volumes, so the route shape is irrelevant here.
+    route = _CoarseRoute(origin=(0, dst_cell), legs=(piece,), volume=volume)
+    return _Assignment(src_cell=0, dst_cell=dst_cell, identity=identity, route=route,
                        egress_gpu=0, ingress_gpu=1, volume=volume)
 
 

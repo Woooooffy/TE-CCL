@@ -753,6 +753,134 @@ def _pick_ingress(leg: "_CoarsePiece", candidates: Sequence[int], identity: Iden
     return picks
 
 
+def _bridging_gpus(cell: int, inbound: "_CoarsePiece", outbound: "_CoarsePiece",
+                   mapping: HierarchyMapping) -> List[int]:
+    """The GPUs of a transit cell that own BOTH the link the data arrives on and the link it
+    leaves on -- the co-located transits.
+
+    Co-location is a REQUIREMENT here, not a preference, and that is worth being explicit about
+    (design §6). The coarse solve already models a cell as store-and-forward: `lp_formulation`'s
+    midFC lets flow arriving in epoch k leave in epoch k+1, so the one-epoch dwell is budgeted.
+    But that +1 models a host that receives and re-sends ON THE SAME PORT. The abstraction
+    collapsed the cell's GPUs into a single coarse node, so when the landing GPU and the outgoing
+    gateway differ, the intra-cell hop between them is invisible to the coarse level and
+    unbudgeted -- and with sends pinned to the leading edge of a band, a piece landing at the end
+    of epoch k is ready in band k+1 and can only feed a send from epoch k+2. The coarse solve
+    gives k+1. So a non-co-located transit is INFEASIBLE rather than merely expensive, which is
+    why it is a constraint on this pass and not a term in the objective.
+    """
+    return [g for g in mapping.boundary_gpu[(cell, inbound.ingress_neighbor)]
+            if g in set(mapping.boundary_gpu[(cell, outbound.egress_neighbor)])]
+
+
+def _place_downstream_legs(route: "_CoarseRoute", identity: Identity, first_egress_gpu: int,
+                           volume: float, target_gpus: AbstractSet[int],
+                           mapping: HierarchyMapping, fine_topology: Topology,
+                           epoch_duration: float,
+                           ingress_ledger: Dict[Tuple[int, int, int], float],
+                           egress_ledger: Dict[Tuple[int, int, int], float],
+                           tol: float, max_denom: int
+                           ) -> List[Tuple[Tuple[Tuple[int, int], ...], float]]:
+    """Walk a route's legs in order, placing each onto real GPUs, after the LP has chosen the
+    first leg's egress gateway.
+
+    This is the half of the decomposition the identity LP deliberately does not do (design §3.1).
+    Whether leg i's landing GPU co-locates with leg i+1's egress gateway is a property of THE LEGS
+    AND THE TOPOLOGY, not of which chunk rides them -- every identity on a route pays the same
+    transit cost -- so pricing it inside the identity LP would pay a `prod |gateways(leg)|` column
+    count for a term that is constant across the rows it would discriminate between.
+
+    Returns a list of (per-leg (egress GPU, ingress GPU) tuples, volume) fragments. Usually one
+    fragment carrying the whole volume; more when `_pick_ingress` has to split a landing across
+    several fine downlinks, which is legitimate (a coarse link's capacity is the SUM of the fine
+    downlinks behind it, so one piece can exceed any single one while fitting them collectively).
+
+    What this decomposition gives up, exactly once and worth naming: when a commodity (A, C)
+    splits across routes with DIFFERENT downstream ingress costs at C, the first-leg LP chooses
+    identities blind to that difference. When a commodity uses a single route shape it is exactly
+    optimal -- the whole pool transits the same cells, so the final landing preference is fully
+    recoverable here. And the loss is confined to the objective's SOFT tier: it can never cost
+    feasibility, only an avoidable intra-cell hop at the destination.
+    """
+    # Each fragment is (legs placed so far, volume, the GPU that egresses the NEXT leg).
+    frags: List[Tuple[Tuple[Tuple[int, int], ...], float, int]] = [((), volume, first_egress_gpu)]
+
+    for i, leg in enumerate(route.legs):
+        is_last = (i == len(route.legs) - 1)
+        outbound = None if is_last else route.legs[i + 1]
+        nxt: List[Tuple[Tuple[Tuple[int, int], ...], float, int]] = []
+        for placed, vol, egress_gpu in frags:
+            if is_last:
+                candidates = list(mapping.boundary_gpu[(leg.dst_cell, leg.ingress_neighbor)])
+                preferred = set(target_gpus)
+            else:
+                candidates = _bridging_gpus(leg.dst_cell, leg, outbound, mapping)
+                if not candidates:
+                    raise RuntimeError(
+                        f"cell {leg.dst_cell} transits identity {identity} from coarse neighbor "
+                        f"{leg.ingress_neighbor} to {outbound.egress_neighbor}, but no GPU owns "
+                        f"both links -- the two NICs hang off different GPUs. Forwarding then "
+                        f"needs an intra-cell hop between them, which costs a SECOND coarse epoch "
+                        f"(arrival + 2) that the coarse solve did not budget: it models a "
+                        f"store-and-forward dwell of exactly one epoch. This is a true statement "
+                        f"about the topology, not a resolution failure; it needs a per-cell "
+                        f"forwarding dwell in the coarse formulation (see cell_relay_design.md "
+                        f"§6), which is deliberately out of scope here.")
+                # Prefer a bridging GPU whose OUTGOING link still has room this epoch, using the
+                # same `preferred` channel the destination case uses for targets. Preference, not
+                # restriction: if none has room, _pick_ingress still places the piece and the
+                # egress commit below is what fails loud about it.
+                out_cap = _egress_epoch_capacity(outbound, candidates, mapping, fine_topology,
+                                                 epoch_duration)
+                preferred = {g for g in candidates
+                             if out_cap[g] - egress_ledger.get(
+                                 (g, outbound.egress_neighbor, outbound.send_epoch), 0.0)
+                             >= vol - tol}
+
+            in_cap = _ingress_epoch_capacity(leg, candidates, mapping, fine_topology,
+                                             epoch_duration)
+            for landed, part in _pick_ingress(leg, candidates, identity, vol, preferred, in_cap,
+                                              ingress_ledger, tol=tol, max_denom=max_denom):
+                legs_so_far = placed + ((egress_gpu, landed),)
+                if is_last:
+                    nxt.append((legs_so_far, part, -1))
+                else:
+                    # Co-located: the GPU that landed this leg is the one that sends the next.
+                    _commit_egress(outbound, landed, part, identity, mapping, fine_topology,
+                                   epoch_duration, egress_ledger, tol)
+                    nxt.append((legs_so_far, part, landed))
+        frags = nxt
+
+    return [(placed, vol) for placed, vol, _ in frags]
+
+
+def _commit_egress(leg: "_CoarsePiece", gpu: int, volume: float, identity: Identity,
+                   mapping: HierarchyMapping, fine_topology: Topology, epoch_duration: float,
+                   ledger: Dict[Tuple[int, int, int], float], tol: float) -> None:
+    """Book one forwarded leg's volume against its sender's per-epoch uplink budget, and fail loud
+    if the uplink has no room.
+
+    The honest version of what a gateway-tuple slot capacity would only approximate: the product
+    formula bounds the EXPECTED per-epoch load on a forwarding gateway, this accounts for the
+    actual one. Keyed and compared exactly like `ingress_ledger` -- (gpu, neighbor, epoch), with
+    the neighbor in the key because one GPU can own several independent ports -- and with the same
+    amplified tolerance, because it accumulates the same way.
+    """
+    cap = _egress_epoch_capacity(leg, [gpu], mapping, fine_topology, epoch_duration)[gpu]
+    key = (gpu, leg.egress_neighbor, leg.send_epoch)
+    used = ledger.get(key, 0.0)
+    if used + volume > cap + tol:
+        raise RuntimeError(
+            f"forwarding egress capacity exhausted at cell {leg.src_cell} epoch "
+            f"{leg.send_epoch}: gpu {gpu} already forwards {used:g} toward coarse neighbor "
+            f"{leg.egress_neighbor} and identity {identity} needs {volume:g} more, but the link "
+            f"absorbs {cap:g} per epoch. All of this cell's transit volume is forced onto the "
+            f"GPUs that bridge the two islands (co-location is required, see "
+            f"_bridging_gpus/_place_downstream_legs), and there is more of it than they can "
+            f"carry.")
+    ledger[key] = used + volume
+
+
 # --------------------------------------------------------------------------------------------
 # Orchestration
 # --------------------------------------------------------------------------------------------
@@ -885,6 +1013,11 @@ class _Assignment:
     egress_gpu: int
     ingress_gpu: int
     volume: float
+    # (egress GPU, ingress GPU) for EVERY leg, in route order. `egress_gpu` / `ingress_gpu` above
+    # are leg_gpus[0][0] and leg_gpus[-1][1] -- the identity's two endpoints in this level -- and
+    # are kept as their own fields because that is what every existing reader wants. Empty means
+    # "single leg, use those two"; `legs` normalizes it either way.
+    leg_gpus: Tuple[Tuple[int, int], ...] = ()
     # Which node in THIS LEVEL's index space physically holds the identity, and therefore stages it
     # onto the gateway. -1 means "identity[0]", which is correct at the ROOT and only there: an
     # identity names its native source GPU, but below the root the data has already been relayed and
@@ -901,6 +1034,34 @@ class _Assignment:
     @property
     def native(self) -> int:
         return self.holder if self.holder >= 0 else self.identity[0]
+
+    @property
+    def legs(self) -> Tuple[Tuple[int, int], ...]:
+        """Per-leg (egress GPU, ingress GPU), normalized. A single-leg assignment need not carry
+        `leg_gpus` explicitly -- its two endpoint fields already say everything -- so this fills
+        it in, which is what lets `_emit_refined` have one code path for both."""
+        if self.leg_gpus:
+            return self.leg_gpus
+        return ((self.egress_gpu, self.ingress_gpu),)
+
+
+def _egress_epoch_capacity(leg: "_CoarsePiece", candidates: Sequence[int],
+                           mapping: HierarchyMapping,
+                           fine_topology: Topology, epoch_duration: float) -> Dict[int, float]:
+    """Per-epoch volume each candidate egress GPU of one LEG can push, in chunk units.
+
+    The mirror of `_ingress_epoch_capacity`, and note the direction: an egress leg is gpu ->
+    switch, so this indexes capacity[gpu][fine_neighbor].
+
+    Needed only for the DOWNSTREAM legs of a transit route. The first leg's egress is already
+    bounded by construction -- `_build_slots` splits every route's volume across that cell's
+    gateways in proportion to fine link capacity, so per-epoch gateway load is bounded by coarse
+    feasibility without any global accounting (see _Slot). No such split covers a forwarded leg:
+    the coarse level cannot see it, because the abstraction collapsed the transit cell's GPUs into
+    one node. So the forward pass accounts for the ACTUAL load instead, against a ledger.
+    """
+    fine_nb = mapping.coarse_passthrough[leg.egress_neighbor]
+    return {g: fine_topology.capacity[g][fine_nb] * epoch_duration for g in candidates}
 
 
 def _ingress_epoch_capacity(leg: "_CoarsePiece", candidates: Sequence[int],
@@ -1192,16 +1353,12 @@ def _emit_refined(assignments: Sequence[_Assignment],
         s, ci = identity
         cursor = 0
         for a in group:
-            if a.route.is_transit:
-                # Lowering a transit route needs its downstream legs placed onto GPUs first, and
-                # every leg emitted as its own ResolvedPiece sharing this sub-chunk index, with a
-                # forwarding demand between them. That is the forward pass (design §3.2); until it
-                # lands, refuse rather than emit one flow standing in for two.
-                raise NotImplementedError(
-                    f"identity {identity} rides a TRANSIT route {a.route.origin} through "
-                    f"{[leg.dst_cell for leg in a.route.legs[:-1]]}; emitting its legs is not "
-                    f"implemented yet (see _place_downstream_legs).")
             native = a.native
+            legs, placed = a.route.legs, a.legs
+            if len(legs) != len(placed):
+                raise AssertionError(
+                    f"identity {identity}: assignment places {len(placed)} legs but its route "
+                    f"{a.route.origin} has {len(legs)}")
             # Exact by construction: q is the LCM of every assignment's snapped denominator, so
             # `exact * q` has denominator 1. No tolerance is involved or wanted -- the float
             # volume's error was spent once, at _snap_volumes, and never again. (The guard is kept
@@ -1217,17 +1374,37 @@ def _emit_refined(assignments: Sequence[_Assignment],
             for _ in range(count):
                 sub: Identity = (s, ci * q + cursor)
                 cursor += 1
-                result.pieces.append(ResolvedPiece(
-                    src_cell=a.src_cell, dst_cell=V, identity=sub, egress_gpu=a.egress_gpu,
-                    ingress_gpu=a.ingress_gpu, via_switches=a.route.first.via_switches,
-                    volume=1.0,
-                    send_epoch=a.route.first.send_epoch, arrival_epoch=a.route.last.arrival_epoch,
-                    rate=_piece_rate(1.0, scale, coarse_epoch)))
-                if a.egress_gpu != native:
-                    result.intra_demands.append(IntraCellDemand(
-                        cell=a.src_cell, kind="egress_stage", identity=sub, src_gpu=native,
-                        dst_gpus=(a.egress_gpu,), volume=1.0,
-                        deadline_epoch=a.route.first.send_epoch))
+                # ONE ResolvedPiece PER LEG, all sharing this sub-chunk index. That shared index is
+                # what makes a transit chain expressible at all: the two halves of one delivery are
+                # the same commodity, and `_emit_refined`'s per-(identity, dst_cell) cursor is what
+                # guarantees it. Downstream needs nothing else -- each leg is an ordinary network
+                # flow, and the demand between them is what orders the two.
+                for li, (leg, (eg, ig)) in enumerate(zip(legs, placed)):
+                    result.pieces.append(ResolvedPiece(
+                        src_cell=leg.src_cell, dst_cell=leg.dst_cell, identity=sub, egress_gpu=eg,
+                        ingress_gpu=ig, via_switches=leg.via_switches, volume=1.0,
+                        send_epoch=leg.send_epoch, arrival_epoch=leg.arrival_epoch,
+                        rate=_piece_rate(1.0, scale, coarse_epoch)))
+                    if li == 0:
+                        # Source cell: stage the NATIVE data onto the gateway, if it isn't there.
+                        if eg != native:
+                            result.intra_demands.append(IntraCellDemand(
+                                cell=leg.src_cell, kind="egress_stage", identity=sub,
+                                src_gpu=native, dst_gpus=(eg,), volume=1.0,
+                                deadline_epoch=leg.send_epoch))
+                    elif eg != placed[li - 1][1]:
+                        # TRANSIT cell: forward from the GPU that landed the previous leg onto the
+                        # one that sends this one. The cell's ROLE here is "sender of the outgoing
+                        # leg", which is what egress_stage means -- it is not a new kind. What IS
+                        # new is that the data is not there yet, hence the explicit release.
+                        # Unreachable while co-location is required (_bridging_gpus makes the two
+                        # GPUs equal), and kept so the record exists for the two-epoch dwell.
+                        result.intra_demands.append(IntraCellDemand(
+                            cell=leg.src_cell, kind="egress_stage", identity=sub,
+                            src_gpu=placed[li - 1][1], dst_gpus=(eg,), volume=1.0,
+                            deadline_epoch=leg.send_epoch,
+                            release_band=legs[li - 1].arrival_epoch + 1, hard=True))
+                # Destination cell: fan the identity out to the GPUs that actually want it.
                 result.intra_demands.append(IntraCellDemand(
                     cell=V, kind="ingress_distribution", identity=sub, src_gpu=a.ingress_gpu,
                     dst_gpus=targets[(identity, V)], volume=1.0,
@@ -1288,6 +1465,11 @@ def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
     # Spans the whole resolution, not one demand pair: a destination cell's ingress link is shared
     # by every source cell sending to it.
     ingress_ledger: Dict[Tuple[int, int, int], float] = {}
+    # The egress mirror, for FORWARDED legs only. A first leg's egress needs no ledger: the
+    # proportional slot split already bounds it by construction (see _Slot). A forwarded leg has
+    # no such split behind it, because the coarse level cannot see it. Empty on every topology
+    # with no transit.
+    egress_ledger: Dict[Tuple[int, int, int], float] = {}
     assignments: List[_Assignment] = []
     # _pick_ingress compares a piece's volume against `room`, a ledger accumulated across every
     # earlier commit in the WHOLE resolution -- by the time a late identity is placed that ledger
@@ -1344,15 +1526,14 @@ def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
         # among equal volumes, for determinism.
         for (d, j), vol in sorted(x.items(), key=lambda kv: (-kv[1], kv[0][1], kv[0][0])):
             slot = slots[j]
-            last = slot.route.last
-            cap = _ingress_epoch_capacity(last, slot.ingress_candidates, mapping, fine_topology,
-                                          epoch_duration)
-            for h, v in _pick_ingress(last, slot.ingress_candidates, d, vol,
-                                      set(tgt.get(d, ())), cap, ingress_ledger,
-                                      tol=ingress_tol, max_denom=ingress_max_denom):
+            for leg_gpus, v in _place_downstream_legs(
+                    slot.route, d, slot.egress_gpu, vol, set(tgt.get(d, ())),
+                    mapping, fine_topology, epoch_duration, ingress_ledger, egress_ledger,
+                    tol=ingress_tol, max_denom=ingress_max_denom):
                 assignments.append(_Assignment(
                     src_cell=U, dst_cell=V, identity=d, route=slot.route,
-                    egress_gpu=slot.egress_gpu, ingress_gpu=h, volume=v,
+                    egress_gpu=leg_gpus[0][0], ingress_gpu=leg_gpus[-1][1], volume=v,
+                    leg_gpus=leg_gpus,
                     holder=native[d] if holder_of else -1))
 
     return assignments, targets, epoch_duration
@@ -1417,6 +1598,8 @@ def assign_identities_preserving(carried: Sequence[Tuple["_CoarsePiece", Identit
         slot = on_native[0] if on_native else max(slots, key=lambda s: (s.capacity, -s.egress_gpu))
         cap = _ingress_epoch_capacity(piece, slot.ingress_candidates, mapping, fine_topology,
                                       epoch_duration)
+        # Single-leg by construction (see the route built above), so no forward pass is involved:
+        # place the one landing directly, exactly as this path always has.
         for h, v in _pick_ingress(piece, slot.ingress_candidates, identity, piece.volume,
                                   set(targets.get(identity, ())), cap, ingress_ledger,
                                   tol=ingress_tol):
