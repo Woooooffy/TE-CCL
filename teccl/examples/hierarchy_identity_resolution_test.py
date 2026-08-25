@@ -50,9 +50,9 @@ import numpy as np
 
 from teccl.hierarchy.abstract import abstract, coarsify_demand, level_chunk_units
 from teccl.hierarchy.cell import Cell
-from teccl.hierarchy.reconstruct import (HierarchyMapping, _Assignment, _CoarsePiece,
-                                          _CoarseRoute, _emit_refined,
-                                          _place_downstream_legs, _validate_route,
+from teccl.hierarchy.reconstruct import (HierarchyMapping, _Assignment, _bridging_gpus,
+                                          _CoarsePiece, _CoarseRoute, _emit_refined,
+                                          _pick_ingress, _place_downstream_legs, _validate_route,
                                           identity_sets, resolve_identities)
 from teccl.hierarchy.bands import PROLOGUE_BAND, assign_bands, release_of
 from teccl.hierarchy.scale import ChunkScale
@@ -765,11 +765,57 @@ def test_saturated_bridge_is_refused():
         place(2.0)                             # a second route wanting the same epoch
     except RuntimeError as e:
         msg = str(e)
-        assert "forwarding egress capacity exhausted" in msg, msg
-        print("  [10f] the egress ledger refuses a second route whose co-located bridge GPU is "
-              "already saturated in that epoch OK")
+        # Reported by the JOINT budget, which is what actually binds: the placement never picks a
+        # bridge without outgoing room, so the shortage surfaces at the choice rather than at the
+        # commit afterwards. The message must name both budgets, because "no room" on a bridge is
+        # ambiguous otherwise -- the landing side may be wide open.
+        assert "transit capacity exhausted" in msg, msg
+        assert "jointly bounded by the outgoing leg" in msg, msg
+        print("  [10f] a second route whose co-located bridge GPU is already saturated is "
+              "refused by the joint budget, naming both sides OK")
         return
     raise AssertionError("an oversubscribed bridge GPU must be refused")
+
+
+def test_transit_needs_both_budgets_on_one_gpu():
+    """A bridging GPU with landing room but NO forwarding room must not be chosen, and the piece
+    must spread onto bridges that have both.
+
+    This is the failure the dual-plane AllGather hit for real. A transit piece needs a MATCHED
+    pair of budgets on ONE GPU -- it lands and forwards on the same one -- while an ordinary
+    delivery needs only ingress room anywhere. Treating the outgoing side as a `preferred` hint is
+    not enough: a hint is abandoned whenever no preferred candidate has ingress room, and the
+    piece then lands on a GPU that cannot forward it. The two budgets have to intersect.
+
+    Built with two bridges, one of them pre-saturated on its OUTGOING link only, so the ingress
+    side alone would happily choose it (it is the roomiest landing).
+    """
+    topo = BridgedIslandsCluster(TopologyParams(name="BridgedIslandsCluster", chunk_size=1))
+    _, m = abstract(topo)
+    route = _transit_assignment(leg_gpus=((0, 2), (2, 4))).route
+    inbound, outbound = route.legs
+    bridges = _bridging_gpus(1, inbound, outbound, m)
+    assert bridges == [2], f"this fixture has one bridge; got {bridges}"
+
+    # One bridge in this topology, so drive _pick_ingress directly with a hand-made pair: gpu 2 is
+    # untouched on ingress but full on egress, gpu 3 has room on both.
+    ingress_ledger = {}
+    picks = _pick_ingress(
+        inbound, [2, 3], (0, 0), volume=1.0, preferred=set(),
+        epoch_capacity={2: 2.0, 3: 1.0}, ledger=ingress_ledger,
+        tol=1e-6, room_limit={2: 0.0, 3: 1.0}, what="transit")
+    assert picks == [(3, 1.0)], (
+        f"a bridge with no outgoing room must not be chosen even though it has the most landing "
+        f"room; got {picks}")
+    # And when neither alone suffices, the piece spreads across both rather than being dropped on
+    # one and rejected afterwards.
+    picks = _pick_ingress(
+        inbound, [2, 3], (1, 0), volume=1.0, preferred=set(),
+        epoch_capacity={2: 2.0, 3: 2.0}, ledger={},
+        tol=1e-6, room_limit={2: 0.5, 3: 0.5}, what="transit")
+    assert sorted(picks) == [(2, 0.5), (3, 0.5)], picks
+    print("  [10h] a bridge with landing room but no forwarding room is never chosen; the piece "
+          "spreads across bridges that have both OK")
 
 
 def test_cyclic_route_rejected():
@@ -809,6 +855,7 @@ def main() -> None:
     test_transit_forward_release_and_deadline()
     test_transit_legs_share_subchunk_index()
     test_saturated_bridge_is_refused()
+    test_transit_needs_both_budgets_on_one_gpu()
     test_cyclic_route_rejected()
     print("identity resolution structural tests OK")
 

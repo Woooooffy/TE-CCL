@@ -629,7 +629,9 @@ def _pick_ingress(leg: "_CoarsePiece", candidates: Sequence[int], identity: Iden
                   volume: float, preferred: AbstractSet[int],
                   epoch_capacity: Dict[int, float],
                   ledger: Dict[Tuple[int, int, int], float],
-                  tol: float = EPS, max_denom: int = MAX_DENOM) -> List[Tuple[int, float]]:
+                  tol: float = EPS, max_denom: int = MAX_DENOM,
+                  room_limit: Optional[Dict[int, float]] = None,
+                  what: str = "ingress") -> List[Tuple[int, float]]:
     """Choose the fine GPU(s) one LEG lands on, preferring a `preferred` GPU and respecting fine
     downlink capacity.
 
@@ -666,6 +668,17 @@ def _pick_ingress(leg: "_CoarsePiece", candidates: Sequence[int], identity: Iden
     piece that only one of them alone can't absorb. In that case the piece is split across however
     many candidates it takes, biggest room first, rather than raising.
 
+    `room_limit` is a SECOND, independent per-candidate budget, intersected with the ingress one.
+    It exists for the transit cell, where landing is only half of what the GPU must do: it also has
+    to SEND the piece onward on the outgoing leg, and its uplink has its own per-epoch budget. The
+    two must be satisfied JOINTLY -- expressing the egress side as a mere `preferred` hint is not
+    enough, because `preferred` is a preference this function is free to abandon (it does, whenever
+    no preferred candidate has ingress room), and abandoning it lands a piece on a GPU that cannot
+    forward it. Folding the second budget into `room` instead makes both constraints bind
+    everywhere `room` is consulted -- the fits test, the best-fit tie-break, and the split
+    fallback -- so a piece is spread across as many bridging GPUs as it takes rather than being
+    dropped on a full one and rejected afterwards.
+
     `tol` bounds how much "room" and "volume" may disagree and still be treated as equal. It
     should be `snap_tolerance(coarse_solver)`, not the bare EPS default: `room` is a per-(gpu,
     neighbor, epoch) ledger accumulated across every piece placed so far in the whole resolution,
@@ -684,13 +697,18 @@ def _pick_ingress(leg: "_CoarsePiece", candidates: Sequence[int], identity: Iden
     wanted = set(preferred)
 
     def room(h: int) -> float:
-        return epoch_capacity[h] - ledger.get((h, neighbor, epoch), 0.0)
+        free = epoch_capacity[h] - ledger.get((h, neighbor, epoch), 0.0)
+        if room_limit is not None:
+            free = min(free, room_limit.get(h, 0.0))
+        return free
 
     def commit(h: int, v: float) -> None:
         ledger[(h, neighbor, epoch)] = ledger.get((h, neighbor, epoch), 0.0) + v
 
-    if len(candidates) == 1:
-        # Forced by the coarse path; capacity is still checked by the caller's assert.
+    if len(candidates) == 1 and room_limit is None:
+        # Forced by the coarse path; capacity is still checked by the caller's assert. Not taken
+        # when a second budget is in play: a lone bridging GPU that cannot forward the piece must
+        # be reported, not waved through on the grounds that there was no alternative.
         commit(candidates[0], volume)
         return [(candidates[0], volume)]
 
@@ -721,12 +739,15 @@ def _pick_ingress(leg: "_CoarsePiece", candidates: Sequence[int], identity: Iden
     total_room = sum(max(room(h), 0.0) for h in candidates)
     if total_room < volume - budget:
         raise RuntimeError(
-            f"ingress capacity exhausted for cell {leg.dst_cell} epoch {epoch}: "
+            f"{what} capacity exhausted for cell {leg.dst_cell} epoch {epoch}: "
             f"identity {identity} needs {volume:g} but candidates "
             f"{ {h: round(room(h), 6) for h in candidates} } have no room "
-            f"(per-epoch capacities { {h: round(epoch_capacity[h], 6) for h in candidates} }). The "
-            f"coarse solve routed more into this cell in one epoch than its fine downlinks can "
-            f"absorb.")
+            f"(per-epoch capacities { {h: round(epoch_capacity[h], 6) for h in candidates} }"
+            + (f", jointly bounded by the outgoing leg's room "
+               f"{ {h: round(v, 6) for h, v in sorted(room_limit.items())} }"
+               if room_limit is not None else "")
+            + f"). The coarse solve routed more into this cell in one epoch than its fine links "
+              f"can absorb.")
 
     # No single candidate fits, but the candidates collectively have (up to dust) enough room --
     # spread the piece across them, largest room first (targets first) so it lands on as few GPUs
@@ -747,7 +768,7 @@ def _pick_ingress(leg: "_CoarsePiece", candidates: Sequence[int], identity: Iden
         remaining -= take
     if remaining > budget:
         raise RuntimeError(
-            f"ingress capacity exhausted for cell {leg.dst_cell} epoch {epoch}: "
+            f"{what} capacity exhausted for cell {leg.dst_cell} epoch {epoch}: "
             f"identity {identity} needs {volume:g} but only {volume - remaining:g} could be "
             f"placed across candidates {candidates} after splitting.")
     return picks
@@ -810,6 +831,8 @@ def _place_downstream_legs(route: "_CoarseRoute", identity: Identity, first_egre
         outbound = None if is_last else route.legs[i + 1]
         nxt: List[Tuple[Tuple[Tuple[int, int], ...], float, int]] = []
         for placed, vol, egress_gpu in frags:
+            room_limit = None
+            what = "ingress"
             if is_last:
                 candidates = list(mapping.boundary_gpu[(leg.dst_cell, leg.ingress_neighbor)])
                 preferred = set(target_gpus)
@@ -826,21 +849,28 @@ def _place_downstream_legs(route: "_CoarseRoute", identity: Identity, first_egre
                         f"about the topology, not a resolution failure; it needs a per-cell "
                         f"forwarding dwell in the coarse formulation (see cell_relay_design.md "
                         f"§6), which is deliberately out of scope here.")
-                # Prefer a bridging GPU whose OUTGOING link still has room this epoch, using the
-                # same `preferred` channel the destination case uses for targets. Preference, not
-                # restriction: if none has room, _pick_ingress still places the piece and the
-                # egress commit below is what fails loud about it.
+                # A bridging GPU has to do TWO things with this piece -- land it and forward it --
+                # so its outgoing link's remaining room bounds the placement just as hard as its
+                # incoming one. Pass it as a joint budget rather than as a `preferred` hint: a hint
+                # is a preference `_pick_ingress` abandons whenever no preferred candidate has
+                # ingress room, and abandoning it lands the piece on a GPU that cannot forward it,
+                # which the egress commit below then rejects even though other bridging GPUs were
+                # free. Folding it into `room` instead makes the split fallback spread the piece
+                # across as many bridges as it takes.
                 out_cap = _egress_epoch_capacity(outbound, candidates, mapping, fine_topology,
                                                  epoch_duration)
-                preferred = {g for g in candidates
-                             if out_cap[g] - egress_ledger.get(
-                                 (g, outbound.egress_neighbor, outbound.send_epoch), 0.0)
-                             >= vol - tol}
+                room_limit = {g: out_cap[g] - egress_ledger.get(
+                    (g, outbound.egress_neighbor, outbound.send_epoch), 0.0) for g in candidates}
+                # No notion of a "wanted" GPU at a transit cell -- nobody here wants the data --
+                # so there is nothing to prefer beyond the joint room the tie-break already reads.
+                preferred = set()
+                what = "transit"
 
             in_cap = _ingress_epoch_capacity(leg, candidates, mapping, fine_topology,
                                              epoch_duration)
             for landed, part in _pick_ingress(leg, candidates, identity, vol, preferred, in_cap,
-                                              ingress_ledger, tol=tol, max_denom=max_denom):
+                                              ingress_ledger, tol=tol, max_denom=max_denom,
+                                              room_limit=room_limit, what=what):
                 legs_so_far = placed + ((egress_gpu, landed),)
                 if is_last:
                     nxt.append((legs_so_far, part, -1))
@@ -865,6 +895,11 @@ def _commit_egress(leg: "_CoarsePiece", gpu: int, volume: float, identity: Ident
     actual one. Keyed and compared exactly like `ingress_ledger` -- (gpu, neighbor, epoch), with
     the neighbor in the key because one GPU can own several independent ports -- and with the same
     amplified tolerance, because it accumulates the same way.
+
+    Reaching the raise here is now a BUG rather than a capacity report: `_place_downstream_legs`
+    hands this same remaining room to `_pick_ingress` as a joint budget, so a candidate without
+    room is never chosen in the first place. A genuine shortage surfaces there, naming both
+    budgets. This stays as the assertion that the two halves agree.
     """
     cap = _egress_epoch_capacity(leg, [gpu], mapping, fine_topology, epoch_duration)[gpu]
     key = (gpu, leg.egress_neighbor, leg.send_epoch)
@@ -1489,6 +1524,13 @@ def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
     ingress_tol = snap_tolerance(coarse_solver)
     ingress_max_denom = resolve_max_denom(coarse_solver)
 
+    # The identity LP is per-(U, V) and reads no ledger, but PLACEMENT is global -- every cell's
+    # links are shared across demand pairs -- so the two are separated: decide first, place after.
+    # `decisions` collects (U, V, identity, slot, volume) in exactly the order the placement used
+    # to run in, so that a resolution with no transit places them in the identical sequence.
+    decisions: List[Tuple[int, int, Identity, _Slot, float]] = []
+    native_by_id: Dict[Tuple[int, int, Identity], int] = {}
+
     for (U, V), identities in sorted(id_sets.items()):
         routes = routes_by_pair.get((U, V), [])
         if not routes:
@@ -1534,16 +1576,35 @@ def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
         # processing order rather than of a single choice. (kv[0][1], kv[0][0]) only breaks ties
         # among equal volumes, for determinism.
         for (d, j), vol in sorted(x.items(), key=lambda kv: (-kv[1], kv[0][1], kv[0][0])):
-            slot = slots[j]
+            decisions.append((U, V, d, slots[j], vol))
+        native_by_id.update({(U, V, d): (native[d] if holder_of else -1) for d in identities})
+
+    # TRANSIT ROUTES ARE PLACED FIRST, and this ordering is load-bearing rather than cosmetic.
+    # A transit piece needs a MATCHED pair of budgets on ONE GPU: it must land on a bridging GPU
+    # and forward from that same GPU (co-location is required, see _bridging_gpus). An ordinary
+    # delivery only needs ingress room anywhere. Interleaved, the ordinary deliveries fill the
+    # ingress side of some GPUs while transit fills the egress side of others, and the two sets of
+    # free room drift apart until no single GPU has both -- a cell with 2.5 units of ingress room
+    # and 3.8 of egress room and nowhere to put 0.17, which is a matching failure, not a shortage.
+    # Serving the tighter constraint first is the same reasoning the descending-volume order and
+    # _pick_ingress's best-fit tie-break already encode: claim the constrained resource before
+    # looser demands fragment it.
+    #
+    # Within each phase the collection order is preserved, so a resolution with NO transit places
+    # exactly the sequence it always did.
+    for want_transit in (True, False):
+        for (U, V, d, slot, vol) in decisions:
+            if slot.route.is_transit != want_transit:
+                continue
             for leg_gpus, v in _place_downstream_legs(
-                    slot.route, d, slot.egress_gpu, vol, set(tgt.get(d, ())),
+                    slot.route, d, slot.egress_gpu, vol, set(targets.get((d, V), ())),
                     mapping, fine_topology, epoch_duration, ingress_ledger, egress_ledger,
                     tol=ingress_tol, max_denom=ingress_max_denom):
                 assignments.append(_Assignment(
                     src_cell=U, dst_cell=V, identity=d, route=slot.route,
                     egress_gpu=leg_gpus[0][0], ingress_gpu=leg_gpus[-1][1], volume=v,
                     leg_gpus=leg_gpus,
-                    holder=native[d] if holder_of else -1))
+                    holder=native_by_id[(U, V, d)]))
 
     return assignments, targets, epoch_duration
 
