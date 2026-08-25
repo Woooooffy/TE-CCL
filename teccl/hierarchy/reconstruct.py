@@ -1431,6 +1431,15 @@ def assign_identities_free(coarse_solver, mapping: HierarchyMapping,
     program (_solve_assignment), and choose each piece's landing GPU under a global fine downlink
     budget (_pick_ingress).
 
+    A coarse path that store-and-forwards through an intermediate CELL is handled by assigning
+    identities to whole ROUTES (see _CoarseRoute); the LP still sees one gateway per slot, and the
+    downstream legs are placed afterwards by _place_downstream_legs. That decomposition gives up
+    exactly one thing, worth stating here rather than only at the pass: when a commodity (A, C)
+    SPLITS across routes with different downstream ingress costs at C, the first-leg LP chooses
+    identities blind to that difference. With a single route shape it is exactly optimal, and the
+    loss is confined to the objective's soft tier -- it can never cost feasibility, only an
+    avoidable intra-cell hop at the destination.
+
     Returns the `_Assignment` list -- the A/B interface -- plus the per-(identity, cell) target
     map and the level's epoch duration, both of which step B needs. A level whose solver PRESERVES
     identity skips this entirely and builds its `_Assignment`s directly (see

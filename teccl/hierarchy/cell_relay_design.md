@@ -5,6 +5,24 @@ Design note for the gap documented in `reconstruct._origin_diagnosis` and
 CELL, `A -> sw -> B -> sw -> C`, where `B` is a transit host that neither
 produces nor wants the data.
 
+> **Status (2026-08-25).** Steps 1-4 of the sequencing below are BUILT on branch
+> `cell-relay-transit`, and the co-located transit case runs end to end:
+> `_extract_routes` keys routes by logical origin, `_place_downstream_legs`
+> places the downstream legs against an egress ledger, `_emit_refined` emits one
+> `ResolvedPiece` per leg sharing a sub-chunk index, and `IntraCellDemand`
+> carries `release_band` / `hard`. `BridgedIslandsCluster` (co-located) resolves
+> and passes the cross-stage replay invariants; `BridgedIslandsSplitCluster`
+> fails loud pointing at §6. Every pre-existing topology is unaffected (all
+> single-leg routes) and the whole suite is green.
+>
+> **Step 5 -- the coarse per-cell forwarding dwell (§6, the last two rows of §9)
+> -- is NOT built**, as planned. It is the only thing between this design and the
+> forced-relay case, and it is a separate piece of work in the coarse
+> formulation: `abstract()` derives the dwell from `boundary_gpu`, and
+> `lp_formulation` must honour it for FORWARDED flow without delaying
+> `consumed_at_k` (the arrival term feeds buffer, outflow and consumption at
+> once, so re-indexing it would pessimize the whole solve rather than transit).
+
 > **Revision note.** §3 and §4 were rewritten. The earlier draft assigned
 > identities to `(route, gateway TUPLE)` slots, pricing every leg's gateway
 > inside one LP. That is rejected here: the downstream gateway choice is
