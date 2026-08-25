@@ -1,0 +1,38 @@
+{
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/rail_optimized_256gpu_dual_plane.topo",
+        "name": "RailOptimizedDualPlane",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 5,
+        "feasibility_tol": 1e-5,
+        "optimality_tol": 1e-5,
+        "output_flag": 1,
+        "log_file": "_rail_dp_allgather",
+        "log_to_console": 0,
+        "method": -1,
+        "crossover": -1
+    },
+    "InstanceParams": {
+        "collective": 1,
+        "formulation": 2,
+        "switch_copy": false,
+        "num_chunks": 1,
+        "epoch_type": 1,
+        "epoch_duration": -1,
+        "epoch_multiplier": 1,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": true,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": true,
+        "intra_algo": "ring",
+        "hierarchy_prefix": "rail_dp_allgather_epochs",
+        "hierarchy_side_outputs": true,
+        "schedule_output_file": "Schedules/rail_optimized_256gpu_dual_plane_allgather_flat.json"
+    }
+}
