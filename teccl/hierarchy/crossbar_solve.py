@@ -59,7 +59,7 @@ from dataclasses import dataclass, field
 from math import inf
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from teccl.hierarchy.bands import PROLOGUE_BAND, band_of
+from teccl.hierarchy.bands import PROLOGUE_BAND, band_of, is_hard, release_of
 from teccl.hierarchy.cell import Cell
 from teccl.hierarchy.reconstruct import Identity, IntraCellDemand
 
@@ -342,8 +342,12 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
     for d in demands:
         if d.kind == "egress_stage":
             (gw,) = d.dst_gpus
-            _add_direct(d.identity, d.src_gpu, gw, d.volume, PROLOGUE_BAND, d.deadline_epoch,
-                        True, d.kind)
+            # `bands.release_of`, not PROLOGUE_BAND: a staging relay of NATIVE data is indeed
+            # available from the prologue, but a TRANSIT forward is the same kind carrying data
+            # that has not arrived yet, and it says so with an explicit release_band. Hardcoding
+            # the prologue here would schedule the forward before its inbound leg lands.
+            _add_direct(d.identity, d.src_gpu, gw, d.volume, release_of(d), d.deadline_epoch,
+                        is_hard(d), d.kind)
             continue
 
         # fan-out demand (ingress_distribution or self_distribution)
@@ -352,10 +356,11 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
             continue
         # A network piece lands at the END of its arrival epoch, so the first band that can fan it
         # out is the next one. Anything sourced from native data exists before the collective even
-        # starts, which is what makes the prologue available to it.
-        release = d.deadline_epoch + 1 if d.kind == "ingress_distribution" else PROLOGUE_BAND
+        # starts, which is what makes the prologue available to it. Same policy function as the
+        # egress branch above, so the two can never drift.
+        release = release_of(d)
         # ingress demand may be promoted to hard by a caller (transit cell); default soft.
-        hard = getattr(d, "hard", False)
+        hard = is_hard(d)
 
         send_load = _intra_send_load(d.src_gpu, demands)
         dense = switch_copy or send_load <= max_recv + EPS

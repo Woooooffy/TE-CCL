@@ -28,7 +28,7 @@ from collections import defaultdict
 from math import inf
 from typing import Dict, List, Sequence
 
-from teccl.hierarchy.reconstruct import IntraCellDemand
+from teccl.hierarchy.reconstruct import IntraCellDemand, demand_is_hard
 
 # The band that runs BEFORE coarse epoch 0's network sends. Unlike bands 0..K-1 it is not
 # concurrent with any network traffic, so its width is whatever its own schedule needs rather than
@@ -79,10 +79,23 @@ def release_of(demand: IntraCellDemand) -> int:
     the next one. Anything sourced from data the cell already holds -- a native chunk being staged
     to a gateway, or a self_distribution -- exists before the collective even starts, which is what
     makes the prologue available to it.
+
+    An explicit `release_band` overrides both rules. It exists for the TRANSIT forward (a route's
+    middle leg): that demand is an `egress_stage`, so the kind-based rule would hand it the
+    prologue, but its data is not in the cell until the inbound leg arrives. The kind says what the
+    cell DOES with the data; only the route knows when the data got there.
     """
+    if demand.release_band is not None:
+        return demand.release_band
     if demand.kind == "ingress_distribution":
         return demand.deadline_epoch + 1
     return PROLOGUE_BAND
+
+
+# Hardness is defined beside the field it reads (reconstruct.demand_is_hard) because this module
+# imports that one, not the other way round -- but it is band policy, so it is named here too and
+# every call site inside the band machinery goes through this name.
+is_hard = demand_is_hard
 
 
 def assign_bands(demands: Sequence[IntraCellDemand]) -> Dict[int, List[IntraCellDemand]]:
@@ -94,7 +107,7 @@ def assign_bands(demands: Sequence[IntraCellDemand]) -> Dict[int, List[IntraCell
     """
     by_band: Dict[int, List[IntraCellDemand]] = defaultdict(list)
     for d in demands:
-        hard = getattr(d, "hard", d.kind == "egress_stage")
+        hard = is_hard(d)
         deadline = d.deadline_epoch if hard else inf
         what = f"{d.kind} {d.src_gpu}->{d.dst_gpus} (identity {d.identity})"
         by_band[band_of(release_of(d), deadline, hard, what)].append(d)

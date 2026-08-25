@@ -120,6 +120,15 @@ class IntraCellDemand:
       "self_distribution"   source GPU -> wanting GPUs, for demand whose source and destination
                             are BOTH inside this cell (dropped from the coarse graph). Structural,
                             independent of identity resolution.
+
+    An `egress_stage` at a TRANSIT cell (a coarse route's middle leg: the cell neither produces
+    nor wants the identity, it forwards it) is the one case that needs a release AND a deadline to
+    be independent numbers. Everywhere else one of the two is implied by the kind -- native data is
+    available from the prologue, an ingress fan-out is released the epoch after it lands -- so
+    `deadline_epoch` alone has been enough. A forwarding relay is bounded on both sides: it cannot
+    start before the inbound leg ARRIVES, and it must finish before the outbound leg SENDS. Hence
+    the two optional overrides below; both default to None, meaning "use the kind's rule", which is
+    what every non-transit demand does and why nothing else had to change.
     """
     cell: int
     kind: str
@@ -128,6 +137,36 @@ class IntraCellDemand:
     dst_gpus: Tuple[int, ...]
     volume: float
     deadline_epoch: int                   # egress: <= send_epoch of fed piece; ingress: > arrival_epoch
+    # First band this demand's data could move in. None => bands.release_of's kind-based rule.
+    # Set only for a transit forward, where the data is not present until its inbound leg lands.
+    release_band: Optional[int] = None
+    # Whether missing the deadline slips the level above. None => the kind's default
+    # (egress_stage is hard, fan-out is soft). Read via `demand_is_hard`, never bare `getattr`:
+    # the field EXISTS now, so a `getattr(d, "hard", default)` would read None and silently make
+    # every egress_stage soft.
+    hard: Optional[bool] = None
+
+
+def demand_is_hard(demand: IntraCellDemand) -> bool:
+    """Whether missing this demand's deadline slips the level above.
+
+    `egress_stage` is the hard kind: a network send is waiting on it. Everything else is soft,
+    absorbed by the intra fabric's slack. A demand may override either way (`hard=`), which is why
+    this reads the field first rather than deciding from the kind alone.
+
+    Read hardness through here rather than `getattr(d, "hard", <default>)`. The attribute now
+    always EXISTS (defaulting to None), so a getattr default is dead code and None -- falsy --
+    would silently demote every egress_stage to soft, dropping the deadline that keeps a staging
+    relay ahead of the send it feeds.
+
+    It lives HERE, beside the field, rather than in `bands.py` with the rest of the band policy:
+    `bands` imports this module, so anything `bands` owns is unavailable to the emitters that
+    build these records. `bands.is_hard` re-exports it, so the band policy still reads as one
+    module from its own call sites.
+    """
+    if demand.hard is not None:
+        return demand.hard
+    return demand.kind == "egress_stage"
 
 
 @dataclass
@@ -1312,7 +1351,16 @@ def _coalesce_egress(result: IdentityResolution) -> None:
     the same key are necessarily the same bytes. (Before sub-chunk refinement this was only true
     for whole-identity relays: a fractionally split identity whose shares covered disjoint byte
     ranges needed their union, and max under-counted it, because the aggregate model cannot track
-    ranges. Refinement replaces that union with distinct commodities.)"""
+    ranges. Refinement replaces that union with distinct commodities.)
+
+    A TRANSIT forward carries a release as well as a deadline, and the merge must respect both
+    ends: one relay serves every merged demand only if it runs late enough for the LATEST arrival
+    (max release) and early enough for the EARLIEST send (min deadline). Merging on the deadline
+    alone -- which is all this did while every egress_stage was native-sourced and released in the
+    prologue -- would keep the earliest send while quietly dropping the constraint that the data
+    for the later arrival is not there yet, and emit one relay standing in for two that cannot in
+    fact be the same send. If the merged window is empty the two are genuinely distinct sends and
+    the key is lying, so fail loud rather than pick one."""
     merged: Dict[Tuple, IntraCellDemand] = {}
     others: List[IntraCellDemand] = []
     for dem in result.intra_demands:
@@ -1324,12 +1372,41 @@ def _coalesce_egress(result: IdentityResolution) -> None:
         if prev is None:
             merged[key] = dem
         else:
+            release = _merge_release(prev.release_band, dem.release_band)
+            deadline = min(prev.deadline_epoch, dem.deadline_epoch)
+            if release is not None and release > deadline:
+                raise AssertionError(
+                    f"cell {dem.cell}: egress_stage {dem.src_gpu}->{dem.dst_gpus} for identity "
+                    f"{dem.identity} merges two relays whose windows are disjoint -- the merged "
+                    f"one could not run before band {release} but must complete before epoch "
+                    f"{deadline}. One buffered relay cannot serve both sends; they are not the "
+                    f"same bytes at the same time (see _coalesce_egress).")
             merged[key] = IntraCellDemand(
                 cell=dem.cell, kind="egress_stage", identity=dem.identity,
                 src_gpu=dem.src_gpu, dst_gpus=dem.dst_gpus,
                 volume=max(prev.volume, dem.volume),
-                deadline_epoch=min(prev.deadline_epoch, dem.deadline_epoch))
+                deadline_epoch=deadline,
+                release_band=release,
+                # Hardness is a property of the kind here, and both sides are egress_stage. Take
+                # the stricter of the two anyway, so an explicitly-soft relay merged with a hard
+                # one keeps the deadline the hard one needs.
+                hard=(demand_is_hard(prev) or demand_is_hard(dem)))
     result.intra_demands = list(merged.values()) + others
+
+
+def _merge_release(a: Optional[int], b: Optional[int]) -> Optional[int]:
+    """The release of one relay standing in for two: the LATER of the two, with None meaning
+    "the kind's default" rather than "unconstrained".
+
+    None is the prologue for an egress_stage -- the earliest band there is -- so a None merged
+    with a real band must yield that band, not None. Returning None there would hand the merged
+    relay the prologue and let it run before the transit data arrived, which is exactly the bug
+    the explicit release exists to prevent."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return max(a, b)
 
 
 def _dedup_deliveries(result: IdentityResolution) -> int:
