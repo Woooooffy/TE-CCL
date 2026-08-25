@@ -24,17 +24,60 @@ from teccl.topologies.odd_pod import OddPod
 from teccl.topologies.star import Star
 from teccl.topologies.incast_switch import IncastSwitch
 from teccl.topologies.rail_optimized_spine_leaf import RailOptimizedSpineLeaf
+from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
+from teccl.topologies.dual_plane_hetero_cluster import (
+    DualPlaneHeteroCluster, DualPlaneHeteroClusterScattered)
+from teccl.topologies.two_pod_rail import TwoPodRail, TwoPodRailHostBound
+from teccl.topologies.nested_cluster import NestedCluster
+from teccl.topologies.dsl_topology import DslTopology
 from teccl.topologies.topology import Topology
+
+
+def solve_on_topology(user_input: UserInputParams, topology: Topology) -> "TECCLSolver":
+    """Run TECCLSolver.solve() against an already-built Topology (bypassing get_topology, which
+    only knows the named built-ins, not the CoarseTopology a hierarchical level constructs).
+    Returns the TECCLSolver so the caller can reach the solved formulation
+    (teccl_solver.best_solver) for post-processing.
+
+    This lives in the core rather than beside the drivers because `hierarchy.solve` calls it on
+    every level that needs a real formulation: teccl/examples has no __init__.py, so
+    find_packages() never ships it and an INSTALLED teccl could not solve a level at all.
+    """
+    solver = TECCLSolver.__new__(TECCLSolver)
+    solver.user_input = user_input
+    solver.topology_obj = topology
+    solver.solver = solver.get_solver(copy.deepcopy(user_input), topology)
+    solver.solve()
+    return solver
 
 
 class TECCLSolver(object):
     def __init__(self, user_input: UserInputParams):
         self.user_input = user_input
         self.topology_obj = self.get_topology(user_input.topology)
-        self.solver = self.get_solver(copy.deepcopy(user_input), self.topology_obj)
+        if user_input.instance.hierarchical:
+            # No flat solver: each level builds its own (see solve_hierarchy). Building one here
+            # would not just waste a model on the full fine topology -- get_solver's LP AllGather
+            # check would reject a switch_copy=True run outright, even though it is the COARSE
+            # level, not this one, that the formulation ever sees.
+            self._require_hierarchy()
+            self.solver = None
+        else:
+            self.solver = self.get_solver(copy.deepcopy(user_input), self.topology_obj)
 
-    
+    def _require_hierarchy(self) -> None:
+        if not self.topology_obj.cells:
+            raise ValueError(
+                f"instance.hierarchical is set, but topology {self.user_input.topology.name} "
+                f"declares no cells, so there is no hierarchy to solve. Override "
+                f"Topology.build_hierarchy() (see teccl.hierarchy.Cell) or unset hierarchical.")
+
+
     def get_topology(self, topology_params: TopologyParams) -> Topology:
+        # A .topo file SELECTS the topology, ahead of the name chain: the DSL builds the graph
+        # from the file, so `name` is left free as the label the output filenames use.
+        if topology_params.topo_file:
+            return DslTopology(topology_params)
         if topology_params.name == "DGX1":
             return DGX1(topology_params)
         elif topology_params.name == "DGX2":
@@ -59,6 +102,18 @@ class TECCLSolver(object):
             return IncastSwitch(topology_params)
         elif topology_params.name == "RailOptimizedSpineLeaf":
             return RailOptimizedSpineLeaf(topology_params)
+        elif topology_params.name == "HeteroTaperedCluster":
+            return HeteroTaperedCluster(topology_params)
+        elif topology_params.name == "DualPlaneHeteroCluster":
+            return DualPlaneHeteroCluster(topology_params)
+        elif topology_params.name == "DualPlaneHeteroClusterScattered":
+            return DualPlaneHeteroClusterScattered(topology_params)
+        elif topology_params.name == "TwoPodRail":
+            return TwoPodRail(topology_params)
+        elif topology_params.name == "TwoPodRailHostBound":
+            return TwoPodRailHostBound(topology_params)
+        elif topology_params.name == "NestedCluster":
+            return NestedCluster(topology_params)
         else:
             raise NotImplementedError(
                 f"Input topology {topology_params.name} not implemented")
@@ -232,6 +287,69 @@ class TECCLSolver(object):
                     lower_bound = mid
         return epoch_result_schedule_solver
     
+    def solve_hierarchy(self, start: float) -> Dict:
+        """
+            Solves the collective LEVEL BY LEVEL instead of as one flat problem, and writes the
+            result to the same place the flat path does.
+
+            Everything hierarchy-specific stays inside this method: what comes back from
+            solve_hierarchical is an ordinary flat schedule on the fine topology, so the output
+            file means exactly what it means in the flat mode and ncclize needs no hierarchy
+            awareness. The side artifacts (coarse schedule, identities, intra) land next to it
+            under Schedules/ so a bad run can be diagnosed without re-solving.
+        """
+        from teccl.hierarchy import ring_solve
+        from teccl.hierarchy.solve import solve_hierarchical, write_side_outputs
+
+        user_input = self.user_input
+        instance = user_input.instance
+        topology = self.topology_obj
+        self._require_hierarchy()
+
+        if instance.intra_algo:
+            # Read through ring_solve.intra_algo() everywhere, so assigning the module global is
+            # how a caller selects the base-case algorithm. Validate it here rather than letting
+            # it raise from inside the recursion, several levels deep.
+            ring_solve.INTRA_ALGO = instance.intra_algo
+        algo = ring_solve.intra_algo()
+
+        prefix = instance.hierarchy_prefix or \
+            f"{user_input.topology.name}_{instance.collective.name.lower()}"
+        if algo != ring_solve.ALGO_CROSSBAR:
+            # Tag the non-default algorithm into the artifact names so an A/B cannot silently
+            # overwrite its own baseline.
+            prefix = f"{prefix}_{algo}"
+
+        # num_chunks means the same thing in both modes: chunks per source per destination on the
+        # FINE topology. The flat path scales alltoall up by the participating-GPU count inside
+        # get_solver; the hierarchical path reaches build_demand directly, so scale it here.
+        num_chunks = instance.num_chunks
+        if instance.collective == Collective.ALLTOALL:
+            num_chunks *= (len(topology.capacity) - len(topology.switch_indices)
+                           - len(topology.passive_indices))
+
+        level_input = copy.deepcopy(user_input)
+        # Levels are flat solves; without this the root level would recurse into this method again.
+        level_input.instance.hierarchical = False
+        # Every level solves through TECCLSolver, and the root level would otherwise write its
+        # COARSE schedule over the user's output file -- which has to hold the flat one.
+        level_input.instance.schedule_output_file = f"Schedules/{prefix}_coarse.json"
+
+        info, solution = solve_hierarchical(
+            topology, level_input, instance.collective, num_chunks,
+            prefix=prefix, debug=instance.debug, level_chunk=instance.level_chunk)
+
+        if instance.hierarchy_side_outputs and solution.resolution is not None:
+            write_side_outputs(solution.resolution, solution.flows, prefix)
+
+        output_file = instance.schedule_output_file or f"Schedules/{prefix}_flat.json"
+        info["Solver_Time"] = time() - start
+        pathlib.Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_file, 'w+') as f:
+            f.write(json.dumps(info, indent=2, sort_keys=True))
+        print(f'Schedule written to {output_file}')
+        return info
+
     def solve(self):
         """
             Main function that first finds a feasible collective finish time to estimate the number of epochs required
@@ -246,6 +364,11 @@ class TECCLSolver(object):
             logging.basicConfig(format='%(asctime)s %(message)s',
                                 datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.DEBUG, filename=user_input.instance.debug_output_file)
 
+        if user_input.instance.hierarchical:
+            # The level-by-level path owns its own epoch sizing (each level derives its own from
+            # its own chunk), so neither the feasible search nor get_schedules applies.
+            self.solve_hierarchy(start)
+            return
 
         if user_input.instance.num_epochs == -1:
             # Search for a feasible time to estimate the number of epochs
@@ -263,6 +386,9 @@ class TECCLSolver(object):
             output_file = user_input.instance.schedule_output_file
             best_epochs = min(epoch_result_schedule_solver.keys())
             solver = epoch_result_schedule_solver[best_epochs]["solver"]
+            # Expose the solved formulation (per_chunk_flow_paths populated) for hierarchical
+            # post-processing, e.g. teccl.hierarchy.reconstruct.resolve_identities.
+            self.best_solver = solver
             if user_input.instance.schedule_output_file == "":
                 output_file = f'{user_input.topology.name}_{solver.num_nodes}-nodes_{solver.num_chunks}-chunks_{user_input.topology.chunk_size}-chunksize_{solver.solver_name}_{timestamp}.json'
             epoch_result_schedule_solver[best_epochs]["schedule"][1]["Solver_Time"] = time(

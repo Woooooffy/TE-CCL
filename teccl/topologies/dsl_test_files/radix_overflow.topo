@@ -1,0 +1,9 @@
+// Fixture: 3 cables into a 2-port switch. Must fail at construction, not emit a port the part
+// does not have.
+module main() {
+    node sw type=switch radix=2;
+    for g in (0, 2) {
+        node gpu{g} type=gpu;
+        link gpu{g} sw bandwidth=25[GBps] latency=700[ns];
+    }
+}

@@ -262,18 +262,18 @@
     },
     "InstanceParams": {
         "collective": 1,
-        "num_chunks": 2,
+        "num_chunks": 1,
         "epoch_type": 1,
         "epoch_duration": -1,
         "num_epochs": -1,
         "alpha_threshold": 0.1,
         "switch_pipeline": true,
-				"switch_copy": false,
-        "debug": true,
+        "switch_copy": false,
+        "debug": false,
         "debug_output_file": "logs/debug.txt",
-        "objective_type": 2,
+        "objective_type": 5,
         "solution_method": 1,
         "symmetry": true,
-        "schedule_output_file": "teccl/examples/schedules/moe_node_dense_multipath_allgather_schedule_2chunks.json"
+        "schedule_output_file": "teccl/examples/schedules/moe_node_dense_multipath_allgather_schedule.json"
     }
 }

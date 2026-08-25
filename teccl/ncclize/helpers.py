@@ -135,16 +135,23 @@ def build_gpu_epoch_view(steps_in_order, sorted_epochs, num_nodes,
 
 
 def check_epoch_ordering_feasibility(view: GpuEpochView) -> List[OrderingViolation]:
-    """Flag every send with no same-GPU predecessor to be paced against.
+    """Flag every send with no same-GPU SEND in the preceding epoch to pace against.
 
-    For each GPU, a send in epoch N is only realizable at its intended start
-    time if that GPU also has an op in epoch N-1 to gate it against -- either a
-    send, or a recv arriving in N-1 (ncclize can make the send depend on that
-    recv). Recvs are placed at their arrival epoch by build_gpu_epoch_view
-    precisely so this check sees them. A send whose immediately-preceding epoch
-    is idle (NONE) for that GPU has no such gate and will instead fire as early
-    as the runtime allows, so it is reported here (see
-    enforce_send_epoch_ordering and the cross-GPU realizability gap).
+    This is the FLAT (single-level) realizability check; the caller runs it only for flat
+    schedules. A hierarchical schedule interleaves per-level epoch grids on one fine axis, so its
+    network-layer pacing is checked per-layer in the stitch instead.
+
+    Pacing is realized by teccl_ncclize._finish_before_start_gates, which gates a send on the
+    latest paced event landing at or before it starts. Two clocks can tick at epoch N:
+
+      P2 -- a SEND on the same GPU in epoch N-1, which occupies the link through N-1 and frees it
+        at N. Realized as a netdepid/netdeps edge (the proxy withholds the isend).
+      P3 -- a RECV ARRIVING at N. This view already places recvs at their arrival epoch, so an
+        arrival at N is a recv step recorded at N. Realized as a depid/deps edge, which the
+        kernel discharges when the proxy marks the recv slot filled.
+
+    A send in epoch N whose GPU has neither is unpinned: it fires as early as the runtime allows
+    and is reported here.
 
     The first epoch in the range is never a violation: own-chunk sends there
     legitimately start at t=0.
@@ -158,7 +165,9 @@ def check_epoch_ordering_feasibility(view: GpuEpochView) -> List[OrderingViolati
             if not sends:
                 continue
             prev_epoch = view.epochs[i - 1]
-            if not view.steps(gpu, prev_epoch):
+            prev_has_send = any(s.is_send for s in view.steps(gpu, prev_epoch))
+            arrives_now = any(not s.is_send for s in view.steps(gpu, epoch))
+            if not prev_has_send and not arrives_now:
                 violations.append(
                     OrderingViolation(gpu, epoch, prev_epoch, sends))
     return violations
@@ -173,14 +182,15 @@ def warn_epoch_ordering_violations(
     if not violations:
         return
     print(f'WARNING: {len(violations)} send(s) in this schedule cannot be '
-          f'realized as-is -- each starts in an epoch whose immediately '
-          f'preceding epoch has no send and no recv arrival for the same GPU, '
-          f'so the generated MSCCL schedule has no same-GPU op to gate it '
+          f'realized as-is -- each starts in an epoch N where the same GPU has '
+          f'neither a send in N-1 to free its link (P2) nor a recv arriving in N '
+          f'(P3), so the generated MSCCL schedule has no same-GPU op to gate it '
           f'against and it will fire early on real hardware:', file=stream)
     for v in violations:
         detail = ', '.join(s.render() for s in v.sends)
         print(f'  - GPU {v.gpu}: epoch {v.epoch} [{detail}] '
-              f'preceded by NONE at epoch {v.prev_epoch}', file=stream)
+              f'-- no send at epoch {v.prev_epoch}, no arrival at epoch {v.epoch}',
+              file=stream)
 
 
 def format_gpu_epoch_view(
@@ -235,15 +245,21 @@ def format_gpu_epoch_view(
             lines.append(f'  epoch {epoch}: {body}{marker}')
         lines.append('')
 
-    n = len(violations) if violations is not None else 0
-    lines.append(f'## Feasibility check: {n} violation(s)')
-    if violations:
-        for v in violations:
-            detail = ', '.join(s.render() for s in v.sends)
-            lines.append(f'  - GPU {v.gpu}, epoch {v.epoch} [{detail}] '
-                         f'preceded by NONE at epoch {v.prev_epoch}')
-    elif violations is not None:
-        lines.append('  (schedule is realizable under the same-GPU pacing model)')
+    if violations is None:
+        # The flat-axis check was deliberately not run (hierarchical schedule): the flattened fine
+        # axis interleaves per-level epoch grids, so "preceding epoch is idle" does not mean
+        # "unpaced" here. Network pacing is reported per-layer by the stitch instead.
+        lines.append('## Feasibility check: not run on the flattened axis (hierarchical schedule; '
+                     'network pacing is checked per-layer in the stitch)')
+    else:
+        lines.append(f'## Feasibility check: {len(violations)} violation(s)')
+        if violations:
+            for v in violations:
+                detail = ', '.join(s.render() for s in v.sends)
+                lines.append(f'  - GPU {v.gpu}, epoch {v.epoch} [{detail}] '
+                             f'preceded by NONE at epoch {v.prev_epoch}')
+        else:
+            lines.append('  (schedule is realizable under the same-GPU pacing model)')
     lines.append('')
     return '\n'.join(lines)
 

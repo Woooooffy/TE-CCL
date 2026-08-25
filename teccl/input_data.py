@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import List, Tuple, Union
 
 
 @dataclass
@@ -10,6 +11,18 @@ class TopologyParams:
     alpha: tuple = (0 ,0) # (link alpha, switch alpha)
     side_length: int = 4 # Only for Mesh and Torus topology
     passive_node_indices: tuple = ()  # GPU indices present (can forward) but excluded from this collective's demand
+    # Path to a `.topo` file in the topology DSL (teccl/topologies/topology-dsl-frontend). When
+    # set it SELECTS the topology -- TECCLSolver.get_topology builds a DslTopology from the file
+    # instead of looking `name` up among the hand-written classes, and `name` stays a free-form
+    # label (it is what output filenames are built from). Empty => the named built-in.
+    topo_file: str = ""
+    # Switch indices whose forwarding is externally programmable, i.e. the switches ncclize is
+    # allowed to emit a routing table for. None => use the topology class's default (see
+    # Topology.default_programmable_switch_indices, which permits every switch). Set it to
+    # restrict emission to e.g. the network switches only, leaving self-routing fabrics such as
+    # intra-node NVSwitches out of the table. Does NOT affect the solve -- routing/capacity still
+    # use every switch; it only scopes the emitted switch program.
+    programmable_switch_indices: tuple = None
 
 @dataclass
 class GurobiParams:
@@ -35,11 +48,34 @@ class ObjectiveType(Enum):
         2 - TOTAL_DEMAND - Gives a reward starting from the epoch all the demands are met.
         3 - PAPER - For each demand met, gives a reward starting from the epoch the demand is met.
         4 - ASTAR - Motivate the solver to make as much progress towards the goal of satisfying all demands as possible in each epoch.
+        5 - TOTAL_DEMAND_MIN_SWITCH_HOPS - Identical reward to TOTAL_DEMAND, plus a tiny per-hop
+            penalty on flow crossing switch->switch links (e.g. leaf<->spine). Among solutions
+            that finish in the same epoch (the TOTAL_DEMAND term dominates), this makes the
+            solver prefer routes with fewer switch relays -- e.g. a direct leaf hop over a spine
+            detour. The penalty is scaled far below the completion reward so it acts purely as a
+            tie-breaker and never trades completion time for fewer hops.
+        6 - LEXICOGRAPHIC - A three-tier hierarchical (lexicographic) objective solved with
+            Gurobi's multi-objective support, in strictly decreasing priority:
+              tier 1 (latency)      minimize the demand-weighted completion time,
+              tier 2 (host relay)   among the tier-1 optima, minimize the volume that a GPU
+                                    forwards on behalf of another GPU (relay through a host
+                                    burns that host's link bandwidth and its copy engines),
+              tier 3 (switch chain) among those, minimize the number of switch hops the volume
+                                    takes (flow entering a switch), i.e. prefer the shortest
+                                    switch chain: a direct link over a one-switch path, and a
+                                    one-switch path over a leaf->spine->leaf detour.
+            Unlike option 5 -- which folds the switch-hop term into ONE objective with a hand
+            tuned GAMMA and so depends on that constant being small enough -- the tiers here
+            are enforced by the solver: a lower tier can never degrade a higher one by more
+            than the tolerance you allow it (InstanceParams.objective_latency_rel_tol /
+            objective_relay_rel_tol, both 0 by default = pure lexicographic).
     """
-    BINARY_USED_EPOCHS = 1 
+    BINARY_USED_EPOCHS = 1
     TOTAL_DEMAND = 2
     PAPER = 3
     ASTAR = 4
+    TOTAL_DEMAND_MIN_SWITCH_HOPS = 5
+    LEXICOGRAPHIC = 6
 
 class Collective(Enum):
     ALLGATHER = 1
@@ -71,6 +107,43 @@ class EpochType(Enum):
     SLOWEST_LINK = 2    
     USER_INPUT = 3
 
+
+def resolve_epoch_policy(instance: "InstanceParams", depth: int = 0) -> Tuple["EpochType", float]:
+    """
+        The (epoch_type, epoch_duration) pair that applies at hierarchy level `depth`.
+
+        Both fields accept either a SCALAR -- the same policy at every level, which is what every
+        flat solve and every pre-existing input file uses -- or a LIST indexed by level depth, so a
+        hierarchical solve can size each level's epoch differently. Depths past the end of a list
+        take its LAST entry, so `[a, b]` means "a at the root, b everywhere below", and a 1-element
+        list is identical to the scalar.
+
+        WHY A LEVEL WANTS ITS OWN EPOCH. The epoch is the model's time quantum, and the makespan is
+        always a whole number of them, so the epoch decides how much is lost to the final ceiling.
+        FASTEST_LINK/SLOWEST_LINK size it from a LINK, which on a tapered topology is unrelated to
+        the CUT that actually binds: on TwoPodRail the fastest coarse link is a 50 GB/s spine
+        uplink while the binding constraint is the 4-leaf spine cut, and the mismatch costs a
+        whole ceiling epoch (5.33 -> 6, 11%). Pinning the root's epoch so the cut bound lands on
+        an integer recovers that -- but the same value would be badly wrong one level down, where
+        the fabric is a 900 GB/s NVSwitch. Hence per-level, not global.
+
+        The two fields are resolved TOGETHER at one depth: mixing a scalar epoch_type with a list
+        epoch_duration is allowed (the scalar simply applies at every depth), but the pair handed
+        back always comes from the same level.
+    """
+    def at(value, name):
+        if not isinstance(value, (list, tuple)):
+            return value
+        if not value:
+            raise ValueError(f"InstanceParams.{name} is an empty list; give a scalar or at least "
+                             f"one entry")
+        return value[min(depth, len(value) - 1)]
+    epoch_type = at(instance.epoch_type, "epoch_type")
+    epoch_duration = at(instance.epoch_duration, "epoch_duration")
+    if not isinstance(epoch_type, EpochType):
+        epoch_type = EpochType(epoch_type)
+    return epoch_type, float(epoch_duration)
+
 class SolutionMethod(Enum):
     """
         1 - One shot - The optimization is run till the time limit is reached or it finds a solution within the specified mip gap
@@ -85,8 +158,14 @@ class InstanceParams:
     formulation: Formulation = None # Solver formulation (None = per-collective default: ALLGATHER->MILP, everything else->LP)
     root: int = 0 # Root GPU index for rooted collectives (GATHER destination / BROADCAST source); ignored otherwise
     num_chunks: int = 1 # Number of chunks to be transferred from each node to each other node
-    epoch_type: EpochType = EpochType.FASTEST_LINK 
-    epoch_duration: float = -1
+    # Scalar (one policy for the whole solve) or a LIST indexed by hierarchy level depth, so each
+    # level can size its own epoch; depths past the end take the last entry. See
+    # resolve_epoch_policy, which is the ONLY place either field should be read. Note epoch_duration
+    # still WINS over epoch_type at a given level: a level whose resolved duration is not -1 uses it
+    # and its epoch_type is ignored, so the list form of both is normally written in step, e.g.
+    # epoch_type [USER_INPUT, FASTEST_LINK] with epoch_duration [0.0133, -1].
+    epoch_type: Union[EpochType, List[EpochType]] = EpochType.FASTEST_LINK
+    epoch_duration: Union[float, List[float]] = -1
     epoch_multiplier: int = 1   # Multiplier for epoch duration (helpful for epoch_type != -1)
     num_epochs:int = -1         # Number of epochs to be run (-1 to automatically figure out the number of epochs)
     epsilon: float = pow(10, -1)
@@ -97,12 +176,59 @@ class InstanceParams:
     debug: bool = False # If True, prints debug information
     debug_output_file: str = "" # If debug is True, prints debug information to this file
     objective_type: ObjectiveType = ObjectiveType.PAPER # The objective function to be used (3 - The objective function used in the paper)
+    # Only used by ObjectiveType.LEXICOGRAPHIC: how much a LOWER priority tier is allowed to
+    # degrade a HIGHER one, as a fraction of that tier's optimal value (Gurobi ObjNRelTol).
+    # 0.0 == pure lexicographic (a tier is fixed at its exact optimum before the next is
+    # optimized). Give latency a small slack (e.g. 0.01) when you would accept 1% more
+    # completion time to buy a materially less relay-heavy / shorter-chained routing.
+    objective_latency_rel_tol: float = 0.0   # slack on tier 1 (latency) for tiers 2-3
+    objective_relay_rel_tol: float = 0.0     # slack on tier 2 (host relay) for tier 3
     solution_method: SolutionMethod = SolutionMethod.ONE_SHOT
     schedule_output_file: str = "" # If not empty, the schedule is written to this file. Default is "Topology-Chunks-chunksize-timestamp.json"
     lower: bool = False # If true will use the lowering code from Meghan to lower the input.
     lower_xml: str = "" # If not empty, the XML is written to this file. Default is "Topology-Chunks-chunksize-timestamp.xml"
     warmstart: str = "" # If not empty, the warmstart file is used to warmstart the optimization.
-    symmetry: bool = False # If true, nodes that are given as symmetric are constrainted to have same number of total flows. 
+    symmetry: bool = False # If true, nodes that are given as symmetric are constrainted to have same number of total flows.
+    # --- Hierarchical solve (teccl.hierarchy.solve.solve_hierarchical) -------------------------
+    # If True, the topology is solved LEVEL BY LEVEL (abstract -> solve -> lower -> recurse) instead
+    # of as one flat problem. Requires a topology that declares cells (Topology.build_hierarchy).
+    # The output is still an ordinary flat schedule on the fine topology, written to
+    # schedule_output_file exactly as in the flat mode, so everything downstream (ncclize) is
+    # unchanged. Every other InstanceParams field keeps its meaning and is applied at each level:
+    # formulation/objective_type/symmetry/switch_copy configure the per-level solve, and num_chunks
+    # is still per source per destination on the FINE topology.
+    hierarchical: bool = False
+    # Base-case algorithm for a crossbar cell: "crossbar" (default) or "ring". None leaves
+    # teccl.hierarchy.ring_solve.INTRA_ALGO alone, i.e. honors $TECCL_INTRA_ALGO.
+    intra_algo: str = None
+    # Force the root level's chunk unit g instead of taking the GCD of its coarse demands. Set it
+    # to 1 to reproduce the pre-coarsening behaviour (the drivers' `nocoarsen` A/B); None = derive.
+    level_chunk: int = None
+    # Base name for the hierarchy's side artifacts under Schedules/ (_coarse, _identities, _intra).
+    # Empty => "{topology name}_{collective}", plus an "_{algo}" tag when the intra-cell algorithm
+    # is not the default, so a ring run never overwrites its crossbar baseline.
+    hierarchy_prefix: str = ""
+    # If True, also write Schedules/{prefix}_{identities,intra}.json: the resolved inter-cell
+    # traffic and the assembled sub-level schedule. Nothing consumes them; they are how a bad run
+    # is diagnosed without re-running the (expensive) coarse solve.
+    hierarchy_side_outputs: bool = False
+    # Which hierarchy level this instance is being solved at, 0 = root. Set by the hierarchy
+    # (hierarchy.solve.gurobi_level_solver) from Subproblem.depth, NOT by users -- it is how the
+    # per-level list forms of epoch_type / epoch_duration select their entry. A flat solve leaves
+    # it at 0, where a list of length 1 and a scalar behave identically.
+    level_depth: int = 0
+    # Override for teccl.hierarchy.reconstruct.MAX_DENOM (default 64), the largest denominator the
+    # identity-resolution grid represents. None => the module default. COUPLED to GurobiParams.
+    # feasibility_tol, not independent: grid_resolution = 1/(2*max_denom^2), so raising this makes
+    # the grid finer and SHRINKS how coarse feasibility_tol may be before snap_tolerance refuses
+    # (see reconstruct.snap_tolerance) -- the default feasibility_tol=1e-4 is only legal up to
+    # max_denom~70. Raise this ONLY on an instance whose feasibility_tol is tight enough to still
+    # clear that check (reconstruct.snap_tolerance raises at construction time if not), e.g. a
+    # topology with an uneven fine-to-coarse grouping (a scattered host's 6/5/5 GPUs-per-leaf
+    # split) whose proportional egress split (reconstruct._build_slots) drives a denominator, like
+    # 5^3=125, past the default 64. Per-instance rather than global because most inputs run at the
+    # default feasibility_tol=1e-4, which a global raise would break outright (not just make thin).
+    max_denom: int = None
     
 @dataclass
 class UserInputParams:

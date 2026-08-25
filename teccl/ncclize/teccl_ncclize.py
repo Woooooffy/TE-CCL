@@ -15,6 +15,7 @@ import argparse
 import bisect
 import json
 import math
+import os
 import re
 import sys
 from collections import defaultdict
@@ -30,10 +31,24 @@ MAX_DENOM = 64
 # unbounded M would blow up. Raise clearly instead.
 MAX_M = 128
 
+# EXPERIMENTAL: P4 remote pacing gates. A send that neither of the LOCAL clocks (P2/P3) can pin
+# to its epoch is instead gated on a paced delivery into its DESTINATION GPU -- the remote op
+# holding the network capacity this send is waiting for -- realized as remotedep/remotedeps on
+# the send and remotenotify on the remote recv. Off by default because it emits XML attributes a
+# stock runtime does not read; set TECCL_REMOTE_PACING_GATES=1 to derive them.
+REMOTE_PACING_GATES = os.environ.get('TECCL_REMOTE_PACING_GATES', '0').lower() not in (
+    '0', '', 'false', 'no', 'off')
+
+try:                                  # sibling module; this file runs both as a script
+    from port_split import unqualify_path_key                            # noqa: E402
+except ImportError:                   # ... and as part of the teccl package
+    from teccl.ncclize.port_split import unqualify_path_key
+
 FLOW_RE = re.compile(
     r'Chunk (\d+) from (\d+) traveled over (\d+)->(\d+)'
     r'(?:\s+with volume\s+(?P<volume>[\d.]+))?'
     r'\s+in epoch (?P<epoch>\d+)'
+    r'(?:\s+at rate\s+(?P<rate>[\d.eE+-]+))?'
     r'(?:\s+via switches\s+(?P<switches>[\d\s\->]+))?$'
 )
 
@@ -49,10 +64,17 @@ DEMAND_RE = re.compile(
 # FLOW_RE's suffix, minus the "Chunk C from O traveled over " prefix. The
 # "with volume V" token is optional so both the older allgather MILP format
 # (no volume) and the LP/alltoall format parse with one regex.
+#
+# "at rate R" (GB/s) is likewise optional. A rate is emitted by the solver level
+# that produced the flow -- it knows its own epoch duration and capacity model --
+# rather than being re-derived here from a single global epoch duration. A flow
+# without one is deliberately unpaced (e.g. the hierarchical solver's intra-cell
+# NVLink hops, which carry ordering but are not pinned to the epoch grid).
 PATH_SEGMENT_RE = re.compile(
     r'(\d+)->(\d+)'
     r'(?:\s+with volume\s+(?P<volume>[\d.]+))?'
     r'\s+in epoch (?P<epoch>\d+)'
+    r'(?:\s+at rate\s+(?P<rate>[\d.eE+-]+))?'
     r'(?:\s+via switches\s+(?P<switches>[\d\s\->]+))?$'
 )
 
@@ -70,7 +92,7 @@ def _parse_switch_path(switches):
     return tuple(int(s.strip()) for s in switches.split('->'))
 
 
-def parse_flows(schedule):
+def parse_flows(schedule, port_qualify=None):
     """Group TE-CCL's '7-Flows' entries by epoch, remapping GPU ids to a dense
     0-indexed range.
 
@@ -83,8 +105,7 @@ def parse_flows(schedule):
     assuming any fixed offset.
 
     Returns (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
-    switch_rank_map, flow_completion_steps, sorted_epochs,
-    flow_completion_epochs):
+    switch_rank_map, sorted_epochs, flow_completion_epochs, gpu_rank_map):
     - steps_in_order is a list of lists of (global_chunk_id, src, dst)
       0-indexed tuples, one list per non-empty epoch, in increasing epoch
       order.
@@ -93,10 +114,14 @@ def parse_flows(schedule):
       true epoch axis -- including gaps where a whole epoch is globally empty
       and thus dropped from steps_in_order.
     - flow_completion_epochs maps (step_idx, global_chunk_id, src, dst) -> the
-      raw epoch by which dst actually holds the chunk, the raw-epoch counterpart
-      of flow_completion_steps. Used to place a recv at its arrival epoch in the
-      per-GPU debug view (a relayed recv can land later than, and even after the
-      last, flow-start epoch).
+      raw epoch by which dst actually holds the chunk. For a flow relayed through
+      switches, "in epoch N" in a 7-Flows line is only the *start* epoch (see
+      chunk_flow_path_to_string() in teccl/solvers/allgather.py), so a relayed
+      flow's true completion can be several epochs later; it is read from the
+      "8-Chunk paths" section's "met by epoch E" rather than assumed to be one
+      epoch per hop, which only holds at zero link latency. Used to place a recv
+      at its arrival epoch in the per-GPU debug view -- diagnostics only, it does
+      not influence the emitted operation order.
     - flow_path_keys maps (step_idx, global_chunk_id, src, dst) -> path key,
       where step_idx is the index into steps_in_order (not the raw epoch
       number) and the path key is whatever _parse_switch_path() returned for
@@ -104,34 +129,12 @@ def parse_flows(schedule):
       downstream to avoid merging chunks that took different switch paths
       into a single send op.
     - switch_rank_map maps each raw switch id appearing in any path key to a
-      dense 0-indexed id, the same way rank_map does for GPU ids.
-    - flow_completion_steps maps (step_idx, global_chunk_id, src, dst) -> a
-      dense step-domain value (comparable to step_idx) representing the true
-      epoch by which dst actually has the data, as opposed to step_idx which
-      only reflects the epoch the transfer started. For a flow relayed
-      through switches, "in epoch N" in a 7-Flows line is only the *start*
-      epoch (see chunk_flow_path_to_string() in teccl/solvers/allgather.py);
-      each switch hop costs at least one additional epoch of store-and-
-      forward latency, so a relayed flow's true completion can be several
-      epochs later than step_idx implies. That true completion is recorded
-      separately, per (destination, chunk, origin) demand, in the schedule's
-      "8-Chunk paths" section as "met by epoch E". This is derived from that
-      section rather than assumed to be "1 epoch per hop", since that only
-      holds when the topology's link-latency parameters are zero.
-
-      Known limitation: this value only corrects ordering *across* threadblock
-      groups (e.g. an unrelated send no longer waits behind a switch-relayed
-      recv it shares a threadblock with). It does not, and cannot, reorder
-      multiple recvs that already share one (gpu, peer, channel) -- switches
-      and per-flow paths are invisible to TeCCLTopology (see its docstring),
-      so two flows collapsed onto the same virtual src-dst edge keep whatever
-      relative order their raw start epochs gave them, regardless of whether
-      one of them actually completes later than the other because it took a
-      longer/more congested switch path. That's a pre-existing gap in this
-      topology abstraction, not something introduced or fixable by this
-      value -- properly addressing it would require ncclize to reason about
-      per-flow path/congestion information when deciding intra-channel order,
-      which it does not do today.
+      dense 0-indexed id, the same way gpu_rank_map does for GPU ids.
+    - gpu_rank_map maps each raw GPU id to its dense id. Returned rather than
+      discarded because the switch forwarding table has to name the PORT a route
+      leaves a switch on, and the last hop's port is the one facing the
+      destination GPU -- which is a port lookup on a RAW node id, so the dense
+      id in the manifest is not enough to find it.
     """
     parsed = []
     raw_ids = set()
@@ -148,6 +151,12 @@ def parse_flows(schedule):
         raw_ids.update((origin, src, dst))
         if path_key:
             switch_raw_ids.update(path_key)
+        # Port qualification happens HERE, not on the way out, so that every downstream key
+        # built from a path key -- flow_path_keys, paced_sends and therefore the pacing gates --
+        # agrees. Rewriting flow_path_keys after the fact would leave the gate manifest keyed on
+        # the unqualified form and silently drop every gate.
+        if port_qualify is not None:
+            path_key = port_qualify(src, dst, path_key, origin, subchunk, epoch)
         max_subchunk = max(max_subchunk, subchunk)
         parsed.append((epoch, subchunk, origin, src, dst, path_key))
 
@@ -179,13 +188,11 @@ def parse_flows(schedule):
     # demand entry for the same chunk (it needs the chunk for itself too),
     # so "last segment of every demand" covers every hop appearing in
     # 7-Flows, regardless of relay-chain length.
-    # flow_completion_epochs mirrors flow_completion_steps but keeps the *raw*
-    # completion epoch (not the dense step-domain value). It lets the per-GPU
+    # flow_completion_epochs keeps the raw completion epoch. It lets the per-GPU
     # debug view place each recv at the epoch the chunk actually *arrives*,
     # rather than the epoch its flow started -- a switch-relayed recv can land
-    # several epochs after it was sent, and raw completion epochs (unlike the
-    # bisected dense value) can even exceed the last flow-start epoch.
-    flow_completion_steps = {}
+    # several epochs after it was sent, and can even exceed the last flow-start
+    # epoch.
     flow_completion_epochs = {}
     for demand_key, path_segments in schedule['8-Chunk paths'].items():
         dm = DEMAND_RE.match(demand_key)
@@ -216,17 +223,12 @@ def parse_flows(schedule):
 
         chunk_id = rank_map[origin_raw] * num_subchunks + subchunk
         step_idx = epoch_to_step_idx[hop_epoch]
-        completion_step = bisect.bisect_left(sorted_epochs, completion_epoch)
-        flow_completion_steps[
-            (step_idx, chunk_id, rank_map[hop_src_raw], rank_map[hop_dst_raw])
-        ] = completion_step
         flow_completion_epochs[
             (step_idx, chunk_id, rank_map[hop_src_raw], rank_map[hop_dst_raw])
         ] = completion_epoch
 
     return (num_nodes, num_subchunks, steps_in_order, flow_path_keys,
-            switch_rank_map, flow_completion_steps, sorted_epochs,
-            flow_completion_epochs)
+            switch_rank_map, sorted_epochs, flow_completion_epochs, rank_map)
 
 
 def _segment_volume(match):
@@ -263,15 +265,28 @@ def detect_collective(schedule):
 
 def is_lp_format(schedule):
     """Whether "8-Chunk paths" is in the LP (continuous-flow) format rather than
-    the allgather MILP format.
+    the MILP format.
 
-    This is orthogonal to the collective identity: the LP now solves several
-    collectives (alltoall/allgather/gather/broadcast), all sharing the same
+    The parser axis is the FORMULATION, not the collective: the LP emits a
     *nested* per-demand path structure (a list of paths, each a list of
-    [epoch, segment] pairs) and fractional volumes, while the allgather MILP
-    emits a *flat* list of segment strings. Parser choice keys on this; the
-    taccl collective that gets built keys on detect_collective().
+    [epoch, segment] pairs) with fractional volumes, while the MILP emits a
+    *flat* list of segment strings. Those two formats happened to correlate with
+    the collective only because scheduler._resolve_formulation defaults
+    ALLGATHER -> MILP and everything else -> LP; the hierarchical path breaks
+    that correlation by emitting an LP-format allgather.
+
+    So this reads the explicit "0-Formulation" field (Formulation.LP/MILP, see
+    teccl/input_data.py) and falls back to the structural nested-vs-flat sniff
+    only for schedules that predate the field. The taccl collective that gets
+    built is a separate axis and keys on detect_collective().
     """
+    explicit = schedule.get('0-Formulation')
+    if explicit:
+        name = str(explicit).rsplit('.', 1)[-1].upper()   # 'LP' | 'Formulation.LP'
+        if name not in ('LP', 'MILP'):
+            raise ValueError(
+                f"Unknown '0-Formulation' value {explicit!r}; expected 'LP' or 'MILP'.")
+        return name == 'LP'
     for paths in schedule['8-Chunk paths'].values():
         if not paths:
             continue
@@ -309,7 +324,206 @@ def _compute_subdivision(schedule):
     return M
 
 
-def parse_flows_lp(schedule, collective_name):
+def _send_uplink(key):
+    """The physical outgoing PORT a send op contends for, from its key
+    (step, src, dst, path_key).
+
+    A send leaves its source GPU over that GPU's uplink to the first switch on its
+    route, so the contended link is (src, first_switch); two sends from one GPU that
+    enter the fabric at DIFFERENT first switches use different uplinks and do not
+    compete. A send with no switch route (path_key is None -- a direct hop) is keyed
+    by (src, None, 0); those all share one bucket, which is the safe conservative
+    grouping.
+
+    The key must be DECONSTRUCTED, not indexed. A port-qualified key (port_split) is
+    ((switches...), (ports...)), so path_key[0] on one of those is the whole switch
+    tuple rather than the first switch -- which would give every distinct ROUTE its
+    own contention pool and stop sends that really do share an uplink from pacing
+    against each other. unqualify_path_key is the one place that knows the shape.
+
+    When cables ARE present the first hop's cable joins the identity, because that
+    is the physically contended thing: two sends leaving one GPU on different cables
+    of a split uplink do not compete. On an unsplit link the cable is 0 for every
+    send, so the grouping is exactly what it was.
+
+    Note this is the CABLE index and not a port number (Topology.port_map). It has
+    to be: hop 0 leaves a GPU, and a GPU carries no port map, so every cable of a
+    split uplink would collapse to one None and the pool would over-serialize.
+    """
+    _step, src, _dst, path_key = key
+    switches, cables = unqualify_path_key(path_key)
+    first_switch = switches[0] if switches else None
+    first_cable = cables[0] if cables else 0
+    return (src, first_switch, first_cable)
+
+
+def _recv_downlink(key, mirrored=False):
+    """The physical INGRESS link a transfer lands on, from its key.
+
+    The mirror of _send_uplink at the far end: a transfer arrives at its destination GPU over
+    that GPU's downlink from the LAST switch on its route, so the contended link is
+    (last_switch, last_cable, receiver). Used only to break ties in the P4 remote pool toward
+    the arrival that shares the gated send's own ingress link -- the link that is actually
+    saturated when a receiver-side bottleneck is what holds the send back.
+
+    `mirrored` says the key is a RECV mirror (step, dst, src, path_key), whose GPU field is
+    already the receiver; a plain send key (step, src, dst, path_key) names it third. Like
+    _send_uplink the key must be deconstructed, never indexed: a port-qualified path_key is
+    ((switches...), (cables...)).
+    """
+    _step, gpu, peer, path_key = key
+    switches, cables = unqualify_path_key(path_key)
+    last_switch = switches[-1] if switches else None
+    last_cable = cables[-1] if cables else 0
+    return (last_switch, last_cable, gpu if mirrored else peer)
+
+
+def _finish_before_start_gates(paced_sends, remote_gates=False):
+    """Derive pacing gate edges from per-send link-occupancy windows.
+
+    `paced_sends` maps a send op key (step_idx, src, dst, path_key) to its
+    (start_epoch, finish_epoch) window in FINE epochs, where finish = start +
+    volume/rate (how long the send occupies its outgoing link). Only flows the
+    producing level chose to PACE appear here, so every candidate below is pinned to
+    that level's epoch grid; unpaced intra-level hops carry ordering, not time, and
+    must never become a clock.
+
+    Each send S is gated on the latest paced event that lands at or before S starts,
+    drawn from two pools:
+
+      SEND pool (P2)  -- OTHER PACED SENDS FROM THE SAME GPU, timed by their
+        link-occupancy FINISH. A send completing is a rate-paced tick the GPU's proxy
+        observes, and that is all a clock has to be: the pool is per SOURCE GPU, not
+        per uplink. Grouping it per uplink -- "only the send that frees THIS link may
+        release S" -- describes link contention correctly but is the wrong rule for
+        pacing, and on a multi-uplink GPU (dual-plane, multi-rail) it throws away every
+        cross-uplink tick and leaves sends unpinned that the GPU could perfectly well
+        clock itself. The netdep carrier does not care which NIC the producer used: it
+        is an op-completion edge between two threadblocks on one GPU, which cross-peer
+        gates on a single uplink already are. A tie at equal finish still prefers a
+        producer on S's OWN uplink, which is the physically stronger claim (it frees the
+        link S needs, not just the clock).
+      RECV pool (P3)  -- paced deliveries INTO S's source GPU, timed by their ARRIVAL.
+        A send at epoch k whose GPU sent nothing that finishes at k has no send to wait on;
+        a recv landing exactly at k is then the only rate-paced clock tick available,
+        and gating on it pins S to k. This is what closes the residual the stitch
+        reports (flat_schedule.check_network_pacing) for a GPU that goes quiet on an
+        uplink for an epoch but is still receiving.
+
+    A recv is a paced send observed from the far end, so the RECV pool needs no new
+    data: a send (step, src, dst, path_key) finishing at t IS a delivery at `dst`
+    arriving at t, and the receiving op's mirror key is (step, dst, src, path_key).
+
+    Deriving the edge from finish/arrival-vs-start rather than step ORDER is what makes
+    it correct for two cases a plain sort gets wrong: two sends in the SAME epoch never
+    gate each other (a same-epoch P has finish > start_S, so it is not a candidate),
+    and a multi-epoch send does not serialize a later send that runs alongside its
+    tail on freed capacity (that P is excluded; the send that truly frees the link is
+    picked).
+
+    Ties prefer the SEND pool. A send-sourced gate is free -- it rides netdepid/netdeps
+    and costs no XML step -- while a recv-sourced one is a depid/deps edge that may cost
+    an expansion nop, so the recv pool is only reached for a send the uplink cannot pin.
+
+    A third pool is derived only when `remote_gates` is set (EXPERIMENTAL, P4):
+
+      REMOTE pool (P4) -- paced deliveries into S's DESTINATION GPU, timed by their
+        ARRIVAL. When neither local clock ticks at S's start, the thing S is really
+        waiting on is usually not on S's GPU at all: it is the remote op holding the
+        capacity S needs -- typically the ingress downlink of S's own receiver, which
+        is saturated in the preceding epoch (a receiver-side bottleneck no sender-side
+        clock can observe). Gating S on that arrival pins it, at the price of a
+        cross-GPU notification: the remote GPU's recv carries `remotenotify` back to
+        S's GPU and S carries `remotedep`/`remotedeps` ("wait for the i-th notification
+        from GPU k"). A remote edge is only emitted when it lands EXACTLY at S's start
+        AND no local candidate does -- a remote gate costs a notification, so it is
+        never spent to reproduce a pin a free local netdep already gives, nor on a
+        stale producer that would not pin S anyway. Among eligible arrivals a tie
+        prefers one sharing S's INGRESS link (same last switch), which is the link
+        actually contended.
+
+        Every send from one GPU due at one instant shares a SINGLE notification. An
+        arrival is a clock, and one tick per instant is all a clock owes: two sends
+        from g to k due at the same epoch are pinned equally well by either arrival
+        at k, so the per-consumer preference above is applied once per
+        (notifier, waiter, instant) group and every consumer in it takes that same
+        producer. Letting each consumer keep its own pick would emit two notifications
+        for one instant -- redundant traffic, and worse, the ONLY way one stream can
+        issue two notifications in a single step, which is precisely the case the
+        no-reordering assumption behind the ordinals does not cover. Collapsing here
+        means the numbering downstream never has to break such a tie.
+
+    Returns a list of (consumer_key, producer_key, kind) edges, kind being 'send',
+    'recv' or 'remote'. The kind picks the RUNTIME CARRIER and cannot be inferred from
+    the keys:
+    a recv key (step, dst, src, path_key) is indistinguishable from the key of a real
+    send on the reverse edge at the same step, which bidirectional traffic produces.
+    A 'send' edge orders one send behind another ON THE WIRE and is carried by
+    netdepid/netdeps, which the proxy thread enforces against the NIC. A 'recv' edge
+    is discharged the moment the proxy marks the recv slot filled -- exactly the event
+    depid/deps already encodes and the GPU kernel already waits on -- so it rides that
+    path instead. A 'remote' edge names a recv on ANOTHER GPU and rides
+    remotedep/remotedeps + remotenotify. See taccl_ncclize._realize_pacing_gates.
+    """
+    from collections import defaultdict as _dd
+    by_src = _dd(list)     # sending gpu -> [(finish, uplink, send key)]
+    arrivals = _dd(list)   # receiving gpu -> [(arrival_epoch, recv mirror key)]
+    for key, (start, finish) in paced_sends.items():
+        step, src, dst, path_key = key
+        by_src[src].append((finish, _send_uplink(key), key))
+        arrivals[dst].append((finish, (step, dst, src, path_key)))
+
+    edges = []
+    remote = []            # (consumer key, producer recv mirror key), canonicalized below
+    for key, (cstart, _cfin) in paced_sends.items():
+        csrc = key[1]
+        cuplink = _send_uplink(key)
+        # (time, kind_rank, uplink_rank, key), maximised: the latest-landing eligible
+        # producer. kind_rank breaks a tie at equal time toward the SEND pool (a netdep
+        # costs no XML step); uplink_rank then breaks a tie among sends toward S's own
+        # uplink, whose producer frees the very link S needs.
+        best = None
+        for pfin, puplink, pkey in by_src.get(csrc, ()):
+            if pkey == key or pfin > cstart:
+                continue
+            cand = (pfin, 1, 1 if puplink == cuplink else 0, pkey)
+            if best is None or cand[:3] > best[:3]:
+                best = cand
+        for arrival, rkey in arrivals.get(csrc, ()):
+            if arrival <= cstart and (best is None or (arrival, 0, 0) > best[:3]):
+                best = (arrival, 0, 0, rkey)
+        if remote_gates and (best is None or best[0] < cstart):
+            # No local clock pins S. Fall back to the remote op holding the capacity S
+            # needs: a delivery into S's own destination. Only an arrival landing exactly
+            # at cstart is worth a notification.
+            cdst = key[2]
+            cingress = _recv_downlink(key)
+            rbest = None
+            for arrival, rkey in arrivals.get(cdst, ()):
+                if arrival != cstart:
+                    continue
+                cand = (arrival, 1 if _recv_downlink(rkey, mirrored=True) == cingress else 0, rkey)
+                if rbest is None or cand[:2] > rbest[:2]:
+                    rbest = cand
+            if rbest is not None:
+                remote.append((key, rbest[2]))
+                continue
+        if best is not None:
+            edges.append((key, best[3], 'send' if best[1] == 1 else 'recv'))
+
+    # One notification per (notifier, waiter, instant). The group key needs no arrival
+    # time of its own: a remote edge exists only when the arrival lands exactly at the
+    # consumer's start, so the consumer's start IS the instant. Iterating in sorted
+    # order makes the representative deterministic.
+    canonical = {}
+    for key, rkey in sorted(remote, key=repr):
+        canonical.setdefault((key[2], key[1], paced_sends[key][0]), rkey)
+    for key, rkey in remote:
+        edges.append((key, canonical[(key[2], key[1], paced_sends[key][0])], 'remote'))
+    return edges
+
+
+def parse_flows_lp(schedule, collective_name, port_qualify=None):
     """Parse an LP schedule (any collective) the way parse_flows() does for the
     allgather MILP, but generate sends from the nested "8-Chunk paths" so each
     chunk's multipath decomposition can be split into disjoint integer sub-chunk
@@ -329,35 +543,40 @@ def parse_flows_lp(schedule, collective_name):
     per-collective base index (and how the chunk label c decodes into a
     sub-chunk) is:
 
-      - alltoall(N): base = dst_dense * N + src_dense, c = sc * N + dst_dense
-        (destination-major: precondition rank == index % N is the source,
+      - DST-MAJOR, alltoall(N): base = dst_dense * N + src_dense,
+        c = sc * N + dst_dense (precondition rank == index % N is the source,
         postcondition rank == index // N is the destination).
-      - gather(N, root): base = src_dense, c = sc (dest is always the root, so it
-        is not packed into the label; each chunk originates at its source and
-        ends at the root).
+      - SRC-MAJOR, allgather(N) / broadcast(N, root) / gather(N, root):
+        base = src_dense, c = sc. The destination is NOT packed into the label,
+        either because there is only one (gather's root) or because every GPU is
+        one (the replicating collectives).
 
-    Replicating collectives (broadcast, allgather via the LP) are not yet
-    supported here: multiple demands share the same underlying data, so the
-    "disjoint piece range per demand" assignment below does not apply.
+    The dst-major/src-major split is the collective's own chunk ADDRESSING, not
+    the schedule format (which keys on the formulation, see is_lp_format).
 
-    Returns the parse_flows() 8-tuple plus a trailing root_dense (the dense rank
-    of the root for rooted collectives, else None). The second element is the
-    chunk_up factor S * M.
+    Replicating collectives work because src-major labelling makes them work:
+    two demands whose paths share a physical hop compute the *same* chunk_id
+    there, so the hop is one send that both demands read, and ncclize's
+    grouped_sends (a set) dedupes the duplicate. That holds as long as each
+    demand's paths carry the whole chunk, which the hierarchical solver's
+    sub-chunk refinement guarantees (every volume is exactly 1.0). LABEL_RE-style
+    consistency is asserted below rather than assumed, so a fractional
+    replicating schedule fails loudly instead of emitting a wrong XML.
+
+    Returns the parse_flows() 8-tuple plus flow_rates and a trailing root_dense
+    (the dense rank of the root for rooted collectives, else None). The second
+    element is the chunk_up factor S * M.
     """
-    if collective_name in ('broadcast', 'allgather'):
-        raise NotImplementedError(
-            f"ncclize of an LP '{collective_name}' schedule is not supported yet: "
-            f"it replicates one source's data to many destinations, which the "
-            f"per-demand disjoint-piece decomposition here does not model. "
-            f"(alltoall and gather are supported.)")
-    if collective_name not in ('alltoall', 'gather'):
+    if collective_name not in ('alltoall', 'gather', 'allgather', 'broadcast'):
         raise ValueError(f"Unknown LP collective {collective_name!r}")
+    dst_major = collective_name == 'alltoall'
+    rooted = collective_name in ('gather', 'broadcast')
 
     root_raw = schedule.get('0-Root')
-    if collective_name == 'gather' and root_raw is None:
+    if rooted and root_raw is None:
         raise ValueError(
-            "gather schedule is missing the '0-Root' field needed to identify "
-            "the root GPU; re-run the solver to emit it.")
+            f"{collective_name} schedule is missing the '0-Root' field needed to "
+            f"identify the root GPU; re-run the solver to emit it.")
 
     M = _compute_subdivision(schedule)
 
@@ -374,7 +593,7 @@ def parse_flows_lp(schedule, collective_name):
 
         path_records = []
         for path in paths:
-            hops = []      # (hop_epoch, hop_src_raw, hop_dst_raw, path_key)
+            hops = []      # (hop_epoch, hop_src_raw, hop_dst_raw, path_key, rate)
             volumes = []
             for _epoch, segment in path:
                 sm = PATH_SEGMENT_RE.match(segment)
@@ -383,11 +602,16 @@ def parse_flows_lp(schedule, collective_name):
                 hop_src_raw, hop_dst_raw = int(sm.group(1)), int(sm.group(2))
                 hop_epoch = int(sm.group('epoch'))
                 path_key = _parse_switch_path(sm.group('switches'))
+                rate = sm.group('rate')
                 raw_ids.update((hop_src_raw, hop_dst_raw))
                 if path_key:
                     switch_raw_ids.update(path_key)
+                if port_qualify is not None:      # see the note in parse_flows()
+                    path_key = port_qualify(hop_src_raw, hop_dst_raw, path_key,
+                                            src_raw, chunk, hop_epoch)
                 volumes.append(_segment_volume(sm))
-                hops.append((hop_epoch, hop_src_raw, hop_dst_raw, path_key))
+                hops.append((hop_epoch, hop_src_raw, hop_dst_raw, path_key,
+                             None if rate is None else float(rate)))
 
             # Flow is conserved along a route, so every hop of one path carries
             # the same volume; that shared value is the fraction of the chunk
@@ -408,30 +632,46 @@ def parse_flows_lp(schedule, collective_name):
     num_nodes = len(rank_map)
 
     root_dense = None
-    if collective_name == 'gather':
+    if rooted:
         if root_raw not in rank_map:
             raise ValueError(
-                f"gather root {root_raw} never appears as a flow endpoint in the "
-                f"schedule; cannot map it to a dense rank.")
+                f"{collective_name} root {root_raw} never appears as a flow endpoint "
+                f"in the schedule; cannot map it to a dense rank.")
         root_dense = rank_map[root_raw]
 
     # S = number of sub-chunks per demand, decoded from the chunk label:
-    #   alltoall packs it above the dense destination (c = subchunk * N + dest),
-    #   gather uses the label directly (dest is always the root) (c = subchunk).
+    #   dst-major packs it above the dense destination (c = subchunk * N + dest),
+    #   src-major uses the label directly (c = subchunk).
     # The chunk_up factor is S * M (S real sub-chunks x M volume pieces each).
-    if collective_name == 'alltoall':
+    if dst_major:
         num_subchunks = max(chunk for _, chunk, _, _, _ in demands) // num_nodes + 1
-    else:  # gather
+    else:
         num_subchunks = max(chunk for _, chunk, _, _, _ in demands) + 1
     factor = num_subchunks * M
 
     # Second pass: assign disjoint piece ranges per demand and emit sends.
-    by_epoch = defaultdict(list)   # epoch -> [(chunk_id, src_dense, dst_dense)]
-    raw_flows = []                 # (epoch, chunk_id, src, dst, path_key, completion_epoch)
+    # epoch -> {(chunk_id, src_dense, dst_dense): None}, a dict used as an
+    # insertion-ordered set. Dedupe is needed because src-major addressing makes N
+    # replicating demands label one shared hop identically (that is the point); it
+    # must preserve first-seen order so flow-id assignment, which walks these in
+    # order, is unchanged for schedules that have no duplicates to remove.
+    by_epoch = defaultdict(dict)
+    raw_flows = []                 # (epoch, chunk_id, src, dst, path_key, completion, rate)
+    # (epoch, src, dst, path_key, base) -> {demand_key: the piece ranges that demand
+    # puts on the hop}. The invariant is NOT "one label per hop": one hop legitimately
+    # carries many chunks (different `base`s) in an epoch, and one demand's several
+    # multipath routes may each cross the same hop with a different slice. What must
+    # hold is that two DIFFERENT demands for the SAME data (same base) crossing the
+    # same hop slice it identically -- otherwise the same bytes are labelled two ways.
+    # Under dst-major no two demands ever share a base, so this is vacuous; under
+    # src-major that sharing is the norm (see the docstring) and the dedupe below
+    # collapses it to a single send. With whole-chunk volumes every range is [0, 1),
+    # so this is the guard for a future fractional replicating schedule.
+    hop_pieces = defaultdict(lambda: defaultdict(set))
     for dst_raw, chunk, src_raw, met_epoch, path_records in demands:
         dst_dense = rank_map[dst_raw]
         src_dense = rank_map[src_raw]
-        if collective_name == 'alltoall':
+        if dst_major:
             subchunk = chunk // num_nodes
             # Chunk labels index the destination by its *dense* GPU rank (0..N-1),
             # which differs from the raw node id when switches occupy interior
@@ -442,13 +682,15 @@ def parse_flows_lp(schedule, collective_name):
                     f'{chunk % num_nodes} but demand is at raw {dst_raw} '
                     f'(dense {dst_dense}).')
             base = (dst_dense * num_nodes + src_dense) * factor + subchunk * M
-        else:  # gather: every demand ends at the root; base index is the source.
+        else:
+            # src-major: the base index is the source; the destination is not part
+            # of the label (there is only one, or every GPU is one).
             subchunk = chunk
-            if dst_dense != root_dense:
+            if rooted and dst_dense != root_dense:
                 raise ValueError(
-                    f'Gather demand is at dense rank {dst_dense} (raw {dst_raw}) '
-                    f'but the root is dense {root_dense} (raw {root_raw}); every '
-                    f'gather demand must terminate at the root.')
+                    f'{collective_name} demand is at dense rank {dst_dense} (raw '
+                    f'{dst_raw}) but the root is dense {root_dense} (raw {root_raw}); '
+                    f'every {collective_name} demand must terminate at the root.')
             base = src_dense * factor + subchunk * M
         cumulative = Fraction(0)
         for v_frac, hops in path_records:
@@ -461,7 +703,7 @@ def parse_flows_lp(schedule, collective_name):
                     f'dest {dst_raw} src {src_raw}; volume {v_frac} does not '
                     f'divide the subdivision.')
             lo, hi = int(lo), int(hi)
-            for h_idx, (hop_epoch, hsrc_raw, hdst_raw, path_key) in enumerate(hops):
+            for h_idx, (hop_epoch, hsrc_raw, hdst_raw, path_key, rate) in enumerate(hops):
                 hsrc, hdst = rank_map[hsrc_raw], rank_map[hdst_raw]
                 # A relay forwards only after it has received, so the next hop's
                 # start epoch is this hop's completion; the last hop completes
@@ -470,35 +712,75 @@ def parse_flows_lp(schedule, collective_name):
                     completion_epoch = hops[h_idx + 1][0]
                 else:
                     completion_epoch = met_epoch
+                hop_pieces[(hop_epoch, hsrc, hdst, path_key, base)][
+                    (dst_raw, chunk, src_raw)].add((lo, hi))
                 for p in range(lo, hi):
                     chunk_id = base + p
-                    by_epoch[hop_epoch].append((chunk_id, hsrc, hdst))
+                    by_epoch[hop_epoch][(chunk_id, hsrc, hdst)] = None
                     raw_flows.append(
-                        (hop_epoch, chunk_id, hsrc, hdst, path_key, completion_epoch))
+                        (hop_epoch, chunk_id, hsrc, hdst, path_key, completion_epoch, rate))
         if cumulative != 1:
             raise ValueError(
                 f'Paths for demand dest {dst_raw} src {src_raw} carry total '
                 f'volume {cumulative}, expected exactly 1.')
 
+    for (hop_epoch, hsrc, hdst, _pk, base), by_demand in sorted(hop_pieces.items()):
+        if len(by_demand) < 2:
+            continue
+        slices = {frozenset(v) for v in by_demand.values()}
+        if len(slices) > 1:
+            offenders = sorted(by_demand)[:2]
+            raise ValueError(
+                f'Hop {hsrc}->{hdst} (dense) in epoch {hop_epoch} carries different '
+                f'pieces of chunk base {base} for demands {offenders[0]} and '
+                f'{offenders[1]}: {sorted(by_demand[offenders[0]])} vs '
+                f'{sorted(by_demand[offenders[1]])}. The same bytes would be labelled '
+                f'two ways. (Only reachable for a replicating collective whose demands '
+                f'do not carry whole chunks -- refine the schedule so every volume '
+                f'is 1.0.)')
+
     sorted_epochs = sorted(by_epoch)
-    steps_in_order = [by_epoch[epoch] for epoch in sorted_epochs]
+    steps_in_order = [list(by_epoch[epoch]) for epoch in sorted_epochs]
     epoch_to_step_idx = {epoch: idx for idx, epoch in enumerate(sorted_epochs)}
 
     flow_path_keys = {}
-    flow_completion_steps = {}
     flow_completion_epochs = {}
-    for hop_epoch, chunk_id, src, dst, path_key, completion_epoch in raw_flows:
+    flow_rates = {}
+    # Per-send link-occupancy window, keyed at OP granularity (one send op per
+    # (step, src, dst, path_key); its many chunk pieces share it). start is the
+    # send's fine start epoch; finish = start + volume/rate is when the SENDER is
+    # done pushing and the uplink frees -- deliberately NOT completion_epoch, which
+    # is the data's ARRIVAL (later, includes relay latency) and is the wrong clock
+    # for uplink pacing. Under the level's fill-one-epoch rate rule the duration is
+    # exactly m; a sub-rate (multi-epoch) send yields a proportionally larger finish,
+    # which is what makes the gate robust to that case.
+    chunk_size = schedule.get('9-Chunk_Size', 1.0)
+    delta = schedule['1-Epoch_Duration']
+    paced_sends = {}   # (step_idx, src, dst, path_key) -> (start_fine, finish_fine)
+    for hop_epoch, chunk_id, src, dst, path_key, completion_epoch, rate in raw_flows:
         step_idx = epoch_to_step_idx[hop_epoch]
         key = (step_idx, chunk_id, src, dst)
         flow_path_keys[key] = path_key
-        flow_completion_steps[key] = bisect.bisect_left(sorted_epochs, completion_epoch)
         flow_completion_epochs[key] = completion_epoch
+        if rate is not None:
+            prev = flow_rates.setdefault(key, rate)
+            if abs(prev - rate) > 1e-9:
+                raise ValueError(
+                    f'Flow {src}->{dst} chunk {chunk_id} at step {step_idx} carries '
+                    f'two different rates ({prev} and {rate}).')
+            duration = max(1, round(chunk_size / (M * rate * delta)))
+            paced_sends[(step_idx, src, dst, path_key)] = (hop_epoch, hop_epoch + duration)
+
+    pacing_gates = _finish_before_start_gates(paced_sends,
+                                              remote_gates=REMOTE_PACING_GATES)
 
     return (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-            flow_completion_steps, sorted_epochs, flow_completion_epochs, root_dense)
+            sorted_epochs, flow_completion_epochs, flow_rates, root_dense,
+            pacing_gates, rank_map)
 
 
-def build_switch_routes(flow_manifest, switch_rank_map):
+def build_switch_routes(flow_manifest, switch_rank_map, programmable_switches=None,
+                        physical_port=None, gpu_rank_map=None):
     """Build a per-switch flow_id -> next-hop forwarding table.
 
     flow_manifest is the list of {'flow_id', 'step', 'src', 'dst', 'path_key'}
@@ -510,32 +792,108 @@ def build_switch_routes(flow_manifest, switch_rank_map):
     is a property of the route, not of when it is used, so a route-level entry
     has no single meaningful epoch.
 
-    Returns {'switches': {switch_id_str: {flow_id_str: {...}}}}, with switch
-    and GPU ids both in the same dense 0-indexed numbering used elsewhere
-    (GPU ids matching the main XML's, switch ids via switch_rank_map) and an
-    explicit next_hop_type ('switch' or 'gpu') disambiguating the two, since
-    they are independently 0-indexed and can otherwise collide numerically.
+    The table covers the PACED (network) routes only, because ncclize() emits a
+    flow id only for those. That is the intended scope, not a gap: an unpaced hop
+    is an intra-cell one crossing an NVSwitch, which routes on its own and is
+    never programmed from this table. A hierarchical schedule therefore yields
+    entries for its inter-cell switches and none for the per-cell NVSwitches.
+
+    programmable_switches, when given, is the set of RAW switch node ids that
+    accept an external forwarding program (Topology.programmable_switch_indices).
+    Only those get a table; every other switch on a route is treated as a
+    transparent self-routing hop and skipped, so a route
+    gpu -> nvswitch -> leaf -> spine -> leaf -> nvswitch -> gpu yields entries on
+    the three network switches only, chained leaf -> spine -> leaf -> dst gpu as
+    if the NVSwitches were not there. That is the correct program for such a
+    fabric: the NVSwitch delivers by its own addressing, so the last programmable
+    switch's next hop is the destination GPU. A route whose switches are all
+    non-programmable contributes nothing. None => every switch is programmable
+    (the previous behaviour).
+
+    THE ENTRY IS A FLOW ID -> EGRESS PORT MAPPING. 'port' is the only key a
+    runtime needs and the only one that is load-bearing: a switch that sees a
+    packet tagged with this flow id sends it out of that physical port, and
+    every other key in the entry is there to be read by a human. 'port' is the
+    port number on THIS switch, in its own 0..radix-1 numbering
+    (Topology.port_map), of the cable the route leaves on -- not a link-local
+    index and not the next hop's port.
+
+    physical_port(node, neighbor, cable) supplies those numbers, normally
+    Topology.physical_port. Without it (no --topology) the entries carry no
+    'port' at all rather than a guessed one, since a port number that was not
+    read off a topology is a fiction. gpu_rank_map (raw GPU id -> dense) is
+    needed alongside it because the LAST hop's port faces the destination GPU,
+    and a port lookup is on raw node ids while the manifest carries dense ones.
+
+    The remaining keys are debug: next_hop / next_hop_type name where the packet
+    is going in the same dense 0-indexed numbering used elsewhere (GPU ids
+    matching the main XML's, switch ids ranked over the switches this table
+    covers), with next_hop_type ('switch' or 'gpu') disambiguating the two since
+    they are independently 0-indexed and can otherwise collide numerically;
+    src_gpu / dst_gpu name the route's endpoints. A reader can check any 'port'
+    against them; a runtime never has to.
+
+    Returns {'switch_id_map': {switch_id_str: raw_node_id},
+             'switches': {switch_id_str: {flow_id_str: {...}}}}. switch_id_map
+    records the dense id -> raw fine node id correspondence, which is no longer
+    inferable from the schedule alone once the table covers a subset of the
+    switches.
     """
+    # Rank over the switches this table actually covers, so its ids stay dense
+    # 0..k-1 rather than inheriting holes where a filtered-out switch sat.
+    if programmable_switches is None:
+        rank_map = dict(switch_rank_map)
+    else:
+        programmable_switches = set(programmable_switches)
+        rank_map = {raw: idx for idx, raw in
+                    enumerate(sorted(s for s in switch_rank_map
+                                     if s in programmable_switches))}
+
+    raw_gpu = ({dense: raw for raw, dense in gpu_rank_map.items()}
+               if gpu_rank_map is not None else None)
+
     routes = defaultdict(dict)
     for record in flow_manifest:
-        path_key = record['path_key']
-        if not path_key:
+        raw_key, cables = unqualify_path_key(record['path_key'])
+        if not raw_key:
             continue  # direct GPU-GPU link, no switch hop involved
-        switch_path = tuple(switch_rank_map[s] for s in path_key)
+        # Keep each surviving switch's ORIGINAL index. Its egress port is a property of the
+        # RAW wire leaving it, which is unaffected by whether the switches after it were
+        # filtered out as self-routing: chaining past a skipped switch changes where the packet
+        # ends up, not which socket it left this one by.
+        kept = [(i, rank_map[s]) for i, s in enumerate(raw_key) if s in rank_map]
+        if not kept:
+            continue  # entirely self-routing (e.g. an intra-node NVSwitch hop)
+        switch_path = [dense for _, dense in kept]
         flow_id, src, dst = (
             record['flow_id'], record['src'], record['dst'])
-        for i, switch in enumerate(switch_path):
+        # The raw node sequence the wires actually follow. `dst` is dense, so the last hop's
+        # far end has to be translated back before it can be looked up as a port.
+        raw_dst = None if raw_gpu is None else raw_gpu.get(dst)
+        raw_path = (raw_key + (raw_dst,)) if raw_dst is not None else None
+        for i, (orig_idx, switch) in enumerate(kept):
             is_last = i == len(switch_path) - 1
             next_hop_type = 'gpu' if is_last else 'switch'
             next_hop = dst if is_last else switch_path[i + 1]
-            routes[switch][flow_id] = {
+            entry = {}
+            if physical_port is not None and raw_path is not None:
+                # `cables` carries one entry per HOP, so hop orig_idx+1 is the one LEAVING this
+                # switch; an unqualified key touches no multi-port link, so every cable is 0.
+                cable = cables[orig_idx + 1] if cables is not None else 0
+                port = physical_port(raw_key[orig_idx], raw_path[orig_idx + 1], cable)
+                if port is not None:
+                    entry['port'] = port
+            entry.update({
                 'next_hop_type': next_hop_type,
                 'next_hop': next_hop,
                 'src_gpu': src,
                 'dst_gpu': dst,
-            }
+            })
+            routes[switch][flow_id] = entry
 
     return {
+        'switch_id_map': {str(dense): raw for raw, dense in sorted(
+            rank_map.items(), key=lambda kv: kv[1])},
         'switches': {
             str(switch): {str(flow_id): entry for flow_id, entry in flows.items()}
             for switch, flows in sorted(routes.items())
@@ -546,19 +904,42 @@ def build_switch_routes(flow_manifest, switch_rank_map):
 class TeCCLTopology:
     """Minimal topology shim satisfying the interface ncclize()/Algorithm need.
 
-    Link capacities are derived directly from the schedule itself (the max
-    number of times a given src->dst edge is used within any single epoch),
-    rather than reconstructed from TE-CCL's internal NDv2/DGX/etc. link model,
-    so the result is always consistent with whatever schedule is fed in.
+    `links[dst][src]` is built from the schedule -- the max number of times a given src->dst edge
+    is used within any single epoch (counted on the raw per-chunk list, BEFORE make_intervals
+    merges contiguous chunks into one op). Historically that integer did DOUBLE DUTY: the channel
+    allocator round-robins each edge's flows across `link(src,dst)` channels
+    (_allocate_channels_match_topology), AND Algorithm.make_implementation checks it as a bandwidth
+    capacity (bandwidth_constraints -> `util <= bw * rounds`).
+
+    That coupling both OVER-ALLOCATES channels (the pre-merge concurrency count, not the physical
+    link parallelism) and pins the channel count to the bandwidth demand. But the bandwidth check
+    is TAUTOLOGICAL here: `bw` is set to the max-over-epochs concurrency and `util` is that same
+    concurrency with rounds=1, so `util <= bw*1` holds by construction and catches nothing. The
+    REAL capacity guarantees live in TE-CCL's own rate-based asserts against the real fine topology
+    (reconstruct._assert_rate_within_capacity, stitch.assert_link_capacity), which model the
+    rate-paced runtime the round-based taccl check cannot.
+
+    So in PHYSICAL mode (a real fine Topology is fed in, `physical_replicas=True`) we:
+      * report `link(src,dst) = 1` for each used edge -- the physical point-to-point parallelism
+        (TE-CCL topologies model bandwidth, not multi-rail counts), so channels = one per distinct
+        switch path, no per-chunk multiplier; same-path flows sharing a channel stay correctly
+        ordered (same route => departure order == arrival order), so this is correct, not just
+        smaller; and
+      * emit NO bandwidth_constraints, skipping the tautological self-check (TE-CCL already
+        verified real capacity upstream). This is what lets `link=1` stand without tripping
+        `util <= bw*rounds`.
+    Default (no real topology, e.g. a flat single-level schedule) keeps the schedule-inferred
+    counts and the (harmless, tautological) check, so those paths are byte-for-byte unchanged.
     """
 
-    def __init__(self, name, num_nodes, steps):
+    def __init__(self, name, num_nodes, steps, physical_replicas=False):
         self.name = name
         self._num_nodes = num_nodes
+        self.physical_replicas = physical_replicas
         self.switches = []  # TE-CCL's switch hops are not modeled as separate
                              # topology elements; see note in parse_flows().
 
-        # links[dst][src] = number of channels available on that edge
+        # links[dst][src] = per-epoch concurrency on that edge (used edges are those with > 0).
         self.links = [[0] * num_nodes for _ in range(num_nodes)]
         for sends in steps:
             per_epoch_count = defaultdict(int)
@@ -571,18 +952,115 @@ class TeCCLTopology:
         return self._num_nodes
 
     def link(self, src, dst):
-        return self.links[dst][src]
+        used = self.links[dst][src]
+        if self.physical_replicas:
+            # One physical link per used edge; bandwidth is handled by rate-pacing + TE-CCL's own
+            # capacity asserts, not by this count.
+            return 1 if used > 0 else 0
+        return used
 
     def bandwidth_constraints(self):
+        if self.physical_replicas:
+            # Tautological here and redundant with TE-CCL's rate-based capacity asserts; skipping it
+            # is what lets the physical link count (1) stand instead of the concurrency count.
+            return
         for dst, dst_links in enumerate(self.links):
             for src, lk in enumerate(dst_links):
                 if lk > 0:
                     yield ([src], [dst], lk, f'{src}->{dst}')
 
 
-def build_algorithm(schedule, name='teccl'):
+def _build_collective(collective_name, num_nodes, root_dense):
+    """The taccl collective for a schedule's collective identity.
+
+    Kept separate from the parser so both format branches dispatch the same way:
+    the format (LP vs MILP) and the collective identity are independent axes, and
+    the MILP branch's old hardcoded allgather() was an artifact of
+    scheduler._resolve_formulation defaulting ALLGATHER -> MILP.
+    """
+    from taccl_collectives import allgather, alltoall, broadcast, gather
+
+    if collective_name == 'alltoall':
+        return alltoall(num_nodes)
+    if collective_name == 'allgather':
+        return allgather(num_nodes)
+    if collective_name in ('gather', 'broadcast'):
+        if root_dense is None:
+            raise ValueError(
+                f"{collective_name} needs a root; the schedule has no '0-Root' field.")
+        ctor = gather if collective_name == 'gather' else broadcast
+        return ctor(num_nodes, root_dense)
+    raise NotImplementedError(
+        f"No taccl collective mapping for {collective_name!r}")
+
+
+def _build_port_qualifier(schedule, topology, lp_format):
+    """Run the post-solve port split and return (qualify, assignment), or (None, None).
+
+    Returns None unless the topology actually declares a multi-port link, so every topology
+    today -- none of which do -- takes exactly the path it takes now, with no port machinery in
+    the emitted output at all.
+
+    The split is computed once, here, from the schedule and the real fine topology, and the
+    resulting per-(flow, link) port is folded into the path key at parse time. That makes the
+    port part of a route's IDENTITY, which is what the two consumers need: the channel allocator
+    partitions each edge's flows by path key, and the flow id is a bijection with (src, dst,
+    path key), so two flows down the same switch sequence on different ports get different flow
+    ids and therefore different forwarding entries.
+
+    The capacity assert runs before anything is emitted: if the split cannot fit the schedule
+    onto real ports, that is a fact about the topology and the solve, and it should stop the
+    emission rather than silently produce a program that overruns a port.
+    """
+    if topology is None or not getattr(topology, 'ports', None):
+        return None, None
+    try:                                  # sibling module; this file runs both as a script
+        from port_split import (Flow, assign_ports, assert_port_capacity,   # noqa: E402
+                                flow_loads, occupancy_grid)
+    except ImportError:                   # ... and as part of the teccl package
+        from teccl.ncclize.port_split import (Flow, assign_ports, assert_port_capacity,
+                                              flow_loads, occupancy_grid)
+
+    subdivision = _compute_subdivision(schedule) if lp_format else 1
+    loads = flow_loads(schedule, occupancy_grid(schedule, subdivision))
+    assignment = assign_ports(loads, topology.port_count, topology.port_capacity)
+    assert_port_capacity(loads, assignment, topology.port_count, topology.port_capacity)
+
+    def qualify(src_raw, dst_raw, path_key, origin, chunk, epoch):
+        """The path key for one send: its SUBFLOW's key, or the route unchanged.
+
+        The piece address only selects WHICH subflow -- it is never part of the key. A flow the
+        packing kept whole has one subflow, so its key is the same for every piece and the
+        `(channel, peer)` connection stays single; only a partitioned flow resolves to more than
+        one, and those are genuinely different routes on different wires.
+
+        Returned unchanged when the route touches no multi-port link, so a topology declaring no
+        ports emits byte-identical keys.
+        """
+        flow = Flow(src_raw, tuple(path_key or ()), dst_raw)
+        if not any(topology.port_count(*h) > 1 for h in flow.hops()):
+            return path_key
+        try:
+            return assignment.subflow_of(flow, origin, chunk, epoch).key
+        except KeyError:
+            raise AssertionError(
+                f"chunk {chunk} from {origin} in epoch {epoch} on route {flow} appears in the "
+                f"schedule section this parser reads but not in '7-Flows', which the port "
+                f"split was computed from; the two sections disagree about what exists")
+
+    return qualify, assignment
+
+
+def build_algorithm(schedule, name='teccl', topology=None):
+    """Build the taccl Algorithm from a TE-CCL schedule.
+
+    `topology` is the real fine Topology, when the caller has it (the hierarchical driver passes
+    the object; the CLI constructs it from --topology). Supplying it switches TeCCLTopology into
+    PHYSICAL mode: one channel replica per used link and no (tautological) taccl bandwidth check --
+    the fix for the channel over-allocation. Omitted (None) keeps the schedule-inferred behaviour
+    every flat single-level schedule relies on.
+    """
     from taccl_algorithm import Algorithm, Step
-    from taccl_collectives import allgather, alltoall, gather
     from taccl_instance import Instance
     from helpers import build_gpu_epoch_view
 
@@ -592,26 +1070,37 @@ def build_algorithm(schedule, name='teccl'):
     # own flat format.
     collective_name = detect_collective(schedule)
     lp_format = is_lp_format(schedule)
+    port_qualify, _port_assignment = _build_port_qualifier(schedule, topology, lp_format)
 
     if lp_format:
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-         flow_completion_steps, sorted_epochs, flow_completion_epochs,
-         root_dense) = parse_flows_lp(schedule, collective_name)
-        if collective_name == 'alltoall':
-            collective = alltoall(num_nodes)
-        elif collective_name == 'gather':
-            collective = gather(num_nodes, root_dense)
-        else:
-            # parse_flows_lp already rejects the replicating collectives; this
-            # guards against a new collective slipping through.
-            raise NotImplementedError(
-                f"No taccl collective mapping for LP collective {collective_name!r}")
+         sorted_epochs, flow_completion_epochs, flow_rates, root_dense,
+         pacing_gates, gpu_rank_map) = parse_flows_lp(schedule, collective_name, port_qualify)
+        collective = _build_collective(collective_name, num_nodes, root_dense)
     else:
+        # parse_flows labels chunks src-major (rank_map[origin] * S + subchunk), so
+        # it cannot express a collective whose chunk identity includes the
+        # destination. In practice the MILP only ever solves allgather; fail loudly
+        # rather than mislabel if that ever changes.
+        if collective_name == 'alltoall':
+            raise NotImplementedError(
+                "MILP-format schedules use src-major chunk labels, which cannot "
+                "represent alltoall's destination-major chunk identity.")
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-         flow_completion_steps, sorted_epochs, flow_completion_epochs) = \
-            parse_flows(schedule)
-        # The MILP format is only ever emitted for allgather.
-        collective = allgather(num_nodes)
+         sorted_epochs, flow_completion_epochs, gpu_rank_map) = parse_flows(schedule, port_qualify)
+        flow_rates = {}
+        collective = _build_collective(collective_name, num_nodes,
+                                       schedule.get('0-Root'))
+        # Flat single-level schedule: every send occupies its epoch for exactly one
+        # epoch, so the link-occupancy finish is start+1 for all of them. Same
+        # finish-before-start rule as the LP path -> gate the first send of each epoch
+        # on the previous epoch's send, never same-epoch sends.
+        flat_sends = {}
+        for step_idx, sends in enumerate(steps_in_order):
+            start = sorted_epochs[step_idx]
+            for chunk_id, src, dst in sends:
+                flat_sends[(step_idx, src, dst, None)] = (start, start + 1)
+        pacing_gates = _finish_before_start_gates(flat_sends)
 
     gpu_epoch_view = build_gpu_epoch_view(
         steps_in_order, sorted_epochs, num_nodes, flow_completion_epochs)
@@ -624,7 +1113,19 @@ def build_algorithm(schedule, name='teccl'):
     if factor > 1:
         collective = collective.chunk_up(factor)
 
-    topology = TeCCLTopology(name, num_nodes, steps_in_order)
+    if topology is not None:
+        # A real fine topology was supplied: sanity-check it against the schedule, then run
+        # TeCCLTopology in physical mode (one channel per link, no tautological bandwidth check).
+        # The schedule's GPUs are exactly the non-switch nodes of the fine topology; a mismatch
+        # means the wrong --topology was passed, which would silently mis-scale channels.
+        real_gpus = len(topology.capacity) - len(topology.switch_indices)
+        if num_nodes != real_gpus:
+            raise ValueError(
+                f"topology {type(topology).__name__} has {real_gpus} non-switch GPU(s) but the "
+                f"schedule has {num_nodes}; wrong topology for this schedule.")
+        topology = TeCCLTopology(name, num_nodes, steps_in_order, physical_replicas=True)
+    else:
+        topology = TeCCLTopology(name, num_nodes, steps_in_order)
 
     steps = [Step(1, sends) for sends in steps_in_order]
 
@@ -633,110 +1134,115 @@ def build_algorithm(schedule, name='teccl'):
     algo = Algorithm.make_implementation(
         collective, topology, instance, steps, cont=False, suffix='-teccl')
 
-    # Physical send rate (GB/s) per unit piece sent, so a merged op of `cnt`
-    # pieces gets rate = cnt * piece_rate. Each schedule "chunk"/"sub-chunk" is
-    # one chunk_size; the LP converter split each into M volume pieces of
-    # chunk_size/M, so volume v -> round(v*M) pieces gives v*chunk_size/epoch
-    # back. In the allgather MILP format each "Chunk C from S" piece is already a
-    # full chunk_size (no extra 1/M division).
-    epoch_duration = schedule['1-Epoch_Duration']
-    chunk_size = schedule.get('9-Chunk_Size', 1.0)
-    if lp_format:
-        piece_rate = chunk_size / (_compute_subdivision(schedule) * epoch_duration)
+    # Physical send rate (GB/s) per unit piece sent, so a merged op of `cnt` pieces
+    # gets rate = cnt * piece_rate.
+    #
+    # PREFERRED: a per-flow rate carried in the schedule ("at rate R" on a segment).
+    # The level of the solve that produced a flow is the only place that knows its
+    # own epoch duration and capacity model, so it computes the rate and emits it;
+    # this function must not re-derive one. A hierarchical schedule mixes flows from
+    # several levels -- its epoch axis is the FINEST level's, so a single global
+    # rate derived from "1-Epoch_Duration" would be wrong for every other level --
+    # and flows a level chose not to pace carry no rate at all.
+    #
+    # LEGACY fallback, for flat single-level schedules with no per-flow rate: every
+    # "chunk"/"sub-chunk" is one chunk_size, and the LP converter split each into M
+    # volume pieces of chunk_size/M, so volume v -> round(v*M) pieces gives
+    # v*chunk_size/epoch back. In the allgather MILP format each "Chunk C from S"
+    # piece is already a full chunk_size (no extra 1/M division).
+    if flow_rates:
+        piece_rate = flow_rates
     else:
-        piece_rate = chunk_size / epoch_duration
+        epoch_duration = schedule['1-Epoch_Duration']
+        chunk_size = schedule.get('9-Chunk_Size', 1.0)
+        if lp_format:
+            piece_rate = chunk_size / (_compute_subdivision(schedule) * epoch_duration)
+        else:
+            piece_rate = chunk_size / epoch_duration
 
-    return (algo, flow_path_keys, switch_rank_map, flow_completion_steps,
-            gpu_epoch_view, piece_rate)
+    return (algo, flow_path_keys, switch_rank_map, gpu_epoch_view, piece_rate,
+            pacing_gates, gpu_rank_map)
 
 
-def enforce_send_epoch_ordering(xml_str, send_epoch_manifest):
-    """Post-process MSCCL XML to serialize same-GPU sends by epoch.
+def load_topology(name, chunk_size=1.0):
+    """Construct a real fine Topology by class name or `.topo` DSL file path, for --topology.
 
-    TACCL's ncclize() only generates depid/deps links for data-flow reasons:
-    a send depends on the recv that previously wrote the chunk into the GPU's
-    buffer. Sends of a GPU's *own* chunk (initialised by <copy>, never tracked
-    in the writers table) therefore get depid='-1', so all such sends to
-    different peers start simultaneously regardless of epoch.
-
-    In TE-CCL's fat-tree model every GPU shares a single uplink to its leaf
-    switch across all epochs. Sending in multiple epochs simultaneously
-    overloads that uplink. This function adds the missing deps so that an
-    epoch-N send waits for the epoch-(N-1) send on the same GPU to complete.
-
-    Only sends with depid=='-1' are modified. Relay sends already carry a
-    data-flow dep from ncclize (on the recv that wrote the chunk being
-    forwarded) and are implicitly epoch-ordered through that chain.
-
-    depid/deps semantics (msccl_interpreter.h / taccl_ncclize.py):
-      depid  = block_rbid of the dependency op (TB id on the *same* GPU)
-      deps   = op.idx of the dependency op (= 's' attribute in the XML)
-    hasdep=1 on the target op enables the flag write in the MSCCL runtime.
-
-    send_epoch_manifest is ncclize()'s list of per-send-op records
-    {'gpu', 'tb', 's', 'epoch'}, populated at XML emission. The epoch is looked
-    up by an op's final (gpu, tb, s) location rather than by its mscclflowid,
-    because a flow id is now a bijection with a route and so spans multiple
-    epochs (see the flow_id assignment in ncclize()).
+    The fine topologies are all constructible from just their name + chunk_size (the structure is
+    fixed in the class); chunk_size does not affect the link structure the channel allocator reads,
+    so the default is fine. The hierarchical driver, which already holds the Topology object, should
+    pass it to build_algorithm directly instead of going through here.
     """
-    import xml.etree.ElementTree as ET
+    # This module is usually run as a script with teccl/ncclize on sys.path (for the taccl_* imports),
+    # so the `teccl` package root is not importable yet -- add the repo root.
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    from teccl.input_data import TopologyParams
+    from teccl.topologies.topology import Topology
 
-    # (gpu, tb, s) -> epoch index (= index into steps_in_order)
-    epoch_by_op = {(r['gpu'], r['tb'], r['s']): r['epoch']
-                   for r in send_epoch_manifest}
+    # A `.topo` file (topology DSL, teccl/topologies/topology-dsl-frontend) selects DslTopology
+    # directly, mirroring TECCLSolver.get_topology -- same rule as TopologyParams.topo_file.
+    if name.endswith('.topo'):
+        from teccl.topologies.dsl_topology import DslTopology
+        topo = DslTopology(TopologyParams(name=os.path.basename(name), chunk_size=chunk_size,
+                                           topo_file=name))
+        assert isinstance(topo, Topology)
+        return topo
 
-    root = ET.fromstring(xml_str)
-
-    for gpu_elem in root.findall('gpu'):
-        gpu_id = int(gpu_elem.get('id'))
-        # Collect every send op: (epoch, tb_rbid, s_idx, step_elem)
-        sends = []
-        for tb_elem in gpu_elem.findall('tb'):
-            tb_rbid = int(tb_elem.get('id'))
-            for step_elem in tb_elem.findall('step'):
-                if step_elem.get('type') != 's':
-                    continue
-                s_idx = int(step_elem.get('s'))
-                epoch = epoch_by_op.get((gpu_id, tb_rbid, s_idx))
-                if epoch is None:
-                    continue
-                sends.append((epoch, tb_rbid, s_idx, step_elem))
-
-        if len(sends) <= 1:
-            continue
-
-        # Stable sort by (epoch, s_idx) gives a consistent serialisation order.
-        sends.sort(key=lambda x: (x[0], x[2]))
-
-        for i in range(1, len(sends)):
-            curr_epoch, curr_tb, _, curr_elem = sends[i]
-            prev_epoch, prev_tb, prev_s, prev_elem = sends[i - 1]
-
-            if curr_epoch <= prev_epoch:
-                continue  # same epoch: concurrent sends on different links are fine
-            if curr_tb == prev_tb:
-                continue  # same TB: sequential step ordering already handles this
-            if curr_elem.get('depid') != '-1':
-                continue  # ncclize already added a data-flow dep (relay send)
-
-            curr_elem.set('depid', str(prev_tb))
-            curr_elem.set('deps', str(prev_s))
-            # Mark the dep target so the runtime writes its completion flag.
-            if prev_elem.get('hasdep') == '0':
-                prev_elem.set('hasdep', '1')
-
-    ET.indent(root, space='  ')
-    return ET.tostring(root, encoding='unicode')
+    # name -> "module:ClassName" for the topologies that can appear at the ncclize boundary.
+    registry = {
+        'HeteroTaperedCluster': 'hetero_tapered_cluster:HeteroTaperedCluster',
+        'DualPlaneHeteroCluster': 'dual_plane_hetero_cluster:DualPlaneHeteroCluster',
+        'DualPlaneHeteroClusterScattered': 'dual_plane_hetero_cluster:DualPlaneHeteroClusterScattered',
+        'RailOptimizedSpineLeaf': 'rail_optimized_spine_leaf:RailOptimizedSpineLeaf',
+        'TwoPodRail': 'two_pod_rail:TwoPodRail',
+        'TwoPodRailHostBound': 'two_pod_rail:TwoPodRailHostBound',
+        'TwoPodRailSplitPorts': 'two_pod_rail:TwoPodRailSplitPorts',
+        'NestedCluster': 'nested_cluster:NestedCluster',
+        'FatTreePod': 'fat_tree_pod:FatTreePod',
+        'FatTreePodSingleSpine': 'fat_tree_pod_single_spine:FatTreePodSingleSpine',
+        'DGX1': 'dgx1:DGX1',
+        'DGX2': 'dgx2:DGX2',
+        'NDv2': 'ndv2:NDv2',
+        'Mesh': 'mesh:Mesh',
+        'Star': 'star:Star',
+        'IncastSwitch': 'incast_switch:IncastSwitch',
+    }
+    if name not in registry:
+        raise ValueError(
+            f"unknown --topology {name!r}; known: {', '.join(sorted(registry))}, "
+            f"or a path to a `.topo` DSL file. "
+            f"(Or call build_algorithm(schedule, topology=<Topology instance>) directly.)")
+    module_name, class_name = registry[name].split(':')
+    import importlib
+    module = importlib.import_module(f'teccl.topologies.{module_name}')
+    cls = getattr(module, class_name)
+    topo = cls(TopologyParams(name=name, chunk_size=chunk_size))
+    assert isinstance(topo, Topology)
+    return topo
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--schedule', help='TE-CCL schedule JSON file')
     p.add_argument('-o', '--output', required=True, help='output XML file')
+    p.add_argument('--topology', default=None,
+                    help='name of the real fine Topology this schedule runs on (e.g. '
+                         'HeteroTaperedCluster), or a path to a `.topo` DSL file (detected by its '
+                         '.topo extension). When given, the channel allocator uses physical '
+                         '(one-per-link) channel counts and the tautological taccl bandwidth check '
+                         'is skipped (TE-CCL verifies real capacity upstream). Omit for a flat '
+                         'single-level teccl solve.')
     p.add_argument('--instances', type=int, default=1)
     p.add_argument('--scale-remote', type=int, default=1)
     p.add_argument('--switch-routing-output', default=None,
                     help='optional path to write per-switch flow_id -> next-hop routing table as JSON')
+    p.add_argument('--programmable-switches', default=None,
+                    help='comma-separated RAW switch node ids to emit forwarding entries for; '
+                         'switches outside the set are treated as transparent self-routing hops. '
+                         'Defaults to the --topology class\'s programmable_switch_indices (e.g. '
+                         'RailOptimizedSpineLeaf: leaf+spine only, no NVSwitches), or to every '
+                         'switch when no --topology is given.')
     p.add_argument('--epoch-debug-output', default=None,
                     help='optional path to write a human-readable per-GPU, '
                          'per-epoch schedule dump. The realizability feasibility '
@@ -746,6 +1252,12 @@ def main():
                          'The schedule is computed identically; only the final '
                          'written output differs, to enable regression testing '
                          'against outputs that predate the rate field.')
+    p.add_argument('--hierarchical', action='store_true',
+                    help='this schedule came from the hierarchical (multi-level) solver, so the '
+                         'flat-axis realizability feasibility check does not apply -- its epoch '
+                         'axis interleaves per-level grids and the network layer is checked '
+                         'per-layer in the stitch instead. Omit for an old-style flat single-level '
+                         'teccl solve (MILP or LP), where the flat-axis check is run.')
     args = p.parse_args()
 
     from taccl_ncclize import ncclize, ChannelPolicy
@@ -755,18 +1267,34 @@ def main():
     with open(args.schedule) as f:
         schedule = json.load(f)
 
-    (algo, flow_path_keys, switch_rank_map, flow_completion_steps,
-     gpu_epoch_view, piece_rate) = build_algorithm(schedule)
+    real_topology = load_topology(args.topology) if args.topology else None
+    (algo, flow_path_keys, switch_rank_map,
+     gpu_epoch_view, piece_rate, pacing_gates, gpu_rank_map) = build_algorithm(
+        schedule, topology=real_topology)
 
-    # Always run the feasibility check and surface any realizability warnings;
-    # writing the human-readable dump is independent and opt-in.
-    violations = check_epoch_ordering_feasibility(gpu_epoch_view)
-    warn_epoch_ordering_violations(violations)
+    # Send pacing is enforced INSIDE ncclize by realizing the pacing_gates manifest (per-flow
+    # finish-before-start edges derived here in teccl_ncclize), so there is no XML post-pass.
+    #
+    # The flat-axis feasibility check only makes sense for a SINGLE-LEVEL (flat) schedule, where the
+    # whole schedule shares one epoch grid, so "the preceding epoch has a send" genuinely means "the
+    # send is paced to its epoch". A HIERARCHICAL (multi-level) schedule interleaves levels with
+    # different epoch lengths on one fine axis -- a coarse network send legitimately sits m fine
+    # epochs after the previous one -- so this check would false-positive on that intended sparsity;
+    # the network layer's realizability is reported per-layer by the stitch
+    # (teccl.hierarchy.flat_schedule.check_network_pacing) at solve time instead.
+    #
+    # This is a property of HOW the schedule was solved (flat vs hierarchical), NOT of the schedule
+    # FORMAT (MILP-flat vs LP-nested): a flat single-level solve using the LP formulation is still
+    # flat and still wants the check. So the caller states it explicitly with --hierarchical rather
+    # than us inferring it from is_lp_format.
+    if args.hierarchical:
+        violations = None
+    else:
+        violations = check_epoch_ordering_feasibility(gpu_epoch_view)
+        warn_epoch_ordering_violations(violations)
 
-    # flow_manifest drives switch routing (one entry per route); the per-op
-    # send_epoch_manifest drives epoch ordering.
+    # flow_manifest drives switch routing (one entry per route).
     flow_manifest = []
-    send_epoch_manifest = []
 
     xml = ncclize(
         algo,
@@ -777,13 +1305,10 @@ def main():
         scale_remote=args.scale_remote,
         flow_path_keys=flow_path_keys,
         flow_manifest=flow_manifest,
-        flow_completion_steps=flow_completion_steps,
         piece_rate=piece_rate,
-        send_epoch_manifest=send_epoch_manifest,
+        pacing_gates=pacing_gates,
         logging=True,
     )
-
-    xml = enforce_send_epoch_ordering(xml, send_epoch_manifest)
 
     if args.no_rate:
         # Strip the per-op rate attribute from the already-serialized XML so the
@@ -800,7 +1325,20 @@ def main():
         print(f'Wrote {args.epoch_debug_output}')
 
     if args.switch_routing_output:
-        routes = build_switch_routes(flow_manifest, switch_rank_map)
+        # Explicit --programmable-switches wins; otherwise the topology declares it. With no
+        # topology at all there is nothing to filter by, so every switch stays programmable.
+        if args.programmable_switches is not None:
+            programmable = {int(s) for s in args.programmable_switches.split(',') if s.strip()}
+        elif real_topology is not None:
+            programmable = set(real_topology.programmable_switch_indices)
+        else:
+            programmable = None
+        # The topology is what knows a port number; without --topology the table is emitted
+        # with its debug fields and no 'port', which is the honest output for "nobody said".
+        routes = build_switch_routes(
+            flow_manifest, switch_rank_map, programmable,
+            physical_port=(real_topology.physical_port if real_topology is not None else None),
+            gpu_rank_map=gpu_rank_map)
         with open(args.switch_routing_output, 'w') as f:
             json.dump(routes, f, indent=2)
         print(f'Wrote {args.switch_routing_output}')

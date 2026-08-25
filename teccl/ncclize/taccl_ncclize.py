@@ -5,6 +5,7 @@ from lxml import etree as ET
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 import math
+import sys
 import threading, queue
 from enum import Enum
 from z3 import *
@@ -62,6 +63,25 @@ class _Op:
     # can keep different physical paths on the same (src,dst) edge off of the same
     # channel -- see that function's docstring for why this matters.
     path_key: object = None
+    # Physical transmission rate (GB/s) for ONE piece of this op, so the emitted
+    # rate is cnt * piece_rate. None means "unpaced": either no rate information was
+    # supplied at all, or the level of the solve that produced this flow chose not
+    # to pace it (e.g. an intra-node NVLink hop that carries ordering but is not
+    # pinned to the epoch grid).
+    piece_rate: float = None
+    # Send-pacing gate: the send op that must FINISH ON THE WIRE before this send may
+    # be posted. Emitted as netdepid/netdeps, a separate axis from depends/depid/deps
+    # -- see _realize_pacing_gates. None means this send is ungated.
+    net_dep: object = None
+    # EXPERIMENTAL remote pacing gate (P4): (producer_recv_op, ordinal). This send waits
+    # for the `ordinal`-th notification from producer_recv_op.gpu, emitted as
+    # remotedep (the remote GPU) / remotedeps (the ordinal). The op is kept, not just the
+    # rank, so the deadlock check can follow the edge. None means no remote gate.
+    remote_dep: object = None
+    # Ranks this (recv) op must notify when it completes, emitted as a comma-separated
+    # remotenotify list. Each entry is one waiter GPU; the ordinal it sees is this op's
+    # position among all notifications this GPU sends to that waiter.
+    remote_notify: list = field(default_factory=list)
 
     def __eq__(self, other):
         return self is other
@@ -312,30 +332,19 @@ def _allocate_channels_match_topology(op_sets, topology, instances, scale_remote
     earlier one (different switch paths, different congestion/hop-count), and this
     topology/ncclize layer has no reliable way to know the true relative completion order
     of two flows sharing one channel (TeCCLTopology never models switches at all -- see
-    its own docstring -- and even where true completion times are available via
-    flow_completion_steps, they're only precise up to the send-epoch dense scale, a
-    deliberate, separately-documented tradeoff). Rather than reorder ops on a shared
-    channel using that imprecise data, this function avoids the problem structurally: two
-    flows that took different paths are *never* placed on the same channel, so there is no
-    intra-channel relative order to get right in the first place. This is sufficient (not
-    just a heuristic) because flows sharing one path_key inherently can't be reordered
-    relative to each other -- same physical route means departure order == completion
-    order -- so keeping same-path flows on shared channels (round-robinned across replicas
-    exactly as before) remains correct.
+    its own docstring). Rather than try to reorder ops on a shared channel, this function
+    avoids the problem structurally: two flows that took different paths are *never* placed
+    on the same channel, so there is no intra-channel relative order to get right in the
+    first place. This is sufficient (not just a heuristic) because flows sharing one
+    path_key inherently can't be reordered relative to each other -- same physical route
+    means departure order == completion order -- so keeping same-path flows on shared
+    channels (round-robinned across replicas exactly as before) remains correct.
 
-    Note this only fixes *intra-channel* wire order (which recv/send ends up in which
-    array slot within one threadblock's own (gpu,peer,chan) group). It does NOT replace
-    flow_completion_steps, which fixes a different hazard: TACCL's threadblock-packing
-    reuses one TB across *different* peers when their .step values don't collide (see the
-    eligibility check in ncclize(), a few hundred lines below), and once two peers'
-    ops share a TB, ALL of that TB's ops -- regardless of peer -- get serialized together
-    by .step. If a switch-relayed recv's .step were left at its (too-early) send-start
-    epoch instead of its corrected true-completion epoch, an unrelated send to a
-    completely different peer could get sorted after it and stall behind a relay it has no
-    real data dependency on. That cross-peer TB-packing hazard is orthogonal to path
-    diversity on a single edge (it's about threadblock-count minimization across peers,
-    not about multipath at all), so flow_completion_steps's correction stays necessary
-    here regardless of the path-aware channel assignment below.
+    This handles WHICH CHANNEL a flow lands on. The complementary question -- that the two
+    ends of one (peer, channel) agree on the ORDER of the operations they exchange, since
+    the connection is a FIFO -- is handled by giving each (gpu, direction, peer, channel)
+    its own threadblock and keeping send and recv at the same .step; see the threadblock
+    construction in ncclize() below.
 
     max_channels caps the channel ids used per edge (num_distinct_path_keys * link); this
     is a real hardware/runtime limit (MAXCHANNELS in NCCL/MSCCL, 32 as of the vendored
@@ -405,7 +414,223 @@ class ChannelPolicy(Enum):
     def __str__(self):
         return self.value
 
-def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, flow_completion_steps=None, piece_rate=None, send_epoch_manifest=None, max_channels=32):
+
+def _realize_pacing_gates(gpus, pacing_gates):
+    """Attach the caller's pacing gate manifest to each gated send, on the carrier the
+    edge's kind names.
+
+    ``pacing_gates`` is a list of ``(consumer_key, producer_key, kind)`` edges. Each key is
+    an op identity ``(step, gpu, peer, path_key)`` -- for a send that reads (step, src, dst,
+    path_key); for a recv it is the mirror, (step, dst, src, path_key). The edges are computed
+    by teccl_ncclize from per-send link-occupancy windows (finish/arrival-before-start; see
+    ``_finish_before_start_gates`` there). The pacing POLICY -- which send waits on what, from
+    rate and topology -- lives with the level that produced the schedule; this function only
+    REALIZES it, because only here do ops have the threadblock ids and post-nop-expansion step
+    indices an XML edge needs. Consumers are always sends; producers are sends or recvs.
+
+    The two kinds ride different runtime carriers because they are discharged by different
+    agents, and picking the wrong one buys the wrong guarantee:
+
+    ``kind='send'`` -> ``net_dep`` (emitted as ``netdepid``/``netdeps``). "This send must not
+    go out on the wire until that one has landed." Only the proxy thread can honour it, by
+    withholding the ``isend`` until the NIC reports the producer's bytes away; the GPU kernel
+    has no network-side information to decide it. Encoding it as a ``depends`` entry would
+    instead discharge it the moment the producer's FIFO tail bumps -- the producer's data
+    being *readable*, not *sent* -- which is not the constraint.
+
+    ``kind='remote'`` -> ``remote_dep`` (emitted as ``remotedep``/``remotedeps`` on the gated
+    send, and ``remotenotify`` on the producing recv, which lives on ANOTHER GPU). EXPERIMENTAL.
+    "This send must not start until GPU k has taken delivery of the bytes it is waiting behind."
+    Neither existing carrier can express it: ``depid``/``deps`` and ``netdepid``/``netdeps`` both
+    name a (threadblock, step) on the LOCAL GPU, and a remote GPU's threadblock and post-expansion
+    step index are not reliably knowable to the waiter at runtime. So the edge is addressed by
+    COUNT instead of by location: the waiter waits for the i-th notification from GPU k, and k's
+    recv fires one notification to each rank named in its ``remotenotify`` list. Ordinals are
+    assigned per ORDERED PAIR (notifier -> waiter) in the notifier's own step order, so the i-th
+    notification k sends to g is the i-th one g waits for. That numbering is only sound if
+    notifications from one GPU to another cannot be REORDERED in flight, which is the standing
+    assumption of this feature: remote gates are meant to be spaced further apart than one local
+    send's serialization time. Two notifications for the same pair in the same step are the case
+    that assumption does not cover, and are reported as a warning rather than silently numbered.
+    The derivation already rules out the way that normally arises -- several sends due at one
+    instant collapse onto ONE notification there (see _finish_before_start_gates) -- so what
+    survives to be warned about is a genuine oddity: two deliveries into the notifier that begin
+    in the same step but, having different durations, land at different times.
+
+    ``kind='recv'`` -> ``depends`` (emitted as ``depid``/``deps``). "This send must not start
+    until those bytes have arrived." That event is precisely the one the proxy already signals
+    to the kernel when it marks a recv slot filled, and ``depid``/``deps`` is precisely the
+    kernel's existing wait on it. So a recv-sourced gate needs no new runtime construct and is
+    strictly more accurate on this path than a netdep would be: netdeps are enforced against a
+    transmission count, which says nothing about a *reception*. It rides ``depends`` even
+    though its PURPOSE is pacing rather than data readiness -- the runtime edge is identical,
+    and the producing recv gets its ``hasdep`` flag from the ordinary marking pass below.
+
+    A key can map to several ops when ``make_intervals`` splits one epoch's transfer into
+    non-contiguous offset runs; those share a threadblock and run in step order, so gating on
+    the producer key's LAST op (all its bytes done) suffices, and every consumer op of the key
+    inherits the gate. Gates whose endpoints land in the same threadblock are dropped: one
+    threadblock is one connection, whose FIFO already orders its own ops, so the edge is
+    redundant. (For ``depends`` that drop is also done downstream by nop expansion; doing it
+    here keeps both kinds symmetric and keeps a redundant edge from reaching the cycle check.)
+
+    ``_finish_before_start_gates`` emits at most one edge per consumer key, so a send carries
+    at most one gate -- which is what the single ``netdepid``/``netdeps`` pair, and equally the
+    single ``remotedep``/``remotedeps`` pair, can express.
+    Several sends in ONE threadblock may each carry their own gate; that is an ordinary
+    schedule and is not reduced here. Requires ``op.block_rbid`` to be assigned already;
+    ``op.idx`` is read later, at XML emission. A ``send`` edge must therefore run before nop
+    expansion assigns ``idx``, and a ``recv`` edge must run before it too, so that its extra
+    ``depends`` entry is expanded like any other.
+    """
+    send_ops = defaultdict(list)
+    recv_ops = defaultdict(list)
+    for gpu in gpus.values():
+        for tb in gpu.threadblocks:
+            for op in tb.steps:
+                index = send_ops if op.is_send else recv_ops
+                index[(op.step, op.gpu, op.peer, op.path_key)].append(op)
+    # (notifier gpu, waiter gpu) -> {producer recv op: [consumer send ops]}, filled by the
+    # 'remote' edges and numbered below, once every pair is known.
+    remote_pairs = defaultdict(lambda: defaultdict(list))
+    for consumer_key, producer_key, kind in pacing_gates:
+        if kind not in ('send', 'recv', 'remote'):
+            raise ValueError(f'unknown pacing gate kind {kind!r} for consumer {consumer_key}')
+        producers = (send_ops if kind == 'send' else recv_ops).get(producer_key)
+        consumers = send_ops.get(consumer_key)
+        if not producers or not consumers:
+            continue
+        producer = producers[-1]  # last in threadblock order: its completion covers the key
+        if kind == 'remote':
+            # A remote gate is addressed by rank + count, so it is NOT dropped for sharing a
+            # threadblock (it cannot: the endpoints are on different GPUs by construction).
+            for op in consumers:
+                assert op.gpu != producer.gpu, (
+                    f'remote pacing gate for a send on gpu {op.gpu} names a recv on the same '
+                    f'gpu; that is a local dependency and belongs on depid/deps')
+                remote_pairs[(producer.gpu, op.gpu)][producer].append(op)
+            continue
+        for op in consumers:
+            if op.block_rbid == producer.block_rbid:
+                continue  # same connection: the FIFO already orders these
+            if kind == 'send':
+                assert op.net_dep is None or op.net_dep is producer, (
+                    f'send {consumer_key} was given two different pacing gates; the XML carries '
+                    f'one netdepid/netdeps per step')
+                op.net_dep = producer
+            elif producer not in op.depends:
+                # Already a data dependency? Then the wait exists and the gate is satisfied
+                # by it; adding a duplicate would only cost an expansion nop.
+                op.depends.append(producer)
+    _number_remote_notifications(remote_pairs)
+
+
+def _number_remote_notifications(remote_pairs):
+    """Turn the collected remote gate pairs into notification ordinals on both endpoints.
+
+    ``remote_pairs`` maps (notifier gpu, waiter gpu) -> {producer recv op: [consumer send ops]}.
+    For each ordered pair the notifier's recvs are numbered 1..n in the notifier's own step
+    order, which is the order it will issue them; the waiter's sends record the same ordinal.
+    One recv serving several sends on one waiter is ONE notification they all wait for, and a
+    recv notifying several waiters carries several list entries, each numbered in its own pair's
+    stream.
+
+    Sorting is by (step, block_rbid) -- a step is an epoch, and the intra-step tiebreak by
+    threadblock only makes the numbering DETERMINISTIC, not correct: two notifications to the
+    same waiter within one step are exactly the case the no-reordering assumption does not
+    cover, so they are warned about here. Sends due at the same instant do NOT reach that case;
+    they share one notification, collapsed in the derivation.
+    """
+    ambiguous = []
+    for (notifier, waiter), by_producer in sorted(remote_pairs.items()):
+        ordered = sorted(by_producer, key=lambda op: (op.step, op.block_rbid))
+        for i, producer in enumerate(ordered, start=1):
+            producer.remote_notify.append(waiter)
+            for op in by_producer[producer]:
+                assert op.remote_dep is None or op.remote_dep[0] is producer, (
+                    f'send on gpu {op.gpu} step {op.step} was given two different remote pacing '
+                    f'gates; the XML carries one remotedep/remotedeps per step')
+                op.remote_dep = (producer, i)
+        steps = [op.step for op in ordered]
+        if len(set(steps)) != len(steps):
+            ambiguous.append((notifier, waiter))
+    if ambiguous:
+        print(f'WARNING: {len(ambiguous)} remote pacing gate stream(s) issue more than one '
+              f'notification in a single step, e.g. {ambiguous[:4]}. Ordinals assume '
+              f'notifications from one GPU to another cannot be reordered; within one step '
+              f'that spacing assumption does not hold and the gate may be discharged by the '
+              f'wrong notification.', file=sys.stderr)
+
+
+def _assert_gates_acyclic(gpus):
+    """Reject a gate set that would deadlock, at generation time rather than on the cluster.
+
+    The gate is the only construct here that can deadlock, and one check covers it. Build the
+    graph over ops with edges meaning "must happen first" -- threadblock program order, data
+    dependencies, and gates -- and look for a cycle. Program-order edges supply the reach, so no
+    quantifiers over step ranges are needed: the classic failure is a gate A.1 -> B.0 crossed with
+    a data dependency B.1 -> A.0, which closes through the two threadblocks' program order.
+
+    All three gate carriers are covered: a send-sourced gate is read off ``net_dep``, a
+    recv-sourced one is already indistinguishable from a data dependency here because it IS one
+    on the wire (see _realize_pacing_gates) and arrives through ``depends``, and a remote one is
+    followed through ``remote_dep``. The remote gate is the only edge here that crosses GPUs on
+    its own (the others do so only through the send/recv pairing implied by the schedule), which
+    is exactly why it is the one that most needs this check.
+
+    A within-pass check is sufficient because every runtime edge points forward across passes:
+    data dependencies compare the same loop iteration, gates carry a per-pass target, and program
+    order and FIFO credit both point forward. Cycles can therefore only form inside one pass.
+
+    Iterative, not recursive: a real schedule has hundreds of thousands of ops.
+    """
+    succ = defaultdict(list)
+    nodes = []
+    for gpu in gpus.values():
+        for tb in gpu.threadblocks:
+            prev = None
+            for op in tb.ops:
+                nodes.append(op)
+                if prev is not None:
+                    succ[prev].append(op)          # program order
+                for dep in op.depends:
+                    succ[dep].append(op)           # data dependency
+                if op.net_dep is not None:
+                    succ[op.net_dep].append(op)    # pacing gate
+                if op.remote_dep is not None:
+                    succ[op.remote_dep[0]].append(op)   # remote pacing gate (cross-GPU)
+                prev = op
+
+    WHITE, GREY, BLACK = 0, 1, 2
+    colour = {op: WHITE for op in nodes}
+    for root in nodes:
+        if colour[root] != WHITE:
+            continue
+        stack = [(root, iter(succ[root]))]
+        colour[root] = GREY
+        path = [root]
+        while stack:
+            node, it = stack[-1]
+            for nxt in it:
+                if colour[nxt] == GREY:
+                    cycle = path[path.index(nxt):] + [nxt]
+                    raise ValueError(
+                        'send-pacing gates would deadlock: cycle over threadblock program '
+                        'order, data dependencies, gates and remote gates: ' +
+                        ' -> '.join(f'gpu{o.gpu}/tb{o.block_rbid}/step{o.step}({o.op_type})'
+                                    for o in cycle))
+                if colour[nxt] == WHITE:
+                    colour[nxt] = GREY
+                    path.append(nxt)
+                    stack.append((nxt, iter(succ[nxt])))
+                    break
+            else:
+                colour[node] = BLACK
+                stack.pop()
+                path.pop()
+
+
+def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchTopology, pretty_print = True, old_format=False, use_scratch=False, merge_contiguous=True, instances=1, scale_remote=1, combine_contig=False, aid_IB_contig=False, prefix="", logging=False, flow_path_keys=None, flow_manifest=None, piece_rate=None, send_epoch_manifest=None, pacing_gates=None, max_channels=32):
     '''
     Generate the XML format used by the NCCL SCCL backend.
 
@@ -426,19 +651,22 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     see _allocate_channels_match_topology()'s docstring for why that's the correct fix for multipath ordering
     (as opposed to reordering ops on a shared channel). None preserves prior behavior (no disambiguation).
 
-    flow_completion_steps, if given, maps (step_idx, addr, src, dst) -> a dense step-domain value, comparable to
-    step_idx, representing the epoch by which dst truly has the data (as opposed to step_idx, which is only the
-    epoch the transfer started). Used to correct the .step of the corresponding recv op in place, so that
-    threadblock-internal step ordering and threadblock-reuse eligibility reflect true data availability rather than
-    merely transfer start time -- relevant when a transfer is relayed (e.g. through switches) and so completes
-    later than it started. None preserves prior behavior (recv ops keep their send-side step_idx). This remains
-    necessary alongside flow_path_keys/path-aware channels above -- it fixes a different hazard (an unrelated op
-    sharing a threadblock, across peers, with a switch-relayed recv), not the intra-channel multipath ordering
-    that path-aware channel assignment fixes structurally.
 
     max_channels caps how many channel ids a single edge's path_key partitioning may use under channel_policy=
     MatchTopology (default 32, matching NCCL/MSCCL's MAXCHANNELS hardware limit); see
     _allocate_channels_match_topology().
+
+    piece_rate is the physical transmission rate (GB/s) of ONE piece; an op of cnt pieces emits cnt * piece_rate.
+    It may be a scalar (pace every op identically -- the flat, single-level case) or a dict keyed like
+    flow_path_keys, (step_idx, addr, src, dst) -> rate, supplying a per-flow rate. The per-flow form exists because
+    a hierarchical schedule interleaves flows solved at different levels, each with its own epoch duration and
+    capacity model: the level that produced a flow computes its rate, and a flow it chose not to pace is simply
+    absent from the map and emits no rate attribute. None disables the attribute entirely.
+
+    piece_rate also GATES the mscclflowid attribute and the flow_manifest, since both describe a network send
+    and a rate is the marker for one (see the flow-id assignment below). A caller that supplies no piece_rate at
+    all therefore gets no flow ids either -- which is the right answer for the callers that pass neither
+    flow_path_keys nor flow_manifest, as nothing downstream of them reads the id.
     '''
 
     if algorithm.is_pipelined():
@@ -567,8 +795,13 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     op_sets = []
     # (src, dst, path_key) route -> its flow id. A flow id is a bijection with a
     # physical route, so every send/recv on that route (across all epochs and
-    # chunks) shares one id (see the flow_id assignment below).
+    # chunks) shares one id (see the flow_id assignment below). Only PACED routes
+    # are entered here; see the assignment for why.
     route_flow_ids = {}
+    # (src, dst, path_key) route -> whether its ops carry a rate. A route must be
+    # uniformly paced or uniformly unpaced for the flow-id restriction below to be
+    # well defined; this records the first answer so the rest can be checked.
+    route_paced = {}
     # Track the latest op that wrote to each buffer index
     writers = defaultdict(list)
     # Track all the reads since the last write to each buffer index
@@ -579,10 +812,8 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
 
         # Group sent addresses by edge
         grouped_sends = defaultdict(set)
-        # Maps (src, dst, path_key) -> corrected recv .step (see flow_completion_steps
-        # docstring above); only populated in the 3-tuple step.sends branch below, since
-        # that's the only shape teccl_ncclize.py ever produces.
-        group_completion_step = {}
+        # (src, dst, path_key) -> per-piece rate, when piece_rate is a per-flow map.
+        group_rate = {}
         if len(step.sends[0]) == 5:
             for addr, src, dst, t, l in step.sends:
                 if combine_contig:
@@ -599,14 +830,18 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for addr, src, dst in step.sends:
                 path_key = flow_path_keys.get((step_idx, addr, src, dst)) if flow_path_keys else None
                 grouped_sends[(src, dst, path_key)].add(addr)
-            if flow_completion_steps:
+            if isinstance(piece_rate, dict):
+                # A merged op emits ONE rate for all cnt of its pieces, so every piece
+                # merged into it must have been paced identically. Assert that rather
+                # than picking one: a level that paces its flows non-uniformly would
+                # otherwise have its schedule silently misrepresented here.
                 for (src, dst, path_key), addrs in grouped_sends.items():
-                    vals = [flow_completion_steps.get((step_idx, addr, src, dst)) for addr in addrs]
-                    vals = [v for v in vals if v is not None]
-                    # max(): if merge_contiguous combined several chunk-ids into one op,
-                    # the op isn't truly ready until the last of its constituents arrives.
-                    if vals:
-                        group_completion_step[(src, dst, path_key)] = max(vals)
+                    vals = {piece_rate.get((step_idx, addr, src, dst)) for addr in addrs}
+                    assert len(vals) == 1, (
+                        f"pieces merged into one op ({src}->{dst} at step {step_idx}, "
+                        f"path {path_key}) carry different rates {sorted(vals, key=str)}; "
+                        f"a merged op can only emit a single rate")
+                    group_rate[(src, dst, path_key)] = vals.pop()
 
         # Combine sends into intervals and create multiple instances if necessary
         sends = []
@@ -668,32 +903,79 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             send_op.path_key = path_key
             recv_op.path_key = path_key
 
-            # Correct the recv op's .step to when dst truly has the data, rather than
-            # when the transfer started, for relayed transfers (see flow_completion_steps
-            # docstring above). send_op.step is left as the true start epoch, which is
-            # already correct for a send.
-            recv_op.step = group_completion_step.get((src, dst, path_key), recv_op.step)
+            # Per-piece transmission rate. A scalar piece_rate paces every op the same
+            # (the flat single-level case); a dict is a per-flow rate supplied by the
+            # level of the solve that produced each flow, and a flow absent from it is
+            # deliberately unpaced.
+            rate = (group_rate.get((src, dst, path_key)) if isinstance(piece_rate, dict)
+                    else piece_rate)
+            send_op.piece_rate = rate
+            recv_op.piece_rate = rate
+
+            # send_op.step and recv_op.step are DELIBERATELY EQUAL (both step_idx). Threadblocks
+            # are one per (gpu, direction, peer, channel) and their ops are sorted by .step, so
+            # equal steps make the two ends of a connection order their operations identically:
+            # ops_by_channel receives [send_op, recv_op] together per op_set, so the sender's and
+            # the receiver's threadblocks see the same op_sets in the same sequence, and a stable
+            # sort on equal keys preserves it -- ties included. That is the invariant the runtime
+            # requires of a (peer, channel) FIFO.
+            #
+            # The recv's .step used to be advanced to its true completion epoch, to stop a
+            # switch-relayed recv from stalling an unrelated send packed into the same
+            # threadblock. Threadblocks are no longer packed (see below), so there is no unrelated
+            # send to stall, and advancing it would only reintroduce the ordering mismatch.
 
             # The flow id is a bijection with the physical route (src -> switches
             # -> dst), keyed by (src, dst, path_key): every send/recv on that
             # route, in any epoch and for any chunk, shares one id. This gives the
-            # switch forwarding table and channel assignment exactly one entry per
-            # route. Per-op epoch ordering is recovered from send_epoch_manifest
-            # (populated at XML emission), not from the flow id, precisely because
-            # one flow id now spans multiple epochs.
+            # switch forwarding table exactly one entry per route. Per-op epoch
+            # ordering is recovered from send_epoch_manifest (populated at XML
+            # emission), not from the flow id, precisely because one flow id now
+            # spans multiple epochs.
+            #
+            # Flow ids are emitted ONLY for PACED (rate-bearing) ops, for the same
+            # reason the rate is: both are properties of a NETWORK send. A flow id
+            # exists to let a programmable inter-node switch forward by route, and
+            # a rate exists to hold that send to the epoch grid the level solved
+            # on. An intra-cell hop has neither -- it crosses an NVSwitch that
+            # forwards on its own and it was scheduled for ORDER, not for pacing
+            # (see reconstruct._piece_rate and flat_schedule._segment) -- so
+            # tagging it would put a phantom entry in the forwarding table for a
+            # switch that is never programmed from it.
+            #
+            # Both invariants survive the restriction:
+            #  * flow id <-> route stays a bijection, now over the paced routes
+            #    only: route_flow_ids is still keyed by route and still hands out
+            #    one dense id per distinct route.
+            #  * distinct paths still land on distinct channels: channel
+            #    allocation partitions each edge by op.path_key, never by flow id
+            #    (see _allocate_channels_match_topology), and path_key is set on
+            #    every op regardless of pacing.
+            # What the restriction does require is that a route not be paced in
+            # one epoch and unpaced in another -- that would tag only part of the
+            # route's traffic and leave the switch with packets it has an entry
+            # for but cannot match. Nothing structurally forbids it, so assert it.
             route = (src, dst, path_key)
-            flow_id = route_flow_ids.setdefault(route, len(route_flow_ids))
-            send_op.mscclflowid = flow_id
-            recv_op.mscclflowid = flow_id
+            paced = rate is not None
+            prev_paced = route_paced.setdefault(route, paced)
+            assert prev_paced == paced, (
+                f"route {src}->{dst} (path {path_key}) is paced in some epochs and "
+                f"unpaced in others; a route must be uniformly paced, since its "
+                f"flow id is emitted for the whole route or not at all")
 
-            if flow_manifest is not None:
-                flow_manifest.append({
-                    'flow_id': flow_id,
-                    'step': step_idx,
-                    'src': src,
-                    'dst': dst,
-                    'path_key': path_key,
-                })
+            if paced:
+                flow_id = route_flow_ids.setdefault(route, len(route_flow_ids))
+                send_op.mscclflowid = flow_id
+                recv_op.mscclflowid = flow_id
+
+                if flow_manifest is not None:
+                    flow_manifest.append({
+                        'flow_id': flow_id,
+                        'step': step_idx,
+                        'src': src,
+                        'dst': dst,
+                        'path_key': path_key,
+                    })
 
             # Record the send and receive as a set of operations that must happen on the same channel
             # if src_off == 0 or src_off == 1:
@@ -764,13 +1046,21 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         assert False, 'Unhandled channel policy'
 
     if flow_path_keys:
-        # Sanity check: ops that were kept separate because they carry distinct
-        # mscclflowids (e.g. different switch paths) are only guaranteed to land
-        # in separate threadblocks if they also land on distinct channels here --
-        # threadblocks are grouped by (gpu, is_send, peer, channel) below, so two
-        # same-step ops sharing a channel get merged into one threadblock
-        # regardless of having different flow ids. This can happen if channel_policy
-        # doesn't separate same-step/same-edge ops (e.g. ChannelPolicy.One).
+        # Sanity check: ops that were kept separate because they take distinct
+        # physical paths (distinct path_keys, e.g. different switch routes) are
+        # only guaranteed to land in separate threadblocks if they also land on
+        # distinct channels here -- threadblocks are grouped by (gpu, is_send,
+        # peer, channel) below, so two same-step ops sharing a channel get merged
+        # into one threadblock regardless of taking different paths. This can
+        # happen if channel_policy doesn't separate same-step/same-edge ops (e.g.
+        # ChannelPolicy.One).
+        #
+        # Grouped by path_key rather than by mscclflowid: the flow id is now
+        # emitted only for paced ops (see its assignment above), but an UNPACED op
+        # is separated by its path_key just the same and needs the same guarantee,
+        # so keying on the flow id would silently stop checking intra-cell hops.
+        # path_key is what the allocator actually partitions on, so this also
+        # states the guard in the terms of the thing it is guarding.
         #
         # Under channel_policy=MatchTopology this should now be structurally
         # unreachable: _allocate_channels_match_topology() partitions every edge by
@@ -779,52 +1069,58 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         # bug in that partitioning (e.g. a path_key not making it onto the op), not an
         # inherent limitation -- kept here as a cheap regression guard, and because
         # it's still a real limitation for other channel policies (e.g. One).
-        flow_chans = defaultdict(set)
+        path_chans = defaultdict(set)
         for chan, chan_ops in ops_by_channel.items():
             for op in chan_ops:
-                if op.mscclflowid is not None:
-                    flow_chans[(op.gpu, op.is_send, op.peer, op.step)].add((op.mscclflowid, chan))
-        for (gpu, is_send, peer, step), flowid_chan_pairs in flow_chans.items():
-            flow_ids = {f for f, _ in flowid_chan_pairs}
-            chans = {c for _, c in flowid_chan_pairs}
-            if len(chans) < len(flow_ids):
-                print(f'Warning: mscclflowids {sorted(flow_ids)} on gpu={gpu} is_send={is_send} '
-                      f'peer={peer} step={step} only got {len(chans)} distinct channel(s) under '
-                      f'channel_policy={channel_policy} -- they will be forced into the same '
-                      f'threadblock, losing the intended parallelism between switch paths.')
+                path_chans[(op.gpu, op.is_send, op.peer, op.step)].add((op.path_key, chan))
+        for (gpu, is_send, peer, step), path_chan_pairs in path_chans.items():
+            path_keys = {p for p, _ in path_chan_pairs}
+            chans = {c for _, c in path_chan_pairs}
+            if len(chans) < len(path_keys):
+                print(f'Warning: switch paths {sorted(path_keys, key=str)} on gpu={gpu} '
+                      f'is_send={is_send} peer={peer} step={step} only got {len(chans)} distinct '
+                      f'channel(s) under channel_policy={channel_policy} -- they will be forced '
+                      f'into the same threadblock, losing the intended parallelism between '
+                      f'switch paths.')
 
-    # Group by which operations need to be in the same threadblock
+    # Group by which operations need to be in the same threadblock, then give each group its OWN
+    # threadblock: one per (gpu, direction, peer, channel).
+    #
+    # That quadruple is exactly an MSCCL connection -- a connection is scoped to (channelId, peer)
+    # and each one is an independent FIFO with its own step counter (mscclSetupConnections in
+    # msccl_setup.cc) -- so a threadblock now serializes precisely the set of operations that the
+    # runtime already serializes, and nothing else.
+    #
+    # Threadblocks used to be PACKED: several groups shared one threadblock whenever their peers
+    # and steps did not collide, minimizing threadblock count. That packing is what made
+    # flow_completion_steps necessary, because it put unrelated operations -- a send to one peer
+    # and a switch-relayed recv from another -- into one step-ordered list, where the recv could
+    # stall the send behind it. Correcting the recv's .step to its true completion epoch fixed that
+    # stall, but at the cost of ordering recvs by ARRIVAL while sends stayed ordered by DEPARTURE,
+    # which breaks the invariant the runtime actually requires: for one (peer, channel) the two
+    # ends must agree on order, or the FIFO pairs a send with the wrong recv. That is silent data
+    # corruption, not a stall. Measured before this change: 3 of the 32 example schedules emitted
+    # a mismatched pairing, one of them on every single (peer, channel) group it had.
+    #
+    # Splitting removes the cause instead of compensating for it: with no mixed threadblock there
+    # is no unrelated operation to stall, so no completion correction is needed, and send and recv
+    # keep the same .step and therefore the same order (see the sort below). The cost is more
+    # threadblocks -- measured +64% on the hetero allgather, 107 -> 176, max 20 per GPU -- with an
+    # unchanged step count, since the operations themselves are the same ones.
     tb_groups = defaultdict(list)
     for chan, chan_ops in ops_by_channel.items():
         for op in chan_ops:
             tb_groups[(op.gpu, op.is_send, op.peer, chan)].append(op)
 
     tbs_by_gpu_chan = defaultdict(lambda: defaultdict(list))
-    # For each group find or create a threadblock to add them to
-    for key, grp in tb_groups.items():
-        rank, is_send, peer, chan = key
-        make_none = False
-        tbs = tbs_by_gpu_chan[rank][chan]
-        for tb in tbs:
-            tb_peer = tb.send if is_send else tb.recv
-            # An existing threadblock can be reused if:
-            # - Either the relevant peer is not set yet or the peer is the same
-            # - No operations already in the threadblock execute in the same step
-            if tb_peer == -1 or tb_peer == peer:
-                if all(not any(op1.step == op2.step for op2 in grp) for op1 in tb.steps):
-                    break
-        else:
-            # No existing threadblock was suitble, so create a new one
-            tb = _Threadblock(chan)
-            tbs.append(tb)
-        # Ensure the peer is set correctly
+    for (rank, is_send, peer, chan), grp in tb_groups.items():
+        tb = _Threadblock(chan)
         if is_send:
-            assert tb.send == -1 or tb.send == peer
             tb.send = peer
         else:
-            assert tb.recv == -1 or tb.recv == peer
             tb.recv = peer
         tb.steps.extend(grp)
+        tbs_by_gpu_chan[rank][chan].append(tb)
 
     # Sort threadblocks in each GPU by peers and then the channel
     # This is important as in NCCL threadblocks using the same NVLink concurrently should be close together
@@ -846,6 +1142,17 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for op in tb.steps:
                 op.block_rbid = tb.rbid
 
+    # Realize the caller's pacing gates (finish/arrival-before-start edges): a send-sourced gate
+    # onto op.net_dep (emitted as netdepid/netdeps, enforced by the proxy against the NIC), a
+    # recv-sourced one onto op.depends (emitted as depid/deps, discharged by the kernel when the
+    # proxy marks the recv slot filled). Must run HERE, between rbid assignment and the loop
+    # below: it needs block_rbid, which is assigned above; a net_dep must skip nop expansion
+    # (it is not a data dependency and costs no XML step); and a recv gate's extra depends entry
+    # must go THROUGH that expansion, and through the has_dependence marking after it, exactly
+    # like any other data dependency.
+    if pacing_gates:
+        _realize_pacing_gates(gpus, pacing_gates)
+
     for rank, gpu in gpus.items():
         for tb in gpu.threadblocks:
             tb.steps.sort(key=lambda op: op.step)
@@ -865,6 +1172,11 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for op in tb.ops:
                 op.block_rbid = tb.rbid
             all_ops.extend(tb.ops)
+
+    # A gate is the only construct here that can deadlock the runtime, and it would do so as a
+    # hang on the cluster. Fail at generation instead.
+    if pacing_gates:
+        _assert_gates_acyclic(gpus)
 
     for op in all_ops:
         if len(op.depends):
@@ -958,31 +1270,75 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                     op_elem.set('cnt', str(op.cnt))
                 assert len(op.depends) <= 1
                 if len(op.depends) == 1:
-                    if make_none and op.depends[0].block_rbid is None:
-                        op_elem.set('depid', '-1')
-                    else:
-                        op_elem.set('depid', str(op.depends[0].block_rbid))
-                    if make_none and op.depends[0].idx is None:
-                        op_elem.set('deps', '-1')
-                    else:
-                        op_elem.set('deps', str(op.depends[0].idx))
+                    # These were previously guarded by a `make_none` flag that was only ever
+                    # assigned False, so the guards were unreachable and the values below were
+                    # always emitted. Assert instead of silently writing depid="None", which the
+                    # runtime would parse as garbage.
+                    dep = op.depends[0]
+                    assert dep.block_rbid is not None and dep.idx is not None, (
+                        f'dependency of {op.op_type} on gpu {op.gpu} was never assigned a '
+                        f'threadblock/index: rbid={dep.block_rbid} idx={dep.idx}')
+                    op_elem.set('depid', str(dep.block_rbid))
+                    op_elem.set('deps', str(dep.idx))
                 elif old_format:
                     op_elem.set('depid', '-1')
                     op_elem.set('deps', '-1')
+                # Send-sourced pacing gate: this send is withheld until op.net_dep has landed
+                # on the wire. Deliberately NOT depid/deps -- a data dependency is discharged in
+                # the kernel the moment the producer's FIFO tail bumps, which is the wrong
+                # guarantee for "that send is off the NIC". Omitted entirely when ungated, which
+                # is the runtime's default, so an unpaced schedule's XML is unchanged. The
+                # producer needs no `hasdep`: the gate is enforced against its transmission
+                # count, never against a kernel flag. A RECV-sourced pacing gate is the opposite
+                # case and is not emitted here at all -- it waits on a reception, which the
+                # kernel already observes, so _realize_pacing_gates put it on op.depends and it
+                # left through depid/deps above.
+                if op.net_dep is not None:
+                    nd = op.net_dep
+                    assert nd.block_rbid is not None and nd.idx is not None, (
+                        f'pacing gate of {op.op_type} on gpu {op.gpu} names a send that was '
+                        f'never assigned a threadblock/index: rbid={nd.block_rbid} '
+                        f'idx={nd.idx}')
+                    assert op.is_send and nd.is_send, (
+                        'netdepid/netdeps may only order one send against another (a recv-sourced '
+                        f'gate belongs on depid/deps); got {op.op_type} <- {nd.op_type} on gpu '
+                        f'{op.gpu}')
+                    op_elem.set('netdepid', str(nd.block_rbid))
+                    op_elem.set('netdeps', str(nd.idx))
+                # EXPERIMENTAL remote pacing gate (P4). Addressed by RANK AND COUNT, not by
+                # (threadblock, step): the producer lives on another GPU, whose threadblock
+                # layout and post-expansion step indices this GPU cannot track at runtime.
+                # remotedep names the notifying rank, remotedeps the ordinal ("the i-th
+                # notification from that rank"), and the far end's recv carries the matching
+                # remotenotify. Both attributes are omitted when unused, so a schedule derived
+                # without remote gates emits byte-identical XML.
+                if op.remote_dep is not None:
+                    producer, ordinal = op.remote_dep
+                    assert op.is_send and not producer.is_send, (
+                        'remotedep/remotedeps gate a SEND on a remote RECV; got '
+                        f'{op.op_type} <- {producer.op_type} on gpu {op.gpu}')
+                    op_elem.set('remotedep', str(producer.gpu))
+                    op_elem.set('remotedeps', str(ordinal))
+                if op.remote_notify:
+                    # One entry per waiting rank, in the order the ordinals were assigned.
+                    op_elem.set('remotenotify',
+                                ','.join(str(rank) for rank in op.remote_notify))
                 if op.has_dependence:
                     op_elem.set('hasdep', '1')
                 elif old_format:
                     op_elem.set('hasdep', '0')
                 if op.mscclflowid is not None:
                     op_elem.set('mscclflowid', str(op.mscclflowid))
-                # Physical send rate (GB/s): op.cnt pieces at piece_rate each.
-                # Merges only combine chunks within a single step, so an op
-                # never spans epochs and its rate is well-defined.
-                if piece_rate is not None:
-                    op_elem.set('rate', str(op.cnt * piece_rate))
-                # Record each send op's epoch, keyed by its final XML location
-                # (gpu, tb, s). Epoch ordering can no longer read the epoch off
-                # the flow id (one route-based id spans epochs), so it uses this.
+                # Physical send rate (GB/s): op.cnt pieces at op.piece_rate each.
+                # Merges only combine chunks within a single step, so an op never
+                # spans epochs and its rate is well-defined. op.piece_rate is None
+                # for a deliberately unpaced flow, which emits no attribute at all.
+                if op.piece_rate is not None:
+                    op_elem.set('rate', str(op.cnt * op.piece_rate))
+                # Optional per-send epoch record, keyed by final XML location (gpu, tb, s).
+                # Epoch ordering is enforced in-band by _realize_pacing_gates (netdepid/netdeps
+                # on the gated send), so this manifest no longer drives it; it is retained only
+                # as an informational hook for callers that want a per-op epoch map.
                 if send_epoch_manifest is not None and op.is_send:
                     send_epoch_manifest.append(
                         {'gpu': rank, 'tb': tb.rbid, 's': op.idx, 'epoch': op.step})

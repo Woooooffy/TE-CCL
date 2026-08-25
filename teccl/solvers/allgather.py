@@ -384,7 +384,7 @@ class AllGatherFormulation(BaseFormulation):
                     self.epoch_used[-1] * demand_total >= tmp, name=f'flows_sum_{k}')
                 objective.add(self.epoch_used[-1])
 
-        if objective_type == ObjectiveType.TOTAL_DEMAND:
+        if objective_type in (ObjectiveType.TOTAL_DEMAND, ObjectiveType.TOTAL_DEMAND_MIN_SWITCH_HOPS):
             # Objective based on total demand: Σ max((Σtotal_demand_k - (Demand-1)), 0)
             # aux_var_obj1 = tmp = Σtotal_demand_k - (Demand-1)
             # aux_var_obj2 = max(aux_var_obj1, 0)
@@ -409,6 +409,27 @@ class AllGatherFormulation(BaseFormulation):
                 objective.add(
                     self.aux_var[len(self.aux_var) - 1], (-mulitplier))
 
+        if objective_type == ObjectiveType.TOTAL_DEMAND_MIN_SWITCH_HOPS:
+            # Tie-breaker layered on the TOTAL_DEMAND reward above: a tiny positive cost on
+            # every unit of flow crossing a switch->switch link (leaf<->spine here). The
+            # completion reward moves the objective by ~mulitplier per epoch, so with GAMMA
+            # this small the solver never delays completion to save hops; it only decides
+            # *among equal-makespan solutions*, where it now prefers fewer switch relays
+            # (e.g. a direct leaf hop over a spine detour). A direct same-rail cross-node
+            # path uses zero switch->switch links; a spine detour uses two, so it is strictly
+            # penalized. Only the handful of leaf-spine links carry a term, keeping the added
+            # objective size small.
+            GAMMA = 1e-4
+            switch_switch_links = [
+                (i, j)
+                for i in self.topology.switch_indices
+                for j in self.topology.switch_indices
+                if self.topology.capacity[i][j] > 0
+            ]
+            for s, c, k in product(self.sources, self.chunks, self.epochs):
+                for (i, j) in switch_switch_links:
+                    objective.add(self.flow[s][i][j][c][k], GAMMA)
+
         if objective_type == ObjectiveType.PAPER:
             # Objective based on incremental progress
             # sum_end = self.num_nodes * 2 + self.num_chunks + self.num_epochs
@@ -432,6 +453,53 @@ class AllGatherFormulation(BaseFormulation):
         logging.debug(f'Finished adding objective in {time.time() - start}')
         return objective
 
+    def hierarchical_objective_tiers(self) -> List[Tuple[str, gp.LinExpr, float]]:
+        """
+        The three tiers of ObjectiveType.LEXICOGRAPHIC (highest priority first), the MILP
+        counterpart of LPFormulation.hierarchical_objective_tiers -- same three quantities,
+        summed over the extra chunk index this formulation carries:
+
+          tier 1, latency:      -sum over (s, d, c, k) of total_demand_sat, i.e. every chunk
+                                pays one unit for every epoch it has not landed yet.
+          tier 2, host relay:   flow leaving a host that did not originate there (s != n).
+          tier 3, switch chain: flow entering a switch, one unit per hop, so the term is the
+                                length of the switch chain a unit traverses: 0 for a direct
+                                link, 1 for gpu->switch->gpu, 3 for leaf->spine->leaf.
+
+        Only variables that were actually created are read; the sparse flow container returns
+        0.0 for the (s, i, j, c, k) combinations initialize_variables skipped, which add into
+        a LinExpr as a constant exactly as the single-objective code above does.
+        """
+        instance = self.user_input.instance
+
+        latency = gp.LinExpr(0.0)
+        for s, d, c, k in product(self.sources, self.nodes, self.chunks, self.epochs):
+            if not self.demand[s][d][c]:
+                continue
+            latency.add(self.total_demand_sat[s][d][c][k], -1.0)
+
+        relay = gp.LinExpr(0.0)
+        for n in self.host_indices():
+            for j in self.nodes:
+                if self.topology.capacity[n][j] <= 0:
+                    continue
+                for s in self.sources:
+                    if s == n:
+                        continue
+                    for c, k in product(self.chunks, self.epochs):
+                        relay.add(self.flow[s][n][j][c][k], 1.0)
+
+        switch_chain = gp.LinExpr(0.0)
+        for (i, j) in self.switch_ingress_links():
+            for s, c, k in product(self.sources, self.chunks, self.epochs):
+                switch_chain.add(self.flow[s][i][j][c][k], 1.0)
+
+        return [
+            ("latency", latency, instance.objective_latency_rel_tol),
+            ("host_relay", relay, instance.objective_relay_rel_tol),
+            ("switch_chain", switch_chain, 0.0),
+        ]
+
     def encode_problem(self, use_one_less_epoch: bool = False, previous_buffers: List[List[int]] = []) -> int:
         setup_start = time.time()
         self.model = gp.Model('AllGather_MILP', env=get_gurobi_env())
@@ -443,8 +511,7 @@ class AllGatherFormulation(BaseFormulation):
             self.use_one_less_epoch()
         if self.user_input.instance.symmetry:
             self.add_symmetry_constraints()
-        self.model.setObjective(self.objective_formulation(
-            self.user_input.instance.objective_type))
+        self.apply_objective()
 
         log_file = f'Logs/{self.solver_name}_{self.user_input.topology.name}_{self.num_nodes}-nodes_' \
             f'{self.num_chunks}-chunks_{self.num_epochs}-epochs_{self.epoch_duration}-epochduration_{self.user_input.instance.objective_type}'
@@ -539,14 +606,25 @@ class AllGatherFormulation(BaseFormulation):
         correct_k = max(demand_met_epoch.values())
         return (list_of_sends, demand_met_epoch, buffers, correct_k)
 
-    def find_flow(self, flows: Set[Tuple[int, int, int, int, int]], s: int, d: int, c: int, k: int, flow_memoization: Dict) -> Tuple[int, int, int, int, int]:
+    def get_viable_predecessors(self, flows: Set[Tuple[int, int, int, int, int]], s: int, d: int, c: int, k: int, pred_memo: Dict) -> List[Tuple[int, int, int, int, int]]:
         """
-            Find the flow (sending node) that causes the node d to have the chunk by epoch k.
+            Return every flow that could have delivered chunk (s, c) to node d by epoch k,
+            i.e. all (s, n, d, c, k') in `flows` where n->d with the epoch offset implied by
+            the link type (propagation alpha, per-hop beta, and cut-through switch legs).
+            Sorted by send epoch (earliest first) so the DFS in _dfs_trace_to_source tries
+            the earliest-arriving predecessor first (mirrors the old greedy min-epoch pick).
+
+            Memoized on (s, d, c, k): the result is a pure function of `flows` and the query,
+            independent of any back-trace path, so caching is sound. NOTE: the no-copy switch
+            path in dfs_remove_unnecessary_flows mutates `flows` (removes a switch's single
+            copy once committed); it must clear pred_memo when it does so.
         """
-        if (s, d, c, k) in flow_memoization:
-            return flow_memoization[(s, d, c, k)]
+        key = (s, d, c, k)
+        cached = pred_memo.get(key)
+        if cached is not None:
+            return cached
         viable_flows = []
-        # Loop over the neighbors to find such a feasible flow.
+        # Loop over the neighbors to find every feasible incoming flow.
         for n in self.nodes:
             if self.topology.capacity[n][d] <= 0:
                 continue
@@ -562,17 +640,57 @@ class AllGatherFormulation(BaseFormulation):
             expected_flow = (s, n, d, c, k - alpha_num_back - beta_num_back)
             if expected_flow in flows:
                 viable_flows.append(expected_flow)
-        if d not in self.topology.switch_indices:
-            assert len(
-                viable_flows) == 1, f"There should only be one viable flow for demand {s} {d} {c} but have {len(viable_flows)}"
-        # If d is a switch, then solver can pick a solution where the switch receives the same chunk by same epoch from multiple nodes.
-        #  We only need one such flow if switch is copying the chunk.
-        closest_flow = min(viable_flows, key=lambda x: x[4])
-        flow_memoization[(s, d, c, k)] = closest_flow
-        if not self.user_input.instance.switch_copy and d in self.topology.switch_indices:
-            # we remove the chosen flow from the set of flows so that we don't pick it again as there is no copy.
-            flows.remove(closest_flow)
-        return closest_flow
+        viable_flows.sort(key=lambda x: x[4])
+        pred_memo[key] = viable_flows
+        return viable_flows
+
+    def _dfs_trace_to_source(self, flows: Set[Tuple[int, int, int, int, int]], s: int, node: int, c: int, k: int,
+                             visited: frozenset, pred_memo: Dict, buffers: Dict, budget: List[int]
+                             ) -> List[Tuple[int, int, int, int, int]]:
+        """
+            Trace how `node` received chunk (s, c) by epoch k back to the source, returning
+            the list of flows [flow_into_node, ..., flow_from_source] or None if there is no
+            acyclic route. This is a depth-first search WITH BACKTRACKING: when a switch has
+            several viable predecessors (common under switch_copy) the greedy min-epoch pick
+            may dead-end at a cut-through top-switch mesh even though a real predecessor
+            reaches the source; on a dead end we try the next predecessor instead of dropping
+            the whole demand.
+
+            `visited` holds the (node, send_epoch) vertices already on the current path. In
+            the time-expanded graph GPU forwarding strictly advances the epoch, so the only
+            cycles are same-epoch cut-through loops; excluding a predecessor whose
+            (node, send_epoch) is already visited breaks exactly those zero-time loops while
+            still allowing a node revisited at a DIFFERENT epoch (not a cycle). This also
+            bounds recursion: every step consumes a distinct (node, epoch), so depth is at
+            most num_nodes * num_epochs; `budget` caps total node expansions to keep a
+            pathological (exponential) search from running away.
+        """
+        if budget[0] <= 0:
+            return None
+        budget[0] -= 1
+        for f in self.get_viable_predecessors(flows, s, node, c, k, pred_memo):
+            pred = f[1]
+            if (pred, f[4]) in visited:
+                # picking f would revisit a same-epoch vertex -> a zero-time cycle; skip it.
+                continue
+            if pred == s:
+                # reached the chunk source node.
+                return [f]
+            if pred not in self.topology.switch_indices:
+                # A GPU relays out of its buffer; the epoch it received the chunk is given by
+                # buffer. Without a buffer var this branch can't be continued -> try the next.
+                if (s, pred, c) not in buffers:
+                    continue
+                nk = buffers[(s, pred, c)] - 1
+            else:
+                # A switch's upstream arrival epoch is one before its own outgoing send epoch;
+                # get_viable_predecessors resolves the exact offset per incoming link type.
+                nk = f[4] - 1
+            sub = self._dfs_trace_to_source(
+                flows, s, pred, c, nk, visited | {(pred, f[4])}, pred_memo, buffers, budget)
+            if sub is not None:
+                return [f] + sub
+        return None
 
     def chunk_flow_path_to_string(self, chunk_path: List[Tuple[int, int, int, int, int]]) -> Tuple[int, List[str]]:
         """
@@ -618,7 +736,14 @@ class AllGatherFormulation(BaseFormulation):
             flows_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
             flows_str_info["3-Epochs_Required"] = self.find_demand_satisfied_k() + 1
             flows_str_info["4-Collective_Finish_Time"] = flows_str_info["1-Epoch_Duration"] * flows_str_info["3-Epochs_Required"]
-            flows_str_info["5-Algo_Bandwidth"] = self.topology.node_per_chassis * self.topology.chunk_size * self.num_chunks * self.topology.chassis / flows_str_info["4-Collective_Finish_Time"]
+            # node_per_chassis * chassis assumes every chassis contributes the same GPU
+            # count; on heterogeneous topologies (e.g. HeteroTaperedCluster) that undercounts
+            # the real number of demand-bearing sources. Count actual sources from self.demand
+            # instead -- correct for any topology, and unaffected by AStar's self.sources
+            # override (self.demand itself is never overridden), so it holds here even though
+            # this branch runs for AStarFormulation instances too.
+            num_data_sources = sum(1 for s in self.nodes if self.demand[s].any())
+            flows_str_info["5-Algo_Bandwidth"] = num_data_sources * self.topology.chunk_size * self.num_chunks / flows_str_info["4-Collective_Finish_Time"]
             flows_str_info['7-Flows'] = [
                 f"Chunk {c} from {s} traveled over {i}->{j} in epoch {k}" for s, i, j, c, k in flows]
             return flows, flows_str_info
@@ -628,8 +753,9 @@ class AllGatherFormulation(BaseFormulation):
         chunk_paths = {}
         demand_met_str = defaultdict(
             lambda: defaultdict(lambda: defaultdict(float)))
-        # (s, d, c, k) -> (s, i, j, c, k). This is used to memoize the flow that causes the node d to have the chunk by epoch k.
-        flow_memoization = {}
+        # (s, d, c, k) -> [(s, i, d, c, k'), ...]. Memoizes the viable incoming flows that
+        # could have delivered chunk (s, c) to d by epoch k (a pure function of `flows`).
+        pred_memo = {}
         for s, d, c in product(self.nodes, self.nodes, self.chunks):
             if not self.demand[s][d][c]:
                 # If the node d did not request the chunk s c, then we can skip it.
@@ -641,35 +767,44 @@ class AllGatherFormulation(BaseFormulation):
                 continue
             demand_met_str[f"GPU {d}"][f"GPU {s}"][f"Chunk {c}"] = self.epoch_duration * (
                 demand_met_epoch[(s, d, c)] + 1)
-            my_path = list()
             # We use demand_met as the last step may not have a buffer variable.
-            demand_met_k = k = demand_met_epoch[(s, d, c)]
-            # Find the flow that causes the node d to have the chunk by epoch k.
-            closest_flow = self.find_flow(flows, s, d, c, k, flow_memoization)
-            required_flows.add(closest_flow)
-            my_path.append(closest_flow)
-            #  Trace the path to the source node.
-            while True:
-                sending_node = closest_flow[1]
-                if sending_node == s:
-                    # we reached the chunk source node
-                    break
-                if sending_node not in self.topology.switch_indices:
-                    # If the sending node is not a switch, then the epoch in which it received the chunk is given by buffer.
-                    if (s, sending_node, c) not in buffers:
-                        logging.error(
-                            f"Buffer not found for s_{s}, sending_node_{sending_node}, c_{c}")
-                        break
-                    k = buffers[(s, sending_node, c)] - 1
-                else:
-                    # If the sending node is a switch, k is the epoch index find_flow expects (one less
-                    # than the switch's own outgoing send epoch); find_flow resolves the actual upstream
-                    # arrival epoch per incoming link's type (store-and-forward vs. cut-through).
-                    k = closest_flow[4] - 1
-                closest_flow = self.find_flow(
-                    flows, s, sending_node, c, k, flow_memoization)
-                required_flows.add(closest_flow)
-                my_path.append(closest_flow)
+            demand_met_k = demand_met_epoch[(s, d, c)]
+            # Trace the chunk's delivery back to the source with a backtracking DFS. It follows
+            # only real hops and, keying its visited set on (node, epoch), never follows a
+            # same-epoch cut-through cycle backedge -- that edge, never traced, is then dropped
+            # as an unnecessary flow (the whole point of this pass). Backtracking matters under
+            # switch_copy: a switch (esp. a cut-through top-switch mesh) can have several viable
+            # predecessors, and the earliest one may dead-end while another reaches the source;
+            # on a dead end the DFS backs up and tries the next instead of dropping the demand.
+            # A budget bounds the (worst-case exponential) search. This supersedes the earlier
+            # unsound whole-cycle removal: with binary flows a legit forward edge and a wasteful
+            # reverse edge form one 2-cycle, so removing the cycle would delete the legit edge.
+            budget = [50 * len(self.nodes) * (self.num_epochs + 1)]
+            my_path = self._dfs_trace_to_source(
+                flows, s, d, c, demand_met_k, frozenset(), pred_memo, buffers, budget)
+            if my_path is None:
+                # No acyclic route to source: the solver delivers this demand only via a
+                # same-epoch circulation (a phantom cut-through switch cycle -- a formulation
+                # artifact), or the search budget was exhausted. Skip this demand instead of
+                # hanging/crashing; flows collected for other demands are unaffected.
+                logging.warning(
+                    f"Could not trace demand s_{s} d_{d} c_{c} back to source "
+                    f"(no acyclic path -- likely a same-epoch switch circulation); skipping.")
+                continue
+            for f in my_path:
+                required_flows.add(f)
+            # No-copy: a switch relays a single copy, so once a committed path consumes a flow
+            # INTO a switch, remove it so another demand's trace can't reuse that same copy;
+            # mutating `flows` invalidates the predecessor memo. (Under switch_copy this is a
+            # no-op -- switches may fan the chunk out to many receivers.)
+            if not self.user_input.instance.switch_copy:
+                removed_any = False
+                for f in my_path:
+                    if f[2] in self.topology.switch_indices and f in flows:
+                        flows.discard(f)
+                        removed_any = True
+                if removed_any:
+                    pred_memo.clear()
             chunk_str_path = self.chunk_flow_path_to_string(my_path)
             chunk_paths[f"Demand at {d} for chunk {c} from {s} met by epoch {demand_met_k}"] = [
                 x[1] for x in chunk_str_path]
@@ -688,7 +823,10 @@ class AllGatherFormulation(BaseFormulation):
         flows_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
         flows_str_info["3-Epochs_Required"] = self.find_demand_satisfied_k() + 1
         flows_str_info["4-Collective_Finish_Time"] = flows_str_info["1-Epoch_Duration"] * flows_str_info["3-Epochs_Required"]
-        flows_str_info["5-Algo_Bandwidth"] = self.topology.node_per_chassis * self.topology.chunk_size * self.num_chunks * self.topology.chassis / flows_str_info["4-Collective_Finish_Time"]
+        # See the astar branch above: node_per_chassis * chassis assumes uniform GPUs-per-
+        # chassis, which breaks on heterogeneous topologies. len(self.sources) is exactly the
+        # demand-bearing source count here (self.sources is not overridden on this path).
+        flows_str_info["5-Algo_Bandwidth"] = len(self.sources) * self.topology.chunk_size * self.num_chunks / flows_str_info["4-Collective_Finish_Time"]
         flows_str_info["6-Demand_Met"] = demand_met_str
         flows_str_info['7-Flows'] = [x[1] for x in required_flows_str]
         flows_str_info['8-Chunk paths'] = chunk_paths
@@ -713,8 +851,60 @@ class AllGatherFormulation(BaseFormulation):
                         f"Demand not satisfied for s_{s}, i_{i}, c_{c}")
         return max(satisfied_epochs.values())
 
+    def diagnose_switch_phantom_cycles(self) -> None:
+        """
+            Post-solve diagnostic that PROVES/locates same-epoch switch phantom cycles in the
+            raw solved flow (not the pruned schedule). For each (source, chunk, epoch) it finds
+            switch<->switch links carrying the chunk BOTH directions in the same epoch
+            (flow[s][a][b][c][k]==1 AND flow[s][b][a][c][k]==1) -- a circulation the switch
+            conservation constraint (out==in) satisfies with no GPU grounding -- and, for each
+            such source, prints whether/when the chunk ever actually entered the switch fabric
+            via a GPU->switch egress. "NO GPU->switch egress" is the smoking gun: the mesh flow
+            for that source is conjured out of nothing. Reads model vars only; safe to call
+            once a solution exists.
+        """
+        switches = set(self.topology.switch_indices)
+        gpu_to_switch = defaultdict(list)          # (s,c) -> [(gpu, switch, k)]
+        ss_edges = defaultdict(set)                # (s,c,k) -> {(a,b) switch->switch}
+        for v in self.model.getVars():
+            if not v.varName.startswith('flow_') or 'future' in v.varName or v.x <= 0.9:
+                continue
+            parts = v.varName.split('_')
+            if len(parts) != 6:
+                continue
+            _, s, i, j, c, k = (int(p) if idx else p for idx, p in enumerate(parts))
+            if i not in switches and j in switches:
+                gpu_to_switch[(s, c)].append((i, j, k))
+            elif i in switches and j in switches:
+                ss_edges[(s, c, k)].add((i, j))
+
+        phantom_sources = set()
+        cycle_count = 0
+        for (s, c, k), edges in sorted(ss_edges.items()):
+            for (a, b) in edges:
+                if a < b and (b, a) in edges:
+                    cycle_count += 1
+                    phantom_sources.add((s, c))
+                    logging.warning(
+                        f"[PHANTOM] same-epoch switch cycle: source {s} chunk {c} epoch {k}: "
+                        f"flow[{a}->{b}]=1 AND flow[{b}->{a}]=1 (conservation satisfied circularly)")
+        for (s, c) in sorted(phantom_sources):
+            egress = sorted(gpu_to_switch.get((s, c), []), key=lambda x: x[2])
+            if egress:
+                logging.warning(
+                    f"[PHANTOM] source {s} chunk {c} GPU->switch egress (only real way into the mesh): "
+                    + ", ".join(f"{g}->{sw}@ep{k}" for (g, sw, k) in egress))
+            else:
+                logging.warning(
+                    f"[PHANTOM] source {s} chunk {c}: NO GPU->switch egress ANYWHERE -> the mesh flow "
+                    f"is pure circulation, conjured with no real origin at the source GPU")
+        logging.warning(
+            f"[PHANTOM] summary: {cycle_count} same-epoch switch 2-cycle(s) across "
+            f"{len(phantom_sources)} (source,chunk) pair(s)")
+
     def get_schedule(self) -> Tuple[List[Tuple[int, int, int, int, int]], Dict]:
         if self.model.SolCount > 0:
+            self.diagnose_switch_phantom_cycles()
             if not self.required_flows:
                 self.required_flows, self.flows_str_info = self.dfs_remove_unnecessary_flows(
                     astar=False)

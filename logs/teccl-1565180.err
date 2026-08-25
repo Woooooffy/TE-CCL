@@ -1,0 +1,44 @@
+cpu-bind=MASK - lanka30, task  0  0 [316538]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka30, task  0  0 [317010]: mask 0xff0000ff set
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/bin/teccl", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/__main__.py", line 21, in main
+    if handler(args, args.command):
+       ~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/cli/solve.py", line 41, in handler
+    solver.solve()
+    ~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 370, in solve
+    self.solve_hierarchy(start)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 338, in solve_hierarchy
+    info, solution = solve_hierarchical(
+                     ~~~~~~~~~~~~~~~~~~^
+        topology, level_input, instance.collective, num_chunks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        prefix=prefix, debug=instance.debug, level_chunk=instance.level_chunk)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 630, in solve_hierarchical
+    solution = solve_level(root, ctx)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 311, in solve_level
+    return _solve_recursive(problem, ctx)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 390, in _solve_recursive
+    res = _lower(solution, problem, coarse, mapping, fine_tensor, g, level_demand)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 465, in _lower
+    assignments, targets, epoch = assign_identities_free(
+                                  ~~~~~~~~~~~~~~~~~~~~~~^
+        solution, mapping, fine_tensor, problem.topology, level_chunk=g,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        relabel=relabel, holder_of=holder)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/reconstruct.py", line 1091, in assign_identities_free
+    for h, v in _pick_ingress(slot, d, vol, tgt, cap, ingress_ledger, tol=ingress_tol):
+                ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/reconstruct.py", line 542, in _pick_ingress
+    raise RuntimeError(
+    ...<2 lines>...
+        f"placed across candidates {candidates} after splitting.")
+RuntimeError: ingress capacity exhausted for cell 0 epoch 35: identity (29, 6) needs 0.0160826 but only 0.0160771 could be placed across candidates [2, 5, 8, 11, 14] after splitting.
+srun: error: lanka30: task 0: Exited with exit code 1

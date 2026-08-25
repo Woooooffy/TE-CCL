@@ -1,0 +1,372 @@
+# Post-solve port splitting at flow granularity
+
+Realize one modeled link of bandwidth `B` as `P` parallel ports of `B/P`, assigning each
+**flow** -- the routed path the solve already chose -- to one port on each link it crosses.
+
+The solver, its capacity model, and the schedule's volumes / epochs / rates are untouched.
+This is a relabeling of `via switches`, nothing more. Non-goals: changing routes, changing
+the makespan, teaching the solver about ports.
+
+## 0. Why this is not the solver's job
+
+`capacity[i][j]` stays the AGGREGATE bandwidth, so every solve is bit-for-bit unchanged. The
+solver's feasibility statement (`sum(rate) <= B` on a link, per epoch) is strictly weaker than
+the realized one (`sum(rate) <= B/P` on each port), and the gap is exactly what this pass
+closes. It closes it without inflating the makespan whenever the per-port packing succeeds --
+which is a property of the flow-size vectors, not of the routing.
+
+## 0.5 The model
+
+Two objects, each a bijection with a physical thing:
+
+    Flow     <-> a path                    (src, switches, dst)
+    SubFlow  <-> a path plus its ports     (src, switches, dst, one port per hop)
+
+A SubFlow is what crosses wires, so it is what everything downstream keys on. Its identity is
+purely SPATIAL -- `SubFlow.key = (switches, ports)`, with nothing temporal in it. That is not
+tidiness: `(channel, peer)` must stay one logical connection with its own FIFO and in-order
+delivery, so a key that varied by epoch would scatter one connection's traffic across two of
+them and break the ordering the XML runtime depends on.
+
+The packing's job is to give each Flow exactly ONE SubFlow. When a flow will not fit a single
+port it falls back to several, and its PIECES are partitioned among them. One mechanism, not
+two: partitioning across epochs yields subflows alive at different times, partitioning within an
+epoch yields concurrent subflows at finer rates. Same object, same key, same treatment.
+
+A `Piece` is one "7-Flows" line, addressed `(origin, chunk, epoch)` -- the floor, because that
+is exactly what a downstream path-key lookup is keyed on
+(`flow_path_keys[(step_idx, chunk_id, src, dst)]`, chunk_id from (origin, chunk), step_idx from
+epoch). Below a piece there is nothing to partition.
+
+## 1. Port declaration
+
+Ports come in TWO LAYERS, and keeping them apart is what makes the model both packable and
+physically honest.
+
+**Cable index**, `0..ports[i][j]-1`, names one of the parallel links realizing edge `(i, j)`.
+LINK-local, and meaningful on every edge of every topology. This is what the packing below
+assigns, and the whole reason it can: *leaving `u` on cable `c` of `(u,v)` IS arriving at `v` on
+cable `c`*, so a flow's choice follows it across hops. `Topology.ports[i][j]` is the count,
+defaulting to 1 on every used edge; per-cable bandwidth is `capacity[i][j] / ports[i][j]`.
+
+**Port number**, `0..radix-1`, names a socket on a specific NODE. Node-local, and what real
+hardware actually has: a 64-port leaf whose ports 0-31 take GPU downlinks and 32-63 take spine
+uplinks. `Topology.port_map[node][(neighbor, cable)]` is the plugging record, read through
+`physical_port(node, neighbor, cable)`.
+
+The two ends of one cable need not agree on a number, and generally do not:
+`DualPlaneHeteroCluster`'s leaf calls its first spine cable port 32 while the spine calls the
+same cable port 0. A port number is only ever meaningful relative to the node holding it.
+
+`port_order(node)` decides the numbering, and the default -- neighbors ascending, a neighbor's
+cables consecutive -- is not arbitrary: in a two-tier fabric GPUs hold the low node indices and
+spines the high ones, so downlinks land on the low ports and uplinks on the high ones by
+themselves. A topology whose real part pins a plug to a specific port overrides it;
+`_check_port_map` then enforces that the result is a permutation of the node's connections and
+fits `radix(node)`, so a wrong override fails at construction rather than emitting ports no
+switch has.
+
+**Only programmable switches are numbered.** A port number is a fiction unless something reads
+it, and the one consumer is the emitted forwarding table, which covers exactly those switches.
+GPUs and self-routing NVSwitches return `None` -- stating that nothing numbered their sockets,
+rather than carrying a number nobody checked. Note what is NOT skipped: a programmable switch
+numbers *all* of its connections, downlinks to unnumbered GPUs included, because a leaf's
+downlink is a port on the LEAF, which is the end being programmed.
+
+This is also why the packing keys on the CABLE and not the port. Hop 0 leaves a GPU, which has
+no port map; if the path key carried port numbers, every cable of a split GPU uplink would
+collapse to the same `None` and the channel allocator and `_send_uplink` would stop telling
+them apart. Cables are universal, so the identity is built on them and the port number is
+looked up only at emission.
+
+`TwoPodRailHostBound` sets `LEAF_SPINE_PORTS = (2, 1)`, making
+the fabric uniformly 25 GB/s per port at unchanged aggregate. It carries the declaration itself,
+rather than a test-only subclass doing so, because that name is what `scheduler.py`, ncclize's
+`--topology` and the sample inputs resolve -- so the whole workflow exercises the split. Its
+unsplit twin, for A/B checks, is
+`two_pod_rail_variant(..., gpu_leaf_bw=25.0, leaf_spine_ports=(1, 1))`.
+
+Unequal-width ports would need `ports` to hold a list of capacities instead of a count. Not
+built; nothing needs it.
+
+## 2. Ordering: sweep by HOP INDEX
+
+*Throughout sections 2-5, "port" means the CABLE INDEX of section 1 -- the packing works
+entirely in link-local terms. The node-local port NUMBER enters only at emission (section 6).*
+
+Process hop 0 of every flow, then hop 1, then hop 2, ... Within a hop, every out-link is an
+independent problem, because all of its inputs were decided at strictly earlier hops.
+
+**Why hop order and not link order.** The port a flow occupies at hop `k` is decided by its own
+hop `k-1`: leaving `u` on port `p` of link `(u,v)` IS arriving at `v` on port `p`. That
+dependency lives on `(flow, hop)` pairs and always runs forward in `k`, so it is a disjoint
+union of finite chains -- acyclic by construction. Aggregating it to the LINK level is what
+creates cycles (a directed cycle in the node graph realized by consecutive hops), and link
+order is therefore not always available. Hop order always is.
+
+There is no cross-flow dependency: a relay GPU consumes the data and re-sends it as a new
+record whose hop 0 originates in memory, with no inbound port to inherit.
+
+**Price.** A link used at several hop indices is packed INCREMENTALLY across passes rather than
+jointly: pass `k` fills into the residual left by passes `< k`, and heavy-first is only
+available within a pass. Capacity stays hard-enforced (residuals carry forward), but the
+packing is greedier. Measured on `two_pod_rail_hostbound_allgather_fast_epoch_flat.json`: 16 of
+80 links are used at more than one hop index (all `leaf->GPU`, at hops 1 and 3 -- intra-pod vs
+cross-pod delivery), and all 16 are single-port, so nothing there carries a decision. All 8
+links that would be split are single-hop-index. The incremental case is reachable but untested
+here; `HeteroTaperedCluster` is where it would first bite.
+
+**Guard.** Assert each record's switch path is simple (no repeated node), so hop index is
+strictly increasing along a record. A hairpin `...u->v->u...` inside one record would break the
+ordering argument, and it is already an upstream invariant -- `flat_schedule` raises on a cycle
+while tracing a demand back to its source.
+
+## 3. The local problem at one (link, hop)
+
+Fully local. Both ends of every port pair are the same switch, and a switch crossbar imposes
+nothing across them, so there is no coupling between a flow's choice at one hop and the next.
+
+> **Given** out-link `b` with `P` ports of per-epoch capacity `C(e)`, a residual `used[q][e]`
+> carried in from earlier hops, and flows `F` at this hop each with a fixed in-port label
+> `rho(f)` and a per-epoch load vector `n_f(e)`:
+>
+> **choose** `q(f)` such that `for all e, q:  used[q][e] + sum_{q(f)=q} n_f(e) <= C(e)`
+>
+> **minimizing** (1) flows split across ports, then (2) distinct `(rho(f), q(f))` combos.
+
+Load spread across ports is deliberately NOT an objective. It was in an earlier draft as a
+proxy for downstream feasibility, and that proxy is wrong: whether a downstream link can pack
+its flows depends only on its own flow set and capacities, both fixed by the solve. In-port
+labels enter only the bucket heuristic and the combo count. Optimizing for spread costs real
+splits (see section 4) and buys nothing.
+
+### It is VECTOR bin packing
+
+Capacity is per epoch and epochs are independent pools -- a send is epoch-aligned and its rate
+fills exactly one epoch, so a piece consumes only its own epoch's capacity. But one port
+decision covers a flow's whole lifetime. So the cost is a vector and the decision is a scalar:
+`d` simultaneous knapsacks over shared variables, `d` = number of epochs.
+
+That is not a technicality. On the reference schedule the five profile classes are not
+proportional, and two pairs are perfectly disjoint in time (`(0,0,0,6,0,3)` never coexists with
+`(3,3,3,0,3,0)` or with `(9,9,9,0,9,0)`), so they can share a port for free. Consequences:
+
+* **Order by PEAK relative load, not total.** A port is bound by its worst epoch. Measured
+  inversion: `(0,0,0,6,0,3)` is 5th of 5 by total (9 pieces) but 3rd by peak (6); `(3,3,3,0,3,0)`
+  is 4th by total (12) but 5th by peak (3).
+* **Fit is a max over epochs, not a sum**, evaluated per candidate port -- the binding epoch
+  differs per port as packing proceeds. `max_e (used[q][e] + n_f(e)) / C(e)`. This gives
+  complementarity for free: co-locating `(9,9,9,0,9,0)` with `(0,0,0,6,0,3)` scores 9/48, two
+  9-profiles score 18/48.
+* **Keep `d` small.** Work on the coarse epoch grid the flows are paced to (8 here, not the
+  12145 fine epochs), then drop epochs where the link is not near capacity -- they constrain
+  nothing. `L0->S0` has 5 binding epochs, not 8.
+
+## 4. The algorithm
+
+> **Bucket flows by in-port. Process buckets heavy-first by peak relative load. Place into the
+> FULLEST port that still fits (best-fit).**
+
+1. `R[rho] = flows at this hop arriving on in-port rho`.
+2. Sort buckets by `max_e (sum_{f in R} n_f(e)) / C(e)`, descending.
+3. Place the whole bucket on the fullest port that still fits -> 1 combo. Ties broken by
+   `rho.port % P`, then lowest index, for determinism across runs.
+4. If the bucket does not fit whole, split it AT FLOW GRANULARITY: sort its flows by peak
+   descending and place each by the same rule.
+5. A flow that fits nowhere escapes to a piece-level split (section 5).
+
+### Why best-fit and not emptiest-fit
+
+Emptiest-fit is worst-fit: it fragments, leaving every port partially full so nothing large
+fits later. That is fatal across hops, where a later pass needs whole ports. Two half-capacity
+buckets at hop 1 land on ports 7 and 8 under emptiest-fit and a full-port flow at hop 3 must
+then be split; under best-fit they compact onto port 7 and the hop-3 flow takes port 8 intact.
+
+Compaction also wins on the combo objective, on both terms: fewer splits (each split bucket is
++1 combo), and fewer ACTIVE in-ports downstream, which lowers the combo floor
+`max(active_in, active_out)`.
+
+The honest counter-case: compaction concentrates a bucket, and a concentrated in-port bucket
+can exceed a downstream out-port's capacity and be forced to split there. That is
+combos-vs-combos, not combos-vs-feasibility, and it is self-limiting at equal port widths,
+where a compacted in-port holds exactly one port's worth and fits exactly one out-port.
+
+### Why heavy-first is still needed
+
+Best-fit chooses well only among ports that ALREADY fit; it cannot undo having partly filled
+every port before a large item arrives. Two ports of 10 and items {4,4,6,6}: arrival order
+4,4,6,6 forces a split, decreasing order 6,6,4,4 does not. Measured on random instances shaped
+like this one (sparse epoch profiles, in-port buckets), mean forced splits:
+
+    utilisation  ports | best-first-heavy | best-arbitrary
+           0.70      4 |             1.14 |           1.14
+           0.85      2 |             0.49 |           0.75
+           0.95      2 |            12.78 |          20.02
+           0.95      4 |            19.20 |          28.14
+
+~30% fewer splits at 0.95, nothing at 0.70. These links run at 100%, so that is the regime.
+Sorting is free here: at a given (link, hop) every bucket is in hand at once, so there is no
+arrival order to be online against.
+
+`first-fit` by lowest index scores within noise of best-fit (12.03 vs 12.78 at 0.95/2 ports,
+20.95 vs 19.20 at 0.95/4) and is a one-line swap if determinism ever matters more than the
+marginal packing.
+
+## 5. Fallback: three tiers of one rule
+
+The local solve descends only on failure, applying the SAME rule (heavy-first, best-fit) at
+three grains:
+
+    tier 1   the whole in-port bucket on one port     one combo, no flow partitioned
+    tier 2   each flow in the bucket, whole           still one subflow per flow
+    tier 3   individual pieces                        the flow gains subflows
+
+Descending only on failure is what keeps subflow counts at one wherever that is possible, and
+having one rule at three grains is what makes an across-epoch partition and a within-epoch
+partition the same mechanism instead of two special cases.
+
+Each resulting subflow is a real route: its own port tuple, therefore its own path key, flow id,
+channel and switch forwarding entry. Not a bookkeeping annotation on one route -- the emitted
+program has to name the wire the bytes actually cross.
+
+`PortAssignment.subflow_of(flow, origin, chunk, epoch)` is the accessor; `only(flow)` raises for
+a partitioned flow rather than returning a representative. The piece address SELECTS a subflow;
+it is never part of the key.
+
+At tier 3 a single piece can still fail to place, and the two reasons are told apart rather than
+merged, because they send the reader to different places:
+
+* the piece alone exceeds every port -- nothing left to divide, so the TOPOLOGY cannot carry
+  this schedule;
+* every port's residual is spent by earlier placements -- the GREEDY packing failed, and the
+  aggregate may still fit.
+
+Neither inflates the makespan silently. Accepting an extra subflow costs one channel against a
+cap of 32; accepting an overloaded port costs the makespan.
+
+Expected on the reference schedule: ONE subflow per flow throughout. Nothing that ships
+partitions, so the fallback is covered by synthetic tests only -- including one that drives the
+emission-side qualifier on a hand-built schedule, since that wiring is otherwise untested.
+
+## 6. Emission -- how the port reaches the program
+
+The port is folded into the path key AT PARSE TIME (`parse_flows` / `parse_flows_lp` take a
+`port_qualify` callable), not rewritten afterwards. That is load-bearing: `parse_flows_lp` also
+builds `paced_sends` from the path key, and the pacing gate manifest is keyed on
+`(step, gpu, peer, path_key)`. Rewriting the keys after parsing would leave the gates keyed on
+the unqualified form and `_realize_pacing_gates` would silently match nothing.
+
+The emitted key is `SubFlow.key = (switches, ports)`, one port per HOP -- one longer than
+`switches`, since hop i is the link INTO switch i. The qualifier returns the route UNCHANGED
+when it touches no multi-port link, so a topology that declares no ports (every topology today)
+produces byte-identical output through every consumer. `unqualify_path_key` is the one place
+that knows the shape.
+
+Two consumers need it, and both get it for free from the key:
+
+* **Channels.** Allocated per `(srcGPU, dstGPU)` EDGE
+  (`_allocate_channels_match_topology`: `chan = path_idx * link + rr`, `path_indices` a dict per
+  edge). Each flow keeps exactly one port-qualified tuple, so the per-edge key count is
+  unchanged: measured 104 edges with 1 key, 64 with 2, against `max_channels = 32`, identical
+  before and after. Only a SPLIT flow adds one. This is why in-port affinity is a tiebreak and
+  not an objective -- it was never buying channels.
+* **Forwarding.** A flow id is a bijection with `(src, dst, path_key)`, so two flows down the
+  same switch sequence on different cables get different flow ids and therefore different
+  entries. **The entry is a flow id -> egress port mapping**: `'port'` is the only key a runtime
+  needs, and it is the port number on THIS switch, in its own `0..radix-1` numbering, of the
+  cable the route leaves on. `next_hop` / `next_hop_type` / `src_gpu` / `dst_gpu` remain in the
+  entry to be read by a human -- a reader can check a port against them; a runtime never has to.
+
+  `build_switch_routes` resolves it as `physical_port(raw_key[i], raw_next, cables[i+1])` for
+  the programmable switch at original index `i`. Three things have to line up there:
+
+  - `cables[i+1]`, because the cable tuple is one per HOP and hop `i+1` is the one LEAVING
+    switch `i`. An unqualified key (a route touching no multi-port link) means cable 0
+    everywhere, so a port is still emitted -- a port number is not conditional on the link being
+    split, it is what the switch is programmed with either way.
+  - the ORIGINAL index, kept while filtering non-programmable switches, because chaining past a
+    self-routing switch changes where the packet ends up, not which socket it left by.
+  - the RAW next hop, which for the last programmable switch is the destination GPU. The
+    manifest carries dense GPU ids and a port lookup is on raw ones, which is why the parsers
+    now return `gpu_rank_map` instead of discarding it.
+
+  Without a `--topology` there is nothing that knows a port number, so entries carry none rather
+  than a guessed one.
+
+## 7. Validation
+
+* Per-PORT per-epoch capacity assert (the port-granular sibling of
+  `flat_schedule.assert_link_capacity`).
+* Makespan unchanged; per-`(src,dst)`-edge distinct-path-key count unchanged except by logged
+  splits.
+* Regression on `two_pod_rail_hostbound_allgather_fast_epoch_flat.json`: exact 48/48 on all 8
+  directed spine0 links in coarse epochs 0,1,2,3,5 and 24/24 in epoch 6; zero flow splits; 4
+  combos per link, at the floor `max(4, 2)`.
+* Unit tests for the two rule choices, since the reference schedule cannot discriminate them
+  (at 100% utilization all fit rules and both orderings give identical output there):
+  the fragmentation case (best-fit vs emptiest-fit across hops) and the {4,4,6,6} case
+  (heavy-first vs arbitrary).
+* Negative control: a random per-`(flow, link)` port hash is 0/20000 feasible, median max port
+  load 72/48 = **1.50x** makespan inflation. The pass must produce <= 48.
+* Emission: channels per edge, route count and pacing-gate count all unchanged, and every
+  `'port'` in the forwarding table checked against `topology.physical_port` directly -- not
+  against the tuple the emitter itself used, which would only prove it was self-consistent.
+  11520 entries verified on the reference schedule, 6336 of them on split links.
+* Port numbering: `DualPlaneHeteroCluster`'s leaf holds its 32 GPU downlinks on ports 0-31 and
+  its 2 x 16 spine uplinks on 32-63, filling its 64-port radix exactly, while the spine numbers
+  the far end of those same cables from 0. GPUs and NVSwitches report `None`.
+* A `port_order` override that double-books a port, drops a cable, or overruns the radix is
+  refused at construction, each with its own message.
+* Sub-flows: a partitioned flow emits one key per subflow, an unpartitioned one emits a single
+  key for every piece (so its `(channel, peer)` connection stays single), and `only()` refuses a
+  partitioned flow.
+* End to end, real `ncclize()`, split vs unsplit twin on the same schedule: the XML is
+  BYTE-IDENTICAL and the forwarding table differs only by the added `next_hop_port`. Every gate
+  edge stays on its own producer -- checked as a set, not a count.
+
+### Consumers must DECONSTRUCT a path key, never index it
+
+`_send_uplink` indexed `path_key[0]` for the first switch. On a qualified key that is the whole
+switch tuple, so every distinct ROUTE got its own contention pool and sends genuinely sharing an
+uplink stopped pacing against each other: 396 of 768 gate edges moved to a different producer,
+with the gate COUNT unchanged. Counting caught nothing; comparing the edge SET did.
+
+`unqualify_path_key` is the one place that knows the shape, and any new consumer must go through
+it. `_send_uplink` now also takes the first hop's PORT into its identity, which is the
+physically contended thing -- two sends leaving one GPU on different ports of a split uplink do
+not compete. On an unsplit link that port is 0 for every send, so the grouping is unchanged.
+
+## 8. Build order
+
+1. DONE -- `ports` on `Topology` + `TwoPodRailHostBoundSplitPorts`, defaults 1 everywhere.
+   `capacity` and `alpha` verified byte-identical against the unsplit class.
+2. DONE -- `port_split.py`: hop sweep + local solver, plus `occupancy_grid` so the packing grid
+   is derived from the schedule rather than supplied.
+3. DONE (go/no-go) -- port-granular capacity assert. Reference schedule: exact 25/25 GB/s per
+   port on all 8 spine0 links, 0 flow splits, 4 combos per link (the floor).
+4. DONE -- port folded into the path key at parse time. Channels per edge `{1: 104, 2: 64}`,
+   route count and gate count all unchanged; forwarding table gains the egress port and changes
+   in no other way.
+5. DONE -- `two_pod_rail_allgather_flat` is the spine-bound (`GPU_LEAF_BW = 50`) instance and IS
+   paced, so no new solve was needed. It is the only case that exercises the packing: with
+   slack on the GPU->leaf links one ingress bucket outgrows a 25 GB/s port and is broken up at
+   flow granularity, giving 5 combos on each leaf->spine0 link -- the transportation bound
+   `r + c - 1 = 4 + 2 - 1` -- against 4 in the host-bound config. Still zero flow splits.
+   All six paced two_pod_rail schedules (both collectives, both configs, both epoch
+   granularities) split with zero flow splits and exact per-port balance.
+
+## 9. What is NOT covered
+
+The fit rule and the bucket ordering are still only discriminated by the synthetic tests. The
+spine-bound instance exercises the bucket-split path, but every spine0 link in every schedule
+here runs at exactly 100%, so per-port balance is forced by capacity and no fit rule can do
+worse. A topology with sustained partial utilisation on a multi-port link -- or a link used at
+several hop indices AND declaring more than one port, which none of these have -- is what would
+first distinguish them on real data.
+
+6. DONE -- real port NUMBERING (section 1's second layer). `Topology.port_map` plus
+   `port_order` / `radix` / `physical_port`, built for every topology at construction and
+   populated on programmable switches only. The forwarding entry's `'port'` is now a socket on
+   the switch rather than a link-local index, and is emitted unconditionally rather than only
+   on split links. `DualPlaneHeteroCluster` declares its 32 leaf up-ports; every other topology
+   picks up the default numbering with no code of its own.

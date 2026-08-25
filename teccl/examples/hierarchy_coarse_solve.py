@@ -57,6 +57,11 @@ def _make_input(formulation: Formulation, num_sub_chunks: int, out_file: str,
         epoch_multiplier=epoch_multiplier,
         objective_type=ObjectiveType.PAPER,
         solution_method=SolutionMethod.ONE_SHOT,
+        # Enforce relay-twin symmetry (the emergent leaf twins + declared spine twins that
+        # abstract() now puts in equivalent_node_indices). This pins the coarse solve onto
+        # the symmetric barycenter optimum instead of an arbitrary degenerate interior point.
+        # Consumed by both the MILP (aggregate) and LP (per-source) symmetry constraints.
+        symmetry=True,
         # LP AllGather is copy-free and requires switch_copy=False (scheduler enforces this);
         # the MILP uses multicast copy through leaves/spines.
         switch_copy=(formulation == Formulation.MILP),

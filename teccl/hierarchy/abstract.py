@@ -1,9 +1,11 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from math import gcd
+from typing import Dict, List, Optional, Tuple
 
 from teccl.input_data import TopologyParams
 from teccl.hierarchy.cell import Cell
+from teccl.hierarchy.scale import ChunkScale
 from teccl.topologies.topology import Topology
 
 
@@ -64,6 +66,51 @@ class CoarseTopology(Topology):
 
     def set_switch_indicies(self) -> None:
         self.switch_indices = self._c_switch_indices
+
+    def rescale_to_chunk(self, g: int) -> None:
+        """Re-express this level in a chunk `g` times larger than the one it inherited.
+
+        `capacity` is in CHUNKS/sec (bytes/sec divided by chunk_size), so fusing g chunks into one
+        divides it by g and multiplies chunk_size by g. That is the whole unit change: because
+        `get_epoch_duration_{slow,fast}_link` read nothing but `capacity`, the level's epoch then
+        becomes "one chunk AT THIS LEVEL'S SIZE on the selected link" automatically, with no
+        epoch-type or multiplier concept added anywhere.
+
+        Both cached epoch durations must be REDERIVED, because Topology.__init__ computed them
+        eagerly -- before this level's chunk could possibly be known (it depends on the coarse
+        demand, which depends on this topology existing). `alpha` is a propagation delay, a time,
+        and does not scale with the volume unit.
+
+        Rederived EAGERLY, not merely invalidated. `get_epoch_duration_{fast,slow}_link` recompute
+        lazily when the cached value is 0, but `BaseFormulation.set_epoch_duration` reads the
+        ATTRIBUTE directly rather than calling the getter, so a level left holding 0 fails its
+        `assert self.epoch_duration > 0` with a message about the epoch multiplier -- which is not
+        the problem at all. Zeroing alone used to work only because a driver's log line happened to
+        call the getter before solving; the moment that print moved, the level broke. Recomputing
+        here removes the ordering dependency entirely.
+
+        The demand MUST be divided by the same g at the same time or `capacity * epoch_duration`
+        and the demand end up in different units; use `set_level_chunk`, which does both.
+        """
+        if g < 1 or int(g) != g:
+            raise ValueError(f"level chunk factor must be a positive integer, got {g!r}")
+        g = int(g)
+        if g == 1:
+            return
+        n = len(self.capacity)
+        for i in range(n):
+            for j in range(n):
+                if self.capacity[i][j]:
+                    self.capacity[i][j] /= g
+        self.chunk_size *= g
+        self.epoch_duration_fast_link = 0.0
+        self.epoch_duration_slow_link = 0.0
+        self.get_epoch_duration_fast_link()
+        self.get_epoch_duration_slow_link()
+        assert self.epoch_duration_fast_link > 0 and self.epoch_duration_slow_link > 0, (
+            f"rescaling to chunk {g} left this level with a non-positive epoch "
+            f"({self.epoch_duration_fast_link}, {self.epoch_duration_slow_link}); its capacity "
+            f"matrix has no usable link")
 
 
 def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
@@ -138,11 +185,50 @@ def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
         cid for cid, f in coarse_passthrough.items() if f in topology.switch_indices
     ]
 
-    coarse_equivalent: List[List[int]] = []
-    for group in topology.equivalent_node_indices:
-        cgroup = sorted({fine_to_coarse[x] for x in group})
-        if len(cgroup) > 1:
-            coarse_equivalent.append(cgroup)
+    # Coarse symmetry groups = the fine equivalences forwarded through the collapse
+    # PLUS emergent twins that only exist after coarsening. The fine graph declares
+    # only the 4 spines: the 8 leaves are NOT twins in the fine graph (leaf r touches
+    # only rail-r GPUs, so each leaf's fine neighborhood differs), so no forwarding step
+    # could ever produce a leaf group. Collapsing each host's rail GPUs into one node
+    # erases the rail identity from the capacity matrix (it moves into boundary_gpu),
+    # after which every leaf connects to all hosts @50 and all spines @400 -- identical
+    # neighborhoods, hence interchangeable. We discover these by neighbor-profile hashing
+    # on the COARSE matrix: nodes whose (sorted out-edges, sorted in-edges) fingerprints
+    # match are twins (swapping them is a graph automorphism), and grouping by fingerprint
+    # finds every twin class in one pass.
+    #
+    # RESTRICTED TO SWITCHES on purpose. The data-bearing hosts ALSO share an identical
+    # fingerprint (each connects to exactly the 8 leaves @50), so an unrestricted detector
+    # would report them as a twin group too. But a host swap permutes the source index
+    # (host a carries source-a's data, host b does not), so it is a source-permuting
+    # symmetry, valid only when the demand is host-symmetric -- that belongs to a separate,
+    # demand-gated mechanism, not to the relay-twin groups consumed here. Only relay
+    # switches (whose swap fixes every source) are safe to emit as equivalent_node_indices.
+    #
+    # Generalization note: this catches only "identical-neighborhood" twins, and it works
+    # unmasked because every twin class here is an independent set (no leaf<->leaf or
+    # spine<->spine edges). For twins that ARE adjacent to each other, the mutual edge makes
+    # their raw fingerprints differ, so mask group-mates out of the key before comparing.
+    # Symmetries that are not identical-neighborhood (e.g. rotational, or twins-of-twins)
+    # are not detected here and would need real graph-automorphism refinement (nauty-style).
+    def _twin_key(i: int) -> Tuple:
+        outs = tuple(sorted((j, capacity[i][j]) for j in range(num_coarse) if capacity[i][j] > 0))
+        ins = tuple(sorted((j, capacity[j][i]) for j in range(num_coarse) if capacity[j][i] > 0))
+        return (outs, ins)
+
+    coarse_equivalent_set = {
+        tuple(sorted({fine_to_coarse[x] for x in group}))
+        for group in topology.equivalent_node_indices
+        if len({fine_to_coarse[x] for x in group}) > 1
+    }
+    emergent: Dict[Tuple, List[int]] = defaultdict(list)
+    for cid in coarse_switch_indices:
+        emergent[_twin_key(cid)].append(cid)
+    for cids in emergent.values():
+        if len(cids) > 1:
+            coarse_equivalent_set.add(tuple(sorted(cids)))
+    coarse_equivalent: List[List[int]] = sorted(
+        (list(g) for g in coarse_equivalent_set), key=lambda g: g[0])
 
     # Coarse "GPUs per chassis" is a diagnostic only (drives Algo_Bandwidth in the coarse
     # solve); the final fine-grained bandwidth is recomputed during stitching. Use the number
@@ -153,11 +239,21 @@ def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
         cid for cid, f in coarse_passthrough.items() if f in topology.passive_indices
     )
 
+    # A coarse switch is programmable iff the fine switch it stands for is: collapsing the
+    # graph must not silently re-permit a self-routing fabric.
+    _declared = getattr(topology, "programmable_switch_indices", None)
+    fine_programmable = set(topology.switch_indices if _declared is None else _declared)
+    coarse_programmable = sorted(
+        cid for cid in coarse_switch_indices
+        if coarse_passthrough[cid] in fine_programmable
+    )
+
     topo_input = TopologyParams(
         name=f"{topology.__class__.__name__}_coarse",
         chassis=1,
         chunk_size=topology.chunk_size,
         passive_node_indices=tuple(coarse_passive),
+        programmable_switch_indices=tuple(coarse_programmable),
     )
     coarse = CoarseTopology(
         topo_input,
@@ -178,17 +274,164 @@ def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
     return coarse, mapping
 
 
-def lift_demand(mapping: HierarchyMapping, num_sub_chunks: int) -> None:
+def coarsify_demand(fine_demand, mapping: HierarchyMapping) -> List[List[List[int]]]:
     """
-    Fill mapping.chunk_origin for a coarse collective with `num_sub_chunks` sub-chunks per
-    cell: coarse sub-chunk c of a cell originates on the cell's c-th gpu.
+    Aggregate a FINE demand tensor into a COARSE demand matrix by cell membership,
+    COLLECTIVE-AGNOSTICALLY. A demand is "what volume goes from where to where"; coarsifying
+    replaces each fine GPU endpoint with its coarse node (cell or passthrough) and counts how
+    much distinct data must cross each inter-cell boundary.
 
-    For an AllGather lifted to the host level, num_sub_chunks is the number of GPUs per cell,
-    so every fine GPU's data is a distinct coarse sub-chunk and the correspondence is exact.
+    General rule (no branch on collective type). Each fine entry is a distinct data identity
+    (source s, chunk index ci) that some set of destinations wants. Its inter-cell contribution
+    is ONE unit crossing from cell(s) into each DISTINCT destination cell that wants it:
+
+        for each identity (s, ci):
+            dest_cells = { coarse(t) : fine_demand[s][t][ci] > 0 }
+            for cv in dest_cells, cv != coarse(s):
+                coarse[coarse(s)][cv] += 1
+
+    Counting an identity once per destination CELL (not once per destination GPU) is exactly
+    what produces AllGather's fan-out saving: all GPUs of cell V wanting identity (s, ci)
+    collapse to a SINGLE coarse crossing, and the intra-cell replication to V's other GPUs is
+    deferred to phase-3 ingress distribution. AllToAll identities are per-destination-GPU
+    distinct (the chunk index encodes the target GPU), so no collapse happens and the coarse
+    volume is the full |U|*|V| -- the same code yields both. Intra-cell demand (coarse(s) ==
+    coarse(t)) is dropped; it is reconstructed by phase 3, never carried on the coarse graph.
+
+    `fine_demand` may be a numpy array or a nested list -- it is only indexed and compared,
+    never reshaped. Returns a coarse demand tensor as a nested list of shape
+    (num_coarse, num_coarse, 1): coarse[U][V][0] is the aggregate volume U -> V. A single
+    weighted chunk-slot is exact for the copy-free LP, which sums demand over the chunk axis
+    into a per-(source, dest) volume.
+    """
+    f2c = mapping.fine_to_coarse
+    num_coarse = mapping.num_coarse
+    n_fine = len(fine_demand)
+    coarse = [[[0] for _ in range(num_coarse)] for _ in range(num_coarse)]
+    for s in range(n_fine):
+        cs = f2c[s]
+        chunks = len(fine_demand[s][s]) if n_fine else 0
+        for ci in range(chunks):
+            dest_cells = set()
+            for t in range(n_fine):
+                if fine_demand[s][t][ci] > 0:
+                    dest_cells.add(f2c[t])
+            for cv in dest_cells:
+                if cv != cs:
+                    coarse[cs][cv][0] += 1
+    return coarse
+
+
+def level_chunk_units(coarse_demand) -> int:
+    """The chunk this level should use, in units of the chunk it inherited: the GCD of its demand
+    volumes.
+
+    This is the coarsest unit in which EVERY demand of this level is still a whole number -- which
+    is precisely the recursion's governing invariant (see teccl/hierarchy/scale.py: "every level
+    receives integer demands, expressed in that level's own chunk unit"). Coarsening past the GCD
+    would make some demand fractional; coarsening less leaves the level measuring itself in a unit
+    finer than anything it can actually address, which is what lets a solver split a commodity in
+    ways nothing downstream wants.
+
+    Rail AllGather gives gcd(8, ..., 8) = 8 -- one coarse chunk is a host's whole payload. Hetero
+    AllGather gives gcd(4, 4, 6) = 2, which is NOT any single host's payload: neither the largest
+    nor the smallest cell is the right unit when cells differ, only their common divisor is.
+
+    Returns 1 when the volumes are coprime (or there is no demand), which makes every caller an
+    exact no-op -- the honest graceful degradation, since no coarser unit keeps the demands whole.
+    """
+    g = 0
+    for row in coarse_demand:
+        for cell in row:
+            for v in cell:
+                if v:
+                    iv = int(round(v))
+                    if abs(v - iv) > 1e-9:
+                        raise ValueError(
+                            f"coarse demand volume {v} is not an integer; the level chunk is only "
+                            f"defined for integer demands (see scale.py's recursion invariant)")
+                    g = gcd(g, abs(iv))
+    return g or 1
+
+
+def rescale_demand(coarse_demand, g: int):
+    """Divide every demand volume by `g`, the counterpart of CoarseTopology.rescale_to_chunk.
+
+    Exactness is asserted rather than rounded: `g` comes from level_chunk_units, so a remainder
+    here means the demand changed between the two calls, and silently rounding it would move bytes.
+    """
+    if g < 1 or int(g) != g:
+        raise ValueError(f"level chunk factor must be a positive integer, got {g!r}")
+    g = int(g)
+    if g == 1:
+        return coarse_demand
+    out = []
+    for row in coarse_demand:
+        new_row = []
+        for cell in row:
+            new_cell = []
+            for v in cell:
+                iv = int(round(v))
+                if iv % g:
+                    raise ValueError(
+                        f"demand volume {iv} is not divisible by the level chunk {g}")
+                new_cell.append(iv // g)
+            new_row.append(new_cell)
+        out.append(new_row)
+    return out
+
+
+def set_level_chunk(coarse: CoarseTopology, coarse_demand, scale: Optional[ChunkScale] = None,
+                    g: Optional[int] = None) -> Tuple[List[List[List[int]]], int, ChunkScale]:
+    """Put a coarse level into ITS OWN chunk unit: topology, demand and ChunkScale together.
+
+    These three must move as one. `capacity * epoch_duration` is compared against demand volumes,
+    so rescaling the topology without the demand (or vice versa) silently changes what every
+    capacity constraint means. Doing it here, atomically, is what keeps that impossible.
+
+    Pass `scale` when this level is itself the product of an earlier solve (a true multi-level
+    recursion, where the level above already refined by some Q), or whenever the fine demand has
+    more than one chunk per GPU: the default root assumes ONE chunk of `coarse.chunk_size` per fine
+    GPU, and `num_chunks` is what carries `payload_per_gpu` down to the stitch's Algo_Bandwidth.
+    Returns the rescaled demand, the factor used, and the level's scale.
+
+    Note the ORDER this imposes on a driver: abstract() -> coarsify_demand() -> set_level_chunk()
+    -> solve. The chunk cannot be known before the demand exists, and the demand cannot be
+    coarsified before the topology exists.
+    """
+    if g is None:
+        g = level_chunk_units(coarse_demand)
+    root = scale or ChunkScale(bytes_per_chunk=coarse.chunk_size, num_chunks=1)
+    level = root.coarsen(g)
+    root.assert_conserves(level)
+    coarse.rescale_to_chunk(g)
+    return rescale_demand(coarse_demand, g), g, level
+
+
+def lift_demand(mapping: HierarchyMapping, num_sub_chunks: int = None) -> None:
+    """
+    Fill mapping.chunk_origin: coarse sub-chunk c of a cell originates on the cell's c-th gpu.
+    This is the identity map identity-resolution uses to split a cell's aggregate coarse
+    commodity back into its fine chunk identities.
+
+    Two modes:
+      * num_sub_chunks=None (default, HETEROGENEOUS): each cell contributes exactly its own
+        GPU count of sub-chunks -- cell H gets sub-chunks 0..len(H.gpus)-1, one per fine GPU.
+        This is the host-level AllGather lift for topologies whose cells have DIFFERENT GPU
+        counts (e.g. HeteroTaperedCluster's 4/4/6), matching the weighted
+        1-commodity-per-cell demand produced by the AllGather demand generator from
+        topology.node_volumes.
+      * num_sub_chunks=int (UNIFORM, backward compatible): every cell contributes exactly
+        num_sub_chunks sub-chunks. Requires every cell to have at least that many GPUs. Used
+        by the symmetric rail-optimized topology where all cells have the same GPU count.
     """
     for cid, cell in mapping.coarse_cells.items():
-        assert num_sub_chunks <= len(cell.gpus), (
-            f"cell {cid} has {len(cell.gpus)} gpus but {num_sub_chunks} sub-chunks requested"
-        )
-        for c in range(num_sub_chunks):
+        if num_sub_chunks is None:
+            count = len(cell.gpus)
+        else:
+            assert num_sub_chunks <= len(cell.gpus), (
+                f"cell {cid} has {len(cell.gpus)} gpus but {num_sub_chunks} sub-chunks requested"
+            )
+            count = num_sub_chunks
+        for c in range(count):
             mapping.chunk_origin[(cid, c)] = cell.gpus[c]

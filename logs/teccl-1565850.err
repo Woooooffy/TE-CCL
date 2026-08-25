@@ -1,0 +1,2 @@
+cpu-bind=MASK - lanka30, task  0  0 [348777]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka30, task  0  0 [349240]: mask 0xff0000ff set

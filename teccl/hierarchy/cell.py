@@ -27,8 +27,19 @@ class Cell:
                            port map: in the rail-optimized topology GPU r can only reach leaf
                            r, so boundary is {leaf(r): [gpu(n, r)] for r}. abstract() converts
                            this to coarse ids and cross-checks it against the capacity matrix.
+        subcells:          the cell's OWN internal hierarchy, declared in the same FINE indices --
+                           this is the sole mechanism for nesting more than two levels. Empty (the
+                           default, and the case for every current topology) means the cell's
+                           internal fabric is the bottom: its members are real endpoints and the
+                           recursion terminates there in a base case. Non-empty means the cell is
+                           itself a hierarchical problem, so `teccl.hierarchy.subtopology.induce`
+                           builds its sub-topology and `solve_level` recurses into it. Each
+                           subcell's members must be a subset of this cell's, and subcells must be
+                           disjoint from each other (abstract() re-checks this on the induced
+                           topology).
     """
     members: List[int]
     gpus: List[int]
     internal_switches: List[int] = field(default_factory=list)
     boundary: Dict[int, List[int]] = field(default_factory=dict)
+    subcells: List["Cell"] = field(default_factory=list)

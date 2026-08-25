@@ -339,6 +339,57 @@ class LPFormulation(BaseFormulation):
             self._cap_constrs[(i, j, k)] = self.model.addConstr(
                 cap_constr <= (self.topology.capacity[i][j] * self.epoch_duration), name=f"cap_constr_link_{i}-{j}-{k}")
 
+    def add_symmetry_constraints(self) -> None:
+        """
+        Pin the LP onto the symmetric (barycenter) optimum by forcing flow through
+        interchangeable relay nodes to be equal, killing the automorphism-orbit
+        degeneracy that otherwise makes the barrier solver return ugly analytic-center
+        fractions (e.g. a leaf's fan-out split 0.11/0.82/0.06 across destinations).
+
+        These groups (self.topology.equivalent_node_indices) are RELAY twins -- switches
+        that are interchangeable with every source fixed (the coarse leaves and spines).
+        Because swapping two such twins fixes every source s AND every neighbor x (a leaf's
+        neighbors are hosts and spines, none of which move under a leaf swap), we can
+        equalize flow at full per-source / per-neighbor / per-epoch granularity. Enforcing
+        it on consecutive pairs (a, b) of a group makes the whole group equal.
+
+        This is the LP analog of allgather.py::add_symmetry_constraints, but strictly
+        stronger: summing these per-neighbor equalities over neighbors and sources recovers
+        that method's aggregate Sigma flow_i == Sigma flow_j, so it preserves exactly what
+        the original constraint enforced and adds the resolution that actually pins the
+        barycenter. (The LP flow has no chunk index -- it aggregates over a source's chunks
+        -- so there is simply no c to sum over here.)
+
+        Correctness: for any twin-swap automorphism sigma, the feasible polytope is
+        sigma-invariant, so averaging any optimum over the (finite) twin group yields a
+        sigma-invariant optimum of equal objective value. Adding these equalities therefore
+        leaves the optimal value unchanged while removing the degeneracy; Gurobi presolve
+        substitutes each var == var equality out, so the solved model is smaller, not larger.
+
+        NOTE: this handles only the source-fixing (relay/switch) symmetry. Host
+        interchangeability under a symmetric demand is a source-PERMUTING symmetry and is
+        intentionally NOT covered here (it needs a separate, demand-gated mechanism).
+        """
+        logging.debug('Adding symmetry constraints')
+        start = time.time()
+        for group in self.topology.equivalent_node_indices:
+            for a, b in zip(group, group[1:]):
+                for s in self.sources:
+                    for k in self.epochs:
+                        for x in self.nodes:
+                            # capacity[x][a] > 0 <=> capacity[x][b] > 0 for twins, so the
+                            # guards select the same real links on both sides; the sparse
+                            # flow container returns 0.0 for any absent link regardless.
+                            if self.topology.capacity[x][a] > 0:      # ingress x -> {a, b}
+                                self.model.addConstr(
+                                    self.flow[s][x][a][k] == self.flow[s][x][b][k],
+                                    name='symIn_%d_%d_%d_%d_%d' % (a, b, s, x, k))
+                            if self.topology.capacity[a][x] > 0:      # egress {a, b} -> x
+                                self.model.addConstr(
+                                    self.flow[s][a][x][k] == self.flow[s][b][x][k],
+                                    name='symOut_%d_%d_%d_%d_%d' % (a, b, s, x, k))
+        logging.debug(f'Finished adding symmetry constraints in {time.time() - start}')
+
     def objective_formulation(self, objective_type: ObjectiveType = ObjectiveType.PAPER) -> gp.LinExpr:
         """
         returns the objective for the optimization.
@@ -347,7 +398,7 @@ class LPFormulation(BaseFormulation):
         objective = gp.LinExpr(0.0)
         multiplier = pow(10, 2)
 
-        if objective_type == ObjectiveType.TOTAL_DEMAND:
+        if objective_type in (ObjectiveType.TOTAL_DEMAND, ObjectiveType.TOTAL_DEMAND_MIN_SWITCH_HOPS):
             for k in self.epochs:
                 tmp = gp.LinExpr(0.0)
                 for s, d in product(self.nodes, self.nodes):
@@ -370,6 +421,28 @@ class LPFormulation(BaseFormulation):
                         continue
                     objective.add(
                         self.flow[s][i][d][k], 10 * (pow(10, -1) / (self.num_epochs + 1)) * 2)
+
+            if objective_type == ObjectiveType.TOTAL_DEMAND_MIN_SWITCH_HOPS:
+                # Tie-breaker layered on the TOTAL_DEMAND reward above: a tiny positive cost on
+                # every unit of flow crossing a switch->switch link (leaf<->spine here). The
+                # completion reward moves the objective by ~multiplier per epoch, so with GAMMA
+                # this small the solver never delays completion to save hops; it only decides
+                # among equal-makespan solutions, where it now prefers fewer switch relays
+                # (e.g. a direct leaf hop over a spine detour). A direct same-rail cross-node
+                # path uses zero switch->switch links; a spine detour uses two. The LP flow is
+                # per-source aggregated (no chunk index), so the term is summed over sources,
+                # switch-switch links, and epochs only.
+                GAMMA = 1e-4
+                switch_switch_links = [
+                    (i, j)
+                    for i in self.topology.switch_indices
+                    for j in self.topology.switch_indices
+                    if self.topology.capacity[i][j] > 0
+                ]
+                for s in self.sources:
+                    for (i, j) in switch_switch_links:
+                        for k in self.epochs:
+                            objective.add(self.flow[s][i][j][k], GAMMA)
         # Experimental objective that has been removed.
         # elif objective_type == ObjectiveType.EXPERIMENTAL:
         #     objective = gp.LinExpr(0.0)
@@ -389,6 +462,68 @@ class LPFormulation(BaseFormulation):
                     objective.add(
                         self.flow[s][i][d][k], 10 * (pow(10, -1) / (self.num_epochs + 1)) * 2)
         return objective
+
+    def hierarchical_objective_tiers(self) -> List[Tuple[str, gp.LinExpr, float]]:
+        """
+        The three tiers of ObjectiveType.LEXICOGRAPHIC (highest priority first). Each is a
+        pure linear expression to MINIMIZE, so the model stays an LP -- no auxiliary
+        indicator/max_ variables, unlike the TOTAL_DEMAND completion reward.
+
+        tier 1, latency: sum over epochs of the demand still OUTSTANDING at the end of that
+            epoch, = sum_k (all_demand - sum_{s,d} total_demand_sat[s][d][k]). Dropping the
+            constant, minimizing it is maximizing -sum_k sum_{s,d} total_demand_sat, i.e. the
+            demand-weighted completion time: every unit of demand contributes one unit of cost
+            per epoch it is late by, so the tier is 0 iff everything lands in epoch 0 and it
+            strictly decreases whenever any unit of demand arrives earlier. Compared with the
+            makespan-style TOTAL_DEMAND reward this needs no binaries and, being finer grained,
+            also rewards early progress inside the final epoch.
+
+        tier 2, host relay: every unit of flow LEAVING a host n that did not originate there
+            (n != s). A relayed byte costs the relaying GPU twice -- once on its ingress link
+            and once on its egress link -- plus a local copy, and it is exactly the traffic a
+            direct source->destination route would avoid, so among equally fast schedules we
+            want as little of it as possible. Flow out of a source itself, and flow through
+            switches, is not relay and carries no cost here.
+
+        tier 3, switch chain: every unit of flow ENTERING a switch, i.e. the length of the
+            switch chain each unit traverses, weighted by its volume: a direct gpu->gpu link
+            pays 0, gpu->switch->gpu pays 1, a leaf->spine->leaf detour pays 3. Minimizing it
+            prefers the shortest chain among routes the higher tiers already tied on. This
+            generalizes TOTAL_DEMAND_MIN_SWITCH_HOPS's hand-weighted switch->switch term (which
+            cannot tell a direct link from a one-switch path) and makes it a separate, strictly
+            lower-priority objective instead of a calibrated GAMMA.
+
+        The flow variables are per-source aggregates (no chunk index in the LP), so tiers 2
+        and 3 sum over sources, links and epochs only.
+        """
+        instance = self.user_input.instance
+
+        latency = gp.LinExpr(0.0)
+        for s, d, k in product(self.sources, self.nodes, self.epochs):
+            latency.add(self.total_demand_sat[s][d][k], -1.0)
+
+        relay = gp.LinExpr(0.0)
+        for n in self.host_indices():
+            for j in self.nodes:
+                if self.topology.capacity[n][j] <= 0:
+                    continue
+                for s in self.sources:
+                    if s == n:
+                        continue
+                    for k in self.epochs:
+                        relay.add(self.flow[s][n][j][k], 1.0)
+
+        switch_chain = gp.LinExpr(0.0)
+        for (i, j) in self.switch_ingress_links():
+            for s in self.sources:
+                for k in self.epochs:
+                    switch_chain.add(self.flow[s][i][j][k], 1.0)
+
+        return [
+            ("latency", latency, instance.objective_latency_rel_tol),
+            ("host_relay", relay, instance.objective_relay_rel_tol),
+            ("switch_chain", switch_chain, 0.0),
+        ]
 
     def _compute_alpha_signature(self) -> Tuple[int, ...]:
         """
@@ -431,7 +566,9 @@ class LPFormulation(BaseFormulation):
         self.destination_constraints()
         self.node_constraints()
         self.capacity_constraints()
-        self.model.setObjective(self.objective_formulation(self.user_input.instance.objective_type))
+        if self.user_input.instance.symmetry:
+            self.add_symmetry_constraints()
+        self.apply_objective()
         self._alpha_signature = self._compute_alpha_signature()
 
         self._log_file = f'Logs/{self.solver_name}_{self.user_input.topology.name}_{self.num_nodes}-nodes_' \
@@ -684,68 +821,6 @@ class LPFormulation(BaseFormulation):
                     new_list.append((s, i, j, vol, k))
         return new_list
 
-    # ------------------------------------------------------------------ #
-    # DEBUG instrumentation for the flow decomposition (dig_to_source).   #
-    # All of this is gated on InstanceParams.debug and prints nothing on  #
-    # a clean run. It exists to make the "previous hop not found in       #
-    # traffic list" assert analyzable: it isolates the small cross-epoch  #
-    # circulation that causes the re-entrant dig, and dumps the exact     #
-    # snapshot-vs-live mismatch and the recursion chain when it fails.    #
-    # ------------------------------------------------------------------ #
-    def _dig_debug(self) -> bool:
-        return bool(getattr(self.user_input.instance, "debug", False))
-
-    def detect_cross_epoch_cycles(self, full_flow_list: List[Tuple[int, int, int, float, int]]) -> None:
-        """
-        DEBUG: find directed cycles in the epoch-collapsed, per-source flow graph.
-
-        cancel_flow_cycles() only removes circulations confined to a single
-        (source, epoch). A cycle that spans epochs -- node H sends source s's data
-        at an early epoch and receives (more of) it at a later epoch -- survives.
-        That collapsed-graph cycle is exactly what makes dig_to_source() re-enter
-        the same hop at a lower step and drain a previous_hop out from under the
-        outer loop's stale snapshot (the assert at the top of the loop). Printing
-        these cycles isolates the small offending sub-flow from the full solution,
-        so it can be traced by inspection even on a large instance.
-        """
-        per_source_edges: Dict[int, Dict[Tuple[int, int], List[Tuple[float, int]]]] = defaultdict(
-            lambda: defaultdict(list))
-        for (s, i, j, vol, k) in full_flow_list:
-            if vol > 1e-9:
-                per_source_edges[s][(i, j)].append((vol, k))
-
-        total = 0
-        for s in sorted(per_source_edges.keys()):
-            edge_map = per_source_edges[s]
-            local_adj: Dict[int, List[int]] = defaultdict(list)
-            for (i, j) in edge_map.keys():
-                local_adj[i].append(j)
-            while True:
-                cyc = self._find_cycle(local_adj)
-                if cyc is None:
-                    break
-                total += 1
-                edges = list(zip(cyc[:-1], cyc[1:]))
-                print(f"[dig-debug] CROSS-EPOCH CYCLE (source {s}): "
-                      + " -> ".join(str(n) for n in cyc))
-                for (i, j) in edges:
-                    for (vol, k) in edge_map.get((i, j), []):
-                        ti = "SW" if i in self.topology.switch_indices else "gpu"
-                        tj = "SW" if j in self.topology.switch_indices else "gpu"
-                        print(f"             {i}({ti}) -> {j}({tj})  vol={vol}  epoch={k}")
-                # Remove one edge of this cycle from the search graph so any
-                # additional (edge-disjoint) cycles for the same source surface too.
-                bi, bj = edges[0]
-                local_adj[bi].remove(bj)
-                if not local_adj[bi]:
-                    del local_adj[bi]
-        if total == 0:
-            print("[dig-debug] no cross-epoch cycles in the solved flow "
-                  "(per-source, epoch-collapsed) -- decomposition should not re-enter a hop.")
-        else:
-            print(f"[dig-debug] {total} cross-epoch cycle(s) found -- these are what let "
-                  "dig_to_source re-enter a hop and trip the stale-snapshot assert.")
-
     def dig_to_source(self, hop: int, traffic: List[Tuple[int, int, int, int, float, int]],
                       consumed: Dict[int, Tuple[int, int, float]], source: int, step: int, dest: int,
                       volume: float, path: List[Tuple[int, int, int, float, int]], paths: Dict[int, List[Tuple[int, int, int, int, float, int]]] = {}) -> List[Tuple[int, int, int, int, float, int]]:
@@ -756,48 +831,6 @@ class LPFormulation(BaseFormulation):
         
 
         this_hop_consumed_volume = 0
-        # DEBUG: maintain a root->here recursion stack so a failure can print the
-        # exact chain, and flag when we re-enter a hop already on the stack (the
-        # cross-epoch circulation that causes the stale-snapshot bug).
-        if not hasattr(self, "_dig_stack"):
-            self._dig_stack = []
-        reentry_steps = [st for (h, st, _v) in self._dig_stack if h == hop]
-        self._dig_stack.append((hop, step, volume))
-        if self._dig_debug() and reentry_steps:
-            indent = "  " * (len(self._dig_stack) - 1)
-            print(f"[dig-debug] {indent}RE-ENTRY hop={hop} step={step} "
-                  f"vol={round(volume, 6)} (already on stack at steps {reentry_steps}) "
-                  f"source={source} dest={dest}")
-
-        # Terminus: reaching the source completes the backward path. All of source
-        # `s`'s flow ORIGINATES at s, so s never needs any of its own data delivered
-        # back to it -- any inbound edge to s in this per-source flow is part of a
-        # circulation. The source can therefore have viable inbound edges, which used
-        # to make `len(previous_hops)==0` false; cycle-avoidance then skipped those
-        # cyclic edges and the trace fell through WITHOUT accounting, dropping that
-        # destination's delivery (residue with +net at the source and -net at the
-        # dests). Account the accumulated path here and stop -- never dig back past
-        # the source.
-        if hop == source:
-            if len(path) > 0:
-                this_hop_consumed_volume = min([x[3] for x in path])
-                for i in range(len(path)):
-                    paths = self.account_for_consume(
-                        this_hop_consumed_volume, source, dest, path[i][1], path[i][2], path[i][-1], paths)
-                for c in paths.keys():
-                    if (source, dest, c) not in self.per_chunk_flow_paths.keys():
-                        paths[c] = [x for x in paths[c] if len(x) > 0]
-                        if len(paths[c]) == 0:
-                            continue
-                        self.per_chunk_flow_paths[(source, dest, c)] = [paths[c]]
-                        paths[c] = []
-                    else:
-                        self.per_chunk_flow_paths[(source, dest, c)] += [paths[c]]
-                        paths[c] = []
-            if self._dig_stack:
-                self._dig_stack.pop()
-            return traffic, this_hop_consumed_volume
-
         previous_hops = [x for x in traffic if x[2] == hop and (self.check_if_viable(hop, dest, step, x))]
         previous_hops = sorted(previous_hops, key=lambda x: x[-1], reverse = True)
         old_paths = paths
@@ -805,44 +838,15 @@ class LPFormulation(BaseFormulation):
             paths = old_paths
             if volume == 0:
                 break
-            # Path-local cycle avoidance: never step backward into a node already on
-            # the current root->here trace. In the epoch-collapsed traffic list a
-            # legitimate bidirectional switch link (e.g. a GPU <-> its NVSwitch, used
-            # by two different destinations at different epochs) appears as a 2-cycle;
-            # following it wanders off THIS demand's delivery onto unrelated traffic
-            # and fails to terminate cleanly. One demand's real delivery is a simple
-            # path, so skipping on-stack senders keeps the backtrace on it. Leftover
-            # circulation flow is reconciled and discarded after the digs (see
-            # get_flow_schedule). This is what bounds the recursion.
-            if any(h == each_previous_hop[1] for (h, _st, _v) in self._dig_stack):
-                if self._dig_debug():
-                    print(f"[dig-debug] skip cyclic back-hop {each_previous_hop} "
-                          f"(sender {each_previous_hop[1]} already on trace) "
-                          f"at hop={hop} step={step}")
-                continue
-            # Re-resolve this back-hop against the LIVE traffic list by identity
-            # (source, sender, receiver, epoch) rather than full-tuple equality.
-            # A nested dig that re-entered this same hop through a cross-epoch
-            # circulation may already have spent part or all of this edge, so its
-            # volume field can differ from the entry-snapshot tuple, or the edge
-            # may be gone entirely. Matching on identity + reading the CURRENT
-            # remaining volume mirrors the post-recursion lookup below and replaces
-            # the old stale-snapshot assert. If the edge was fully drained by that
-            # nested dig, its volume was already attributed there, so skip it.
-            stored_traffic = None
+            found = False
             for i in range(len(traffic)):
-                t = traffic[i]
-                if (t[0] == each_previous_hop[0] and t[1] == each_previous_hop[1]
-                        and t[2] == each_previous_hop[2] and t[4] == each_previous_hop[4]):
-                    stored_traffic = t
-                    consume = min(t[3], volume)
+                if traffic[i] == each_previous_hop:
+                    consume = min(traffic[i][3], volume)
+                    stored_traffic = traffic[i]
+                    found = True
                     break
-            if stored_traffic is None:
-                if self._dig_debug():
-                    print(f"[dig-debug] skip drained back-hop {each_previous_hop} "
-                          f"(no longer in live traffic) at hop={hop} step={step}")
-                continue
-
+            assert found, "the previous hop not found in traffic list, must be a bug"
+            
             step = each_previous_hop[-1]
             new_path = copy.deepcopy(path)
             new_path += [(source, each_previous_hop[1], hop, consume, step)]
@@ -852,48 +856,41 @@ class LPFormulation(BaseFormulation):
             traffic, consumed_volume = self.dig_to_source(
                     each_previous_hop[1], traffic, consumed, source, step, dest, consume, new_path, paths)
             
-            # Re-find the same edge by identity (its volume/position may have moved
-            # during the recursion) so we can debit what this back-hop supplied. A
-            # re-entrant dig into this hop can have already drained and removed it.
-            index = -1
             for i in range(len(traffic)):
-                if (traffic[i][0] == stored_traffic[0] and traffic[i][1] == stored_traffic[1]
-                        and traffic[i][2] == stored_traffic[2] and traffic[i][4] == stored_traffic[4]):
-                    index = i
-                    break
+                if traffic[i][0] == stored_traffic[0]:
+                    if traffic[i][1] == stored_traffic[1]:
+                        if traffic[i][2] == stored_traffic[2]:
+                                if traffic[i][4] == stored_traffic[4]:
+                                    index = i
+                                    break
 
             this_hop_consumed_volume += consumed_volume
             if consumed_volume < volume:
                 volume = volume - consumed_volume
             else:
                 volume = 0
-
-            if index == -1:
-                # Already drained and removed by a nested re-entrant dig; the
-                # attribution happened there, so there is nothing left to debit.
-                if self._dig_debug():
-                    print(f"[dig-debug] back-hop {stored_traffic} already removed by a "
-                          f"nested dig; skipping debit at hop={hop} step={step}")
-                continue
-
+           
             traffic[index] = (traffic[index][0], traffic[index][1], traffic[index]
                                   [2], traffic[index][3] - consumed_volume, traffic[index][4])
             if traffic[index][3] == 0:
                 traffic = [x for x in traffic if x != traffic[index]]
-        if len(previous_hops) == 0 and self._dig_debug():
-            # Dead-end at a non-source node (hop==source is handled at the terminus
-            # check above): cycle avoidance (or greedy attribution exhausting the
-            # acyclic inflow) means this backward branch could not reach the source.
-            # Attribute nothing (this_hop_consumed_volume stays 0); the volume
-            # committed to this branch remains in traffic as residue and is reconciled
-            # as circulation after the digs.
-            print(f"[dig-debug] dead-end at non-source hop={hop} step={step} "
-                  f"vol={round(volume, 6)} source={source} dest={dest}; leaving residue")
+        if len(previous_hops) == 0:
+            assert source == hop
+            this_hop_consumed_volume = min([x[3] for x in path])
+            for i in range(len(path)):
+                paths = self.account_for_consume(
+                    this_hop_consumed_volume , source, dest, path[i][1], path[i][2], path[i][-1], paths)
+            for c in paths.keys():
+                if (source, dest, c) not in self.per_chunk_flow_paths.keys():
+                    paths[c] = [x for x in paths[c] if len(x) > 0]
+                    if len(paths[c]) == 0:
+                        continue
+                    self.per_chunk_flow_paths[(source, dest, c)] = [paths[c]]
+                    paths[c] = []
+                else:
+                    self.per_chunk_flow_paths[(source, dest, c)] += [paths[c]]
+                    paths[c] = []
 
-        # DEBUG: balance the stack push done on entry. The re-entry trace and the
-        # per-hop skip logs above read this stack while a dig is in flight.
-        if self._dig_stack:
-            self._dig_stack.pop()
         return traffic, this_hop_consumed_volume
 
     def get_per_chunk_flows(self) -> Dict:
@@ -1002,13 +999,6 @@ class LPFormulation(BaseFormulation):
         # it forever (RecursionError). Cancelling it changes no buffer/consume/delivery.
         full_flow_list = self.cancel_flow_cycles(full_flow_list)
 
-        # DEBUG: surface any cross-epoch circulation that survived cancellation --
-        # this is the small structure that makes dig_to_source re-enter a hop and
-        # can trip the stale-snapshot assert. Prints nothing unless debug is on.
-        self._dig_stack = []
-        if self._dig_debug():
-            self.detect_cross_epoch_cycles(full_flow_list)
-
         # Sparse per-chunk flow container (see the flow-cube note in
         # initialize_variables). The dense num_nodes^3 x num_chunks x num_epochs
         # array this used to be is ~60 GB at 300 nodes / 23 chunks and is almost
@@ -1052,31 +1042,10 @@ class LPFormulation(BaseFormulation):
             traffic = [x for x in traffic if x[3] > 1e-5]
 
             if len(traffic) != 0:
-                # With path-local cycle avoidance the backward trace extracts only the
-                # acyclic path-flow, so any leftover is -- by the flow-decomposition
-                # theorem -- pure circulation: net-zero in/out at every node, delivering
-                # nothing, hence safe to drop. Verify that before discarding. A node with
-                # nonzero net flow in the residue means real demand went untraced (a
-                # genuine bug, e.g. greedy attribution dead-ended on live delivery), so
-                # keep the hard failure for that case.
-                net = defaultdict(float)
-                for (s, i, j, vol, k) in traffic:
-                    net[i] += vol   # flow out of i
-                    net[j] -= vol   # flow into j
-                max_net = max((abs(v) for v in net.values()), default=0.0)
-                resid_vol = sum(x[3] for x in traffic)
-                if max_net > 1e-4:
-                    logging.warning(
-                        "there is a potential bug! there is traffic unaccounted for")
-                    print(f"source {each_source}: residue is NOT a pure circulation "
-                          f"(max |node net| = {max_net}); {len(traffic)} edges, "
-                          f"total volume {resid_vol}")
-                    print(traffic)
-                    assert 0, "potential bug, check code"
-                logging.info(
-                    f"source {each_source}: discarded circulation residue of "
-                    f"{len(traffic)} edges (total volume {resid_vol:.6f}, "
-                    f"max |node net| {max_net:.2e})")
+                logging.warning(
+                    "there is a potential bug! there is traffic unaccounted for")
+                print(traffic)
+                assert 0, "potential bug, check code"
 
         per_chunk_flows = self.get_per_chunk_flows()
         chunk_str_paths = self.chunk_flow_paths_to_string()
@@ -1109,7 +1078,11 @@ class LPFormulation(BaseFormulation):
         flow_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
         flow_str_info["3-Epochs_Required"] = self.find_demand_satisfied_k() + 1
         flow_str_info["4-Collective_Finish_Time"] = flow_str_info["1-Epoch_Duration"] * flow_str_info["3-Epochs_Required"]
-        flow_str_info["5-Algo_Bandwidth"] = self.topology.node_per_chassis * self.topology.chunk_size * self.num_chunks * self.topology.chassis / flow_str_info["4-Collective_Finish_Time"]
+        # node_per_chassis * chassis assumes uniform GPUs-per-chassis, which is wrong on
+        # heterogeneous topologies (e.g. HeteroTaperedCluster: 4/4/6 GPUs across 3 hosts).
+        # len(self.sources) is the actual demand-bearing source count (self.sources =
+        # nodes with total_demand_at_s[s] > 0, set in initialize_variables).
+        flow_str_info["5-Algo_Bandwidth"] = len(self.sources) * self.topology.chunk_size * self.num_chunks / flow_str_info["4-Collective_Finish_Time"]
         flows_str = sorted(list(flows_str), key=lambda x: x[0])
         flow_str_info['7-Flows'] = [x[1] for x in flows_str]
         flow_str_info['8-Chunk paths'] = chunk_paths

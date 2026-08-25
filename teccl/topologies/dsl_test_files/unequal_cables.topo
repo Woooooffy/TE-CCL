@@ -1,0 +1,8 @@
+// Fixture: two parallel links of DIFFERENT width on one edge. port_split divides an aggregate
+// evenly, so this cannot be represented as ports=2 and must be refused.
+module main() {
+    node gpu0 type=gpu;
+    node gpu1 type=gpu;
+    link gpu0 gpu1 bandwidth=25[GBps] latency=700[ns];
+    link gpu0 gpu1 bandwidth=50[GBps] latency=700[ns];
+}
