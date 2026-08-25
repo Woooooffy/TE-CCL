@@ -27,8 +27,8 @@ Requirement already satisfied: six>=1.5 in /data/commit/graphit/wangyj05/minicon
 Building wheels for collected packages: teccl
   Building editable for teccl (pyproject.toml): started
   Building editable for teccl (pyproject.toml): finished with status 'done'
-  Created wheel for teccl: filename=teccl-1.0.0-0.editable-py3-none-any.whl size=3796 sha256=1d46c80debae5babb16df447c78767389daf17e027171af730176391151679e3
-  Stored in directory: /tmp/pip-ephem-wheel-cache-m9y2zw9u/wheels/2d/31/f1/88ef48e0a336b237a128de3fcf8e52662d1ed0bfbd5a678f6e
+  Created wheel for teccl: filename=teccl-1.0.0-0.editable-py3-none-any.whl size=3796 sha256=cffc1253fc7aef06d49091fb2747da63dcfb4d6510570c493e1e7509ef4b29ef
+  Stored in directory: /tmp/pip-ephem-wheel-cache-uko9izwe/wheels/2d/31/f1/88ef48e0a336b237a128de3fcf8e52662d1ed0bfbd5a678f6e
 Successfully built teccl
 Installing collected packages: teccl
   Attempting uninstall: teccl
@@ -4734,4 +4734,4 @@ RAW CONSUMED VARS  T_s_d_k = consumed_at_k[source s][dest d][epoch k]
    dest  7:  from source  6  epoch 43  consumed = 0.0625
 ==============================================================================
 
-Schedule written to Schedules/dual_plane_clustered_alltoall_coarse.json
+Schedule written to Schedules/dual_plane_clustered_alltoall_ring_coarse.json
