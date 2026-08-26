@@ -300,6 +300,113 @@ def test_ab_summary():
     print("      -> ring is free on the fan-out shape and costs traffic on the point-to-point one")
 
 
+# ---------------------------------------------------------------------------------------------
+# [6] sub-chunk coalescing
+# ---------------------------------------------------------------------------------------------
+def _refined_allgather(n, q):
+    """The allgather shape after refinement: every GPU broadcasts its chunk as q sub-chunks."""
+    return [IntraCellDemand(cell=0, kind="self_distribution", identity=(g, j), src_gpu=g,
+                            dst_gpus=tuple(x for x in range(n) if x != g), volume=1.0,
+                            deadline_epoch=0)
+            for g in range(n) for j in range(q)]
+
+
+def test_coalesce_link_bound_shape():
+    """On the fan-out shape the whole refined chunk merges, and it costs nothing.
+
+    Every directed edge carries every source's arc, so the link bound dwarfs the chain depth and
+    `L * q` fits inside it. The q sub-chunks then travel as ONE transfer per hop -- which is the
+    whole point, because the stitch puts one transfer in one fine epoch and ncclize can emit it as
+    a single cnt=q operation instead of q of them.
+    """
+    n, q = 8, 4
+    cell = _nvswitch_cell(n)
+    demands = _refined_allgather(n, q)
+
+    split = schedule_cell(0, cell, demands, debug=False, subdivision=1)
+    merged = schedule_cell(0, cell, demands, debug=False, subdivision=q)
+
+    assert len(split) == n * (n - 1) * q, f"unmerged should be {n * (n - 1) * q}, got {len(split)}"
+    assert len(merged) == n * (n - 1), f"merged should be {n * (n - 1)}, got {len(merged)}"
+    assert all(len(f.identities) == q and f.volume == q and f.span == q for f in merged), \
+        "every hop should carry the whole refined chunk"
+    # The sub-chunk labels of one transfer must be CONSECUTIVE, or ncclize's contiguous-interval
+    # merge cannot put them back together whatever the epochs say.
+    for f in merged:
+        labels = [c for _s, c in f.identities]
+        assert labels == list(range(labels[0], labels[0] + q)), labels
+
+    r_split = max(f.local_round + f.span for f in split)
+    r_merged = max(f.local_round + f.span for f in merged)
+    assert r_merged == r_split, f"coalescing must not cost rounds: {r_split} -> {r_merged}"
+    print(f"  [7] coalescing (link-bound): {len(split)} hops -> {len(merged)} hops of {q} "
+          f"sub-chunks, {r_split} rounds unchanged OK")
+
+
+def test_coalesce_guard_on_depth_bound_shape():
+    """On a chain-depth-bound cell the guard declines to merge, and the pipeline is preserved.
+
+    One source broadcasting q sub-chunks round an 8-ring loads each edge with only q, so the link
+    floor is q while an atomic merge would need L*q rounds. Merging here would be a q-fold makespan
+    regression -- the reason this row needs a bound the crossbar row does not -- so `run` collapses
+    to 1 and the sub-chunks pipeline exactly as before.
+    """
+    n, q = 8, 4
+    cell = _nvswitch_cell(n)
+    demands = [IntraCellDemand(cell=0, kind="self_distribution", identity=(0, j), src_gpu=0,
+                               dst_gpus=tuple(range(1, n)), volume=1.0, deadline_epoch=0)
+               for j in range(q)]
+
+    split = schedule_cell(0, cell, demands, debug=False, subdivision=1)
+    merged = schedule_cell(0, cell, demands, debug=False, subdivision=q)
+
+    assert len(merged) == len(split) == (n - 1) * q, (len(split), len(merged))
+    assert all(len(f.identities) == 1 for f in merged), \
+        "a chain-depth-bound cell must NOT be coalesced"
+    r_split = max(f.local_round + f.span for f in split)
+    r_merged = max(f.local_round + f.span for f in merged)
+    assert r_merged == r_split == q + (n - 1) - 1, (r_split, r_merged)
+    print(f"  [8] coalescing guard: depth-bound cell left alone, {r_merged} rounds "
+          f"(pipelined, not {(n - 1) * q}) OK")
+
+
+def test_coalesce_respects_constraints():
+    """Sub-chunks that become ready in DIFFERENT bands are not one transfer, and are not merged.
+
+    Source 3's second half is turned into a network arrival, so it is released two bands later than
+    its first half. The two halves must land in different groups -- merging them would forward
+    bytes the cell does not hold yet -- and each half is then judged on its own band's link load.
+    The prologue half still merges (that band carries every other source's arc too); the late half
+    is alone in its band, so the depth guard declines it. Both halves of the rule in one fixture.
+    """
+    n, q = 8, 4
+    cell = _nvswitch_cell(n)
+    demands = _refined_allgather(n, q)
+    demands = [d if d.identity[0] != 3 or d.identity[1] < q // 2
+               else IntraCellDemand(cell=0, kind="ingress_distribution", identity=d.identity,
+                                    src_gpu=d.src_gpu, dst_gpus=d.dst_gpus, volume=1.0,
+                                    deadline_epoch=1)
+               for d in demands]
+    flows = schedule_cell(0, cell, demands, debug=False, subdivision=q)
+
+    split3 = [(f.band, tuple(c for _s, c in f.identities))
+              for f in flows if f.identity[0] == 3]
+    # No transfer may straddle the split: a merged run is contiguous labels from ONE half.
+    for band, labels in split3:
+        assert max(labels) < q // 2 or min(labels) >= q // 2, (band, labels)
+    early = {(band, len(labels)) for band, labels in split3 if max(labels) < q // 2}
+    late = {(band, len(labels)) for band, labels in split3 if min(labels) >= q // 2}
+    assert {w for _b, w in early} == {q // 2}, f"the ready half should merge to {q // 2}: {early}"
+    assert {w for _b, w in late} == {1}, f"the late half is depth-bound, must not merge: {late}"
+    assert {b for b, _w in early} != {b for b, _w in late}, \
+        f"the two halves must be released in different bands: {early} vs {late}"
+
+    others = {f.identity[0]: len(f.identities) for f in flows if f.identity[0] != 3}
+    assert set(others.values()) == {q}, others
+    print(f"  [9] coalescing key: the source split across bands merges its ready half ({q // 2}) "
+          f"and leaves its late half alone; the other {n - 1} sources merge whole ({q}) OK")
+
+
 def main():
     print("ring base-case row tests")
     test_detection()
@@ -308,6 +415,9 @@ def main():
     test_ring_bidirectional_halves_depth()
     test_hetero_hostB()
     test_ab_summary()
+    test_coalesce_link_bound_shape()
+    test_coalesce_guard_on_depth_bound_shape()
+    test_coalesce_respects_constraints()
     print("ring solve tests OK")
 
 

@@ -156,6 +156,7 @@ def main():
     realization_tests()
     remote_realization_tests()
     remote_emission_tests()
+    rate_widening_tests()
     print("pacing gate tests OK")
 
 
@@ -498,6 +499,57 @@ def realization_tests():
         print("  [OK] acyclicity: deadlocking gate rejected")
     else:
         raise AssertionError("expected the gate cycle to be rejected")
+
+
+def rate_widening_tests():
+    """_widen_rates_for_tb_serialization widens a same-tb, same-epoch flow group to its total.
+
+    A threadblock has no intra-block concurrency, so the group's ops run back to back. Widening
+    each to the group total makes the group finish exactly when concurrent transmission would
+    have, while the connection draws the same total for the same span -- so the per-link load is
+    unchanged. Ops of different epochs, of different flows, and unpaced ops are all left alone.
+    """
+    T = _load_taccl_ncclize()
+
+    def op(step, cnt, rate, path_key='p'):
+        o = T._Op(0, 1, step, True, 's', 'i', 0, 'o', 0, cnt, [])
+        o.piece_rate = rate
+        o.path_key = path_key
+        return o
+
+    def build(ops):
+        gpu = T._Gpu([], {}, {}, 0, 0)
+        tb = T._Threadblock(channel=0, rbid=0)
+        tb.steps = list(ops)
+        gpu.threadblocks = [tb]
+        return {0: gpu}
+
+    # Two ops of one flow at one epoch: each emits the group total (1*4 + 3*4 = 16), so the
+    # serialized pair finishes at the same instant the concurrent pair would have.
+    a, b = op(0, 1, 4.0), op(0, 3, 4.0)
+    T._widen_rates_for_tb_serialization(build([a, b]))
+    assert a.emit_rate == 16.0 and b.emit_rate == 16.0, (a.emit_rate, b.emit_rate)
+    print("  [OK] rate widening: a same-epoch group emits its total rate")
+
+    # A lone op at an epoch is already the whole group -- nothing to compensate, and it must
+    # keep emitting cnt * piece_rate (emit_rate stays None) so unaffected XML is unchanged.
+    a, b = op(0, 1, 4.0), op(1, 1, 4.0)
+    T._widen_rates_for_tb_serialization(build([a, b]))
+    assert a.emit_rate is None and b.emit_rate is None
+    print("  [OK] rate widening: different epochs are not a group")
+
+    # Different flows sharing a threadblock at one epoch may leave the gpu on different physical
+    # ports, so they are widened only against themselves, never summed together.
+    a, b = op(0, 1, 4.0, 'p'), op(0, 1, 4.0, 'q')
+    T._widen_rates_for_tb_serialization(build([a, b]))
+    assert a.emit_rate is None and b.emit_rate is None
+    print("  [OK] rate widening: different flows are not summed together")
+
+    # An unpaced op carries ordering only and was never sized against an epoch.
+    a, b = op(0, 1, None), op(0, 1, None)
+    T._widen_rates_for_tb_serialization(build([a, b]))
+    assert a.emit_rate is None and b.emit_rate is None
+    print("  [OK] rate widening: unpaced ops are skipped")
 
 
 if __name__ == '__main__':

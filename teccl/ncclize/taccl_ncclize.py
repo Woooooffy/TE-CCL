@@ -69,6 +69,12 @@ class _Op:
     # to pace it (e.g. an intra-node NVLink hop that carries ordering but is not
     # pinned to the epoch grid).
     piece_rate: float = None
+    # Emitted rate (GB/s) for the WHOLE op, overriding cnt * piece_rate. Set by
+    # _widen_rates_for_tb_serialization for ops that share a threadblock with other
+    # same-epoch ops of the same flow: the runtime runs a threadblock's ops strictly
+    # in sequence, so the concurrency piece_rate assumes does not exist there and the
+    # rate is widened to the group's total. None means "emit cnt * piece_rate".
+    emit_rate: float = None
     # Send-pacing gate: the send op that must FINISH ON THE WIRE before this send may
     # be posted. Emitted as netdepid/netdeps, a separate axis from depends/depid/deps
     # -- see _realize_pacing_gates. None means this send is ungated.
@@ -413,6 +419,48 @@ class ChannelPolicy(Enum):
 
     def __str__(self):
         return self.value
+
+
+def _widen_rates_for_tb_serialization(gpus):
+    """Compensate the emitted rate for the fact that a threadblock has no intra-block concurrency.
+
+    A threadblock is one (gpu, direction, peer, channel) connection and the runtime walks its ops
+    STRICTLY IN ORDER. But `piece_rate` is a per-piece rate the solver sized for CONCURRENT
+    transmission: when one flow at one epoch is split into several non-mergeable ops (permuted
+    src/dst offsets, so `merge_contiguous` correctly refuses), those ops land in the same
+    threadblock at the same step and the solver's intended parallelism between them is silently
+    serialized -- the group then takes as many epochs as it has ops.
+
+    Serialization is not itself a problem, because the fix costs nothing: within one group every
+    op carries the SAME per-piece rate (`ncclize` asserts this when it builds `group_rate`) and
+    every piece is the same size, so under the solver's intended concurrency all of them finish at
+    the same instant. Run them back to back at the group's TOTAL rate instead and the group still
+    finishes at exactly that instant, and the connection still draws exactly the group total for
+    exactly the same span -- an unchanged instantaneous load on every link involved. So no ordering
+    rule is needed (any order gives the same makespan) and no extra threadblocks or concurrent
+    sub-steps are needed either; only the rate has to be widened.
+
+    Grouped by (threadblock, step, path_key), i.e. per flow. Ops of DIFFERENT flows sharing a
+    threadblock at one step also serialize, but they may leave the gpu on different physical ports
+    (a dual-plane host routes them through different switches), so summing across them could
+    over-drive one plane. That case is separately warned about at channel allocation; here each
+    flow is widened only against itself, which is safe unconditionally.
+
+    Unpaced ops (`piece_rate is None`) are skipped: they carry ordering only and were never sized
+    against an epoch, so there is nothing to compensate.
+    """
+    for gpu in gpus.values():
+        for tb in gpu.threadblocks:
+            groups = defaultdict(list)
+            for op in tb.steps:
+                if op.piece_rate is not None:
+                    groups[(op.step, op.path_key)].append(op)
+            for ops in groups.values():
+                if len(ops) < 2:
+                    continue
+                total = sum(op.cnt * op.piece_rate for op in ops)
+                for op in ops:
+                    op.emit_rate = total
 
 
 def _realize_pacing_gates(gpus, pacing_gates):
@@ -1142,6 +1190,8 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for op in tb.steps:
                 op.block_rbid = tb.rbid
 
+    _widen_rates_for_tb_serialization(gpus)
+
     # Realize the caller's pacing gates (finish/arrival-before-start edges): a send-sourced gate
     # onto op.net_dep (emitted as netdepid/netdeps, enforced by the proxy against the NIC), a
     # recv-sourced one onto op.depends (emitted as depid/deps, discharged by the kernel when the
@@ -1334,7 +1384,8 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                 # spans epochs and its rate is well-defined. op.piece_rate is None
                 # for a deliberately unpaced flow, which emits no attribute at all.
                 if op.piece_rate is not None:
-                    op_elem.set('rate', str(op.cnt * op.piece_rate))
+                    op_elem.set('rate', str(op.emit_rate if op.emit_rate is not None
+                                            else op.cnt * op.piece_rate))
                 # Optional per-send epoch record, keyed by final XML location (gpu, tb, s).
                 # Epoch ordering is enforced in-band by _realize_pacing_gates (netdepid/netdeps
                 # on the gated send), so this manifest no longer drives it; it is retained only

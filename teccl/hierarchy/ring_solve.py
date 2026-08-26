@@ -61,7 +61,7 @@ from dataclasses import dataclass, field
 from math import inf
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from teccl.hierarchy.bands import PROLOGUE_BAND
+from teccl.hierarchy.bands import PROLOGUE_BAND, band_of
 from teccl.hierarchy.cell import Cell
 # _Job and _assign_bands are shared with the crossbar row ON PURPOSE. A job is "one point-to-point
 # transfer with a release, a deadline and an optional predecessor", which is the same object
@@ -359,7 +359,119 @@ def _arcs(demand: IntraCellDemand, order: RingOrder) -> Dict[int, int]:
     return reach
 
 
+def _chain_signature(table: Dict[int, _HopNeed]) -> Tuple:
+    """The full constraint profile of one chain: what two chains must share to be merged.
+
+    Not just the length -- two chains of the same length whose hop 3 has different deadlines are
+    scheduled differently, and merging them would impose the tighter one on both.
+    """
+    return tuple((k, table[k].release, table[k].deadline, table[k].hard) for k in sorted(table))
+
+
+def _band_link_bound(needs: Dict[Tuple[Identity, int], Dict[int, _HopNeed]],
+                     src_of: Dict[Identity, int], volume_of: Dict[Identity, float],
+                     order: RingOrder, link_cap: float) -> Dict[int, int]:
+    """Per band, the busiest directed ring edge expressed in rounds.
+
+    This is `_max_link_load`'s bound computed one step earlier -- off the hop-need tables rather
+    than off emitted jobs -- because `_coalesce_chains` needs it BEFORE the jobs exist. It is the
+    band's makespan floor and, crucially, it is INVARIANT under coalescing: merging sub-chunks
+    changes how volume is packaged, never how much of it crosses an edge.
+    """
+    load: Dict[Tuple[int, int, int], float] = defaultdict(float)
+    for (identity, direction), table in needs.items():
+        src, vol = src_of[identity], volume_of[identity]
+        for k, need in table.items():
+            band = band_of(need.release, need.deadline, need.hard)
+            u = order.node_at(src, k - 1, direction)
+            v = order.node_at(src, k, direction)
+            load[(band, u, v)] += vol
+    bound: Dict[int, int] = defaultdict(int)
+    for (band, _u, _v), vol in load.items():
+        bound[band] = max(bound[band], math.ceil(vol / link_cap - EPS))
+    return dict(bound)
+
+
+def _coalesce_chains(needs: Dict[Tuple[Identity, int], Dict[int, _HopNeed]],
+                     src_of: Dict[Identity, int], volume_of: Dict[Identity, float],
+                     subdivision: int, order: RingOrder, link_cap: float, debug: bool = False
+                     ) -> List[Tuple[Identity, Tuple[Identity, ...], int, Dict[int, _HopNeed],
+                                     float]]:
+    """Merge the chains of co-travelling sub-chunks into one chain of wider transfers.
+
+    The ring's counterpart to `crossbar_solve._coalesce_subchunks`, and it exists for exactly the
+    same reason. Sub-chunk refinement splits chunk (s, ci) into Q commodities (s, ci*Q+j); where
+    they take the same route they are not Q transfers but contiguous bytes of one chunk, and
+    keeping them apart is expensive downstream: link_cap is one sub-chunk per edge per round, so
+    the scheduler puts them in Q consecutive rounds, hence Q consecutive fine epochs, hence Q
+    different ncclize steps, where `make_intervals` can no longer merge them into one cnt=Q
+    operation. On the 96-GPU dual-plane allgather that was every one of 405,504 intra-cell ops
+    emitted at cnt=1, against ~18,000 co-travelling groups.
+
+    WHY THIS ROW NEEDS A GUARD AND THE CROSSBAR ROW DOES NOT. There, coalescing only ever applies
+    to single-hop jobs (chained tree jobs are excluded), and one atomic transfer of Q sub-chunks
+    occupies exactly the Q rounds the Q separate transfers did -- it is free. Here EVERY job is a
+    hop of a store-and-forward chain, and atomicity costs the pipeline: Q sub-chunks down an L-hop
+    chain finish in Q + L - 1 rounds when they flow independently, but in L*Q when each hop must
+    move all Q before the next starts. So a chain is merged only up to the run length its band's
+    LINK bound already pays for -- `L * run <= link_bound` -- which leaves the band's makespan
+    floor untouched. On a fan-out shape (the allgather every edge carries every source's arc) the
+    link bound dwarfs the depth and the whole group merges; on a sparse chain-depth-bound cell the
+    budget collapses to 1 and this is a no-op, which is the old behaviour.
+
+    Returns one entry per chain to emit: (representative identity, the identities it carries in
+    label order, direction, the shared hop table, the merged volume).
+    """
+    def _entries(items):
+        return [(ident, (ident,), direction, table, volume_of[ident])
+                for (ident, direction), table in items]
+
+    if subdivision <= 1:
+        return _entries(needs.items())
+
+    bound = _band_link_bound(needs, src_of, volume_of, order, link_cap)
+
+    # Everything in the key has to match for two chains to be one transfer: the same origin chunk
+    # (so the sub-chunk labels are contiguous and ncclize can merge the addresses), the same
+    # origin GPU and direction (so it is literally the same sequence of edges), the same per-hop
+    # volume, and the same constraint profile.
+    groups: Dict[Tuple, List[Tuple[Identity, Dict[int, _HopNeed]]]] = defaultdict(list)
+    for (identity, direction), table in needs.items():
+        s, ci = identity
+        groups[(s, ci // subdivision, direction, src_of[identity], volume_of[identity],
+                _chain_signature(table))].append((identity, table))
+
+    out = []
+    merged = 0
+    for key, members in sorted(groups.items(), key=lambda kv: str(kv[0])):
+        members.sort(key=lambda m: m[0][1])
+        direction, table = key[2], members[0][1]
+        hops = len(table)
+        # The tightest of the bands this chain touches: a run that fits the busiest band fits all
+        # of them, and a chain's hops are not required to share a band.
+        budget = min((bound.get(band_of(n.release, n.deadline, n.hard), 0)
+                      for n in table.values()), default=0)
+        run = max(1, min(len(members), budget // hops if hops else len(members)))
+        for i in range(0, len(members), run):
+            group = members[i:i + run]
+            idents = tuple(m[0] for m in group)
+            out.append((idents[0], idents, direction, table,
+                        sum(volume_of[x] for x in idents)))
+            if len(idents) > 1:
+                merged += 1
+        if run > 1 and debug:
+            _p(debug, f"      coalesce chunk {key[0]},{key[1]} from {key[3]} "
+                      f"({'cw' if direction == CW else 'ccw'}, {hops} hop(s)): "
+                      f"{len(members)} sub-chunks -> runs of {run} "
+                      f"(link bound {budget} round(s))")
+    if debug and merged:
+        _p(debug, f"  [_coalesce_chains] {merged} co-travelling sub-chunk run(s) merged; "
+                  f"{len(needs)} -> {len(out)} chain(s)")
+    return sorted(out, key=lambda e: (str(e[0]), e[2]))
+
+
 def _ring_jobs(demands: Sequence[IntraCellDemand], order: RingOrder,
+               subdivision: int = 1, link_cap: float = 1.0,
                debug: bool = False) -> List[_Job]:
     """Lower a cell's demands into ring hop chains.
 
@@ -376,6 +488,13 @@ def _ring_jobs(demands: Sequence[IntraCellDemand], order: RingOrder,
     k+1's. Bands are assigned from those constraints, so a chain's bands are monotonically
     non-decreasing along the chain: a predecessor is never in a LATER band than its successor. That
     is the fact `_drop_cross_band_precedence` relies on.
+
+    THEN CO-TRAVELLING SUB-CHUNKS ARE COALESCED (`_coalesce_chains`, when `subdivision` > 1): Q
+    chains that are the same bytes taking the same edges under the same constraints become one
+    chain of Q-wide transfers, so the emitted schedule says "one transfer of Q sub-chunks" rather
+    than Q transfers the stitch has to put in Q different fine epochs. `link_cap` is needed here
+    and not only in `_schedule_band` because the merge is bounded by the band's link floor -- see
+    that function for why this row needs the bound and the crossbar row does not.
     """
     # Where each identity lives in this cell, and how big it is. Built in ONE pass rather than
     # rescanned per chain: a rail alltoall cell carries hundreds of identities and hundreds of
@@ -427,10 +546,11 @@ def _ring_jobs(demands: Sequence[IntraCellDemand], order: RingOrder,
                       f"{list(d.dst_gpus)}: arc {'cw' if direction == CW else 'ccw'} x{hops} hop(s)"
                       f"{' HARD' if hard else ''}")
 
+    chains = _coalesce_chains(needs, src_of, volume_of, subdivision, order, link_cap, debug=debug)
+
     jobs: List[_Job] = []
-    for (identity, direction), table in sorted(needs.items(), key=lambda kv: (str(kv[0][0]),
-                                                                             kv[0][1])):
-        src, volume = src_of[identity], volume_of[identity]
+    for identity, identities, direction, table, volume in chains:
+        src = src_of[identity]
         prev: Optional[_Job] = None
         for k in sorted(table):
             need = table[k]
@@ -438,7 +558,7 @@ def _ring_jobs(demands: Sequence[IntraCellDemand], order: RingOrder,
             v = order.node_at(src, k, direction)
             job = _Job(identity=identity, src=u, dst=v, volume=volume,
                        release_gap=need.release, deadline_gap=need.deadline, hard=need.hard,
-                       kind="ring_hop", predecessor=prev)
+                       kind="ring_hop", predecessor=prev, identities=identities)
             jobs.append(job)
             prev = job
     if debug:
@@ -470,15 +590,23 @@ def _max_link_load(jobs: Sequence[_Job]) -> float:
     return max(_link_load(jobs).values(), default=0.0)
 
 
-def _max_chain_depth(jobs: Sequence[_Job]) -> int:
-    """Longest precedence chain, in rounds. A chain of L hops cannot finish before round L-1, so
-    with few identities in flight this, not the link load, is what sets the makespan."""
+def _max_chain_depth(jobs: Sequence[_Job], link_cap: float = 1.0) -> int:
+    """Longest precedence chain, in ROUNDS. A chain cannot finish before every hop of it has run,
+    so with few identities in flight this, not the link load, is what sets the makespan.
+
+    Measured in rounds rather than hops because a hop is not one round: a job is placed atomically
+    and holds its edge for `ceil(volume / link_cap)` of them, which is how a coalesced
+    multi-sub-chunk transfer is charged. Counting hops would understate a coalesced chain's depth
+    by exactly the factor `_coalesce_chains` is bounded by."""
     depth: Dict[int, int] = {}
+
+    def _span(j: _Job) -> int:
+        return max(1, math.ceil(j.volume / link_cap - EPS))
 
     def _d(j: _Job) -> int:
         got = depth.get(id(j))
         if got is None:
-            got = 1 if j.predecessor is None else 1 + _d(j.predecessor)
+            got = _span(j) + (0 if j.predecessor is None else _d(j.predecessor))
             depth[id(j)] = got
         return got
 
@@ -515,7 +643,7 @@ def _schedule_band(jobs: List[_Job], order: RingOrder, band: int, link_cap: floa
         return (not j.hard, j.deadline_gap, _hop_index(j), j.src, j.dst)
 
     link_lb = math.ceil(_max_link_load(jobs) / link_cap - EPS) if jobs else 0
-    depth_lb = _max_chain_depth(jobs)
+    depth_lb = _max_chain_depth(jobs, link_cap)
     lb = max(link_lb, depth_lb)
     if debug:
         nh = sum(1 for j in jobs if j.hard)
@@ -540,9 +668,15 @@ def _schedule_band(jobs: List[_Job], order: RingOrder, band: int, link_cap: floa
                  or (j.predecessor.completion_round is not None
                      and j.predecessor.completion_round < r)]
         if not ready:
-            # Impossible while the chains are chains: hop 1 has no predecessor and is always ready,
-            # so an empty ready set means a predecessor was dropped without being scheduled (a
-            # cross-band link that was not really cross-band) or a cycle was built.
+            # An empty ready set is legitimate only while a predecessor is still IN FLIGHT: a
+            # coalesced hop holds its edge for its whole span, so its successor genuinely has
+            # nothing to do until that span ends. Every other empty round is the real failure this
+            # check is for -- hop 1 has no predecessor and is always ready, so it means a
+            # predecessor was dropped without being scheduled (a cross-band link that was not
+            # really cross-band) or a cycle was built.
+            if any(j.predecessor is not None and j.predecessor.completion_round is not None
+                   for j in pending):
+                continue
             raise RuntimeError(
                 f"ring schedule stalled at round {r}, band {band}: "
                 f"{[(j.src, j.dst, j.identity) for j in pending][:8]}")
@@ -564,8 +698,9 @@ def _schedule_band(jobs: List[_Job], order: RingOrder, band: int, link_cap: floa
             j.completion_round = r + span - 1
             pending.remove(j)
             if debug:
+                width = f"x{len(j.identities)}" if len(j.identities) > 1 else ""
                 matched.append(f"{j.src}->{j.dst}{'H' if j.hard else ''}"
-                               f"(id{j.identity[0]},h{_hop_index(j)})")
+                               f"(id{j.identity[0]}{width},h{_hop_index(j)})")
         if debug and matched:
             _p(debug, f"      round {r}: " + "  ".join(matched))
     else:
@@ -669,16 +804,21 @@ def _assert_deliveries(flows: Sequence[IntraFlow], demands: Sequence[IntraCellDe
     Replayed in round order per band rather than checked structurally, so it catches a bad chain
     (an arc that skipped a node, a dropped precedence edge that let a hop run before its input
     arrived) and not just a missing edge.
+
+    Walks `f.identities`, not `f.identity`: a coalesced transfer carries every sub-chunk in the run
+    and each of them has to be accounted for, or a merge that silently dropped one of its members
+    would replay as if the whole run had moved.
     """
     holders: Dict[Identity, set] = defaultdict(set)
     for d in demands:
         holders[d.identity].add(d.src_gpu)
     for f in sorted(flows, key=lambda x: (x.band, x.local_round)):
-        if f.sender not in holders[f.identity]:
-            raise AssertionError(
-                f"ring hop {f.sender}->{f.receiver} at band {f.band} round {f.local_round} "
-                f"forwards identity {f.identity} that {f.sender} does not hold yet")
-        holders[f.identity].add(f.receiver)
+        for identity in f.identities:
+            if f.sender not in holders[identity]:
+                raise AssertionError(
+                    f"ring hop {f.sender}->{f.receiver} at band {f.band} round {f.local_round} "
+                    f"forwards identity {identity} that {f.sender} does not hold yet")
+            holders[identity].add(f.receiver)
     for d in demands:
         missing = [t for t in d.dst_gpus if t not in holders[d.identity]]
         if missing:
@@ -697,17 +837,19 @@ def schedule_cell(cell_id: int, cell: Cell, demands: Sequence[IntraCellDemand],
     """Schedule every intra-cell demand of one cell as a ring and return the fine IntraFlows.
 
     Signature-compatible with `crossbar_solve.schedule_cell` so the base-case dispatch can pick
-    either without knowing which it got. Three parameters are accepted and deliberately unused:
+    either without knowing which it got. Two parameters are accepted and deliberately unused:
 
       switch_copy   a ring has no switch to multicast in -- the ring broadcast IS the fan-out, and
                     it already costs one send per link rather than N off one port.
       ring_hint     that hook exists on the crossbar row to nudge its edge-colouring toward a ring;
                     here the ring order IS the schedule, and it comes from the topology or from
                     `cell.gpus`.
-      subdivision   the crossbar row coalesces co-travelling sub-chunks to keep them in one fine
-                    epoch. A ring chain already moves an identity as one transfer per hop, so there
-                    is nothing to merge; sub-chunks of one refined chunk simply form their own
-                    chains. Accepted so the two rows are interchangeable.
+
+    `subdivision` is the Q of sub-chunk refinement in force at this level, and it does the same job
+    it does on the crossbar row: co-travelling sub-chunks are merged into one wider transfer so the
+    stitch can put them in ONE fine epoch and ncclize can emit them as one cnt=Q operation. The
+    ring merges whole CHAINS rather than single hops, and unlike the crossbar it has to bound the
+    merge by the band's link floor -- `_coalesce_chains` has the argument.
 
     `topology` supplies the capacity view used to detect a physical ring; pass the cell's view (the
     dispatcher's `_CellView`). When omitted the ring is logical over `cell.gpus`, which is the
@@ -722,7 +864,7 @@ def schedule_cell(cell_id: int, cell: Cell, demands: Sequence[IntraCellDemand],
               f"{'bidirectional' if order.bidirectional else 'unidirectional'}, "
               f"via_switch={order.via_switch}, {len(demands)} intra demands ===")
 
-    jobs = _ring_jobs(demands, order, debug=debug)
+    jobs = _ring_jobs(demands, order, subdivision=subdivision, link_cap=port_cap, debug=debug)
     by_band = _assign_bands(jobs)
     _drop_cross_band_precedence(by_band)
 
