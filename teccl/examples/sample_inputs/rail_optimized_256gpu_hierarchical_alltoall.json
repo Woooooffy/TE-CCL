@@ -3,7 +3,7 @@
 
     "_expected": "At chunk_size = 1 GB per (src,dst) GPU pair, each GPU ships 248 GB across the host boundary (255 peers - 7 host-mates that stay on the NVSwitch). Binding cut is the GPU RAIL: 248 GB / 50 GB/s = 4.96 s, i.e. 400 GB/s of host egress against 1984 GB per host. The spine cut is SLACK, as a non-blocking fabric should be: each leaf carries 32 x 217 GB = 6944 GB of up-traffic (217 = 248 - the 31 same-rail peers that turn around on the leaf) against 4 x 400 = 1600 GB/s of uplink = 4.34 s. So T* >= 4.96 s = 4 pinned epochs, and the leaf->spine tier should never be the reason a solution slips.",
 
-    "_epoch_note": "epoch_duration is PINNED to 1.28 s at EVERY level (scalar USER_INPUT), the same quantum the dual-plane siblings pin, so the single-plane and dual-plane runs are comparable epoch for epoch. Left on FASTEST_LINK the root would derive the coarse chunk (2048 GB, a host's whole send buffer) over the 400 GB/s coarse leaf-spine link = 5.12 s -- a single epoch for the entire collective, which quantizes the answer into uselessness. At 1.28 s the 4.96 s bound lands at 4 epochs = 5.12 s, within 3% of the cut. A LONGER-than-fastest-link pin is always safe; a shorter one is refused at the closed-form levels by hierarchy/solve.level_epoch_duration (use the per-level list form, e.g. epoch_type [3, 1] with epoch_duration [x, -1], to pin only the root, which is the level solved by a real formulation).",
+    "_epoch_note": "epoch_duration is PINNED to 1.24 s at the ROOT level only (list form: [USER_INPUT, FASTEST_LINK] / [1.24, -1]; depths past the end of a list take its last entry, so every level below the coarse LP keeps deriving its own epoch). 1.24 s makes the 4.96 s rail bound land on an integer epoch count (4) with nothing lost to the final ceiling, and is the SAME quantum the dual-plane sibling pins, so the two runs are comparable epoch for epoch. FASTEST_LINK at the root would size the epoch off the coarse leaf-spine link, 2048 GB (a host's whole send buffer, the coarse chunk) / 400 GB/s = 5.12 s -- a single epoch for the entire collective, which quantizes the answer into uselessness. The pin is legal because the root is solved by a real formulation (the LP answers a shorter epoch with more epochs); the >= fastest-link floor in hierarchy/solve.level_epoch_duration only guards the closed-form levels, which is why they are left on FASTEST_LINK.",
 
     "TopologyParams": {
         "topo_file": "teccl/topologies/topology-dsl-frontend/examples/rail_optimized_256gpu.topo",
@@ -26,8 +26,8 @@
         "formulation": 2,
         "switch_copy": false,
         "num_chunks": 1,
-        "epoch_type": 3,
-        "epoch_duration": 1.28,
+        "epoch_type": [3, 1],
+        "epoch_duration": [1.24, -1],
         "epoch_multiplier": 1,
         "num_epochs": -1,
         "alpha_threshold": 0.1,

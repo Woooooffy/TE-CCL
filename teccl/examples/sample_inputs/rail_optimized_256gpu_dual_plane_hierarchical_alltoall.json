@@ -3,7 +3,7 @@
 
     "_expected": "At chunk_size = 1 GB per (src,dst) GPU pair, each GPU ships 248 GB across the host boundary (255 peers - 7 host-mates on the NVSwitch), split over its two 400 Gbps plane rails = 100 GB/s of egress, so the GPU port alone would finish in 2.48 s. It is NOT the binding cut: the .topo file was retuned to 2:1 oversubscription (leaf-spine edges are now 16 x 400 Gbps = 6400 Gbps, down from 32 x 400), and the SPINE CUT now binds. Per plane-A leaf l: the 64 GPUs on rails l and l+4 each put 124 GB into that plane, of which 31 GB turns around on the leaf (the 62 cross-host same-leaf peers, halved per plane), leaving 93 GB x 64 = 5952 GB of up-traffic against 2 x 800 = 1600 GB/s of uplink = 3.72 s. So T* >= 3.72 s = 3 pinned epochs -- 1.5x the GPU-port bound, which is the 2:1 taper showing up exactly where the topology header says it should. Compare against the single-plane run: that one is rail-bound at 4.96 s, so a tapered dual plane still wins here, just by less than its 2x of GPU port bandwidth would suggest.",
 
-    "_epoch_note": "epoch_duration is PINNED to 1.28 s at EVERY level (scalar USER_INPUT), matching the dual-plane allgather sibling. 1.28 s is the epoch this topology derived from FASTEST_LINK before the fabric was retuned -- the coarse chunk (2048 GB, a host's whole send buffer) over the old 12800 Gbps leaf-spine edge -- so pinning it keeps the quantum stable across the retuning instead of letting it double. Left on FASTEST_LINK the root would now derive 2048 GB / 800 GB/s = 2.56 s, which ceilings the 3.72 s bound up to 5.12 s, a 38% quantization loss; at 1.28 s the bound lands at 3 epochs = 3.84 s, within 3% of the cut. The single-plane sibling pins the same 1.28 s, so the two runs are comparable epoch for epoch. A LONGER-than-fastest-link pin is always safe; a shorter one is refused at the closed-form levels by hierarchy/solve.level_epoch_duration (use the per-level list form, e.g. epoch_type [3, 1] with epoch_duration [x, -1], to pin only the root, which is the level solved by a real formulation).",
+    "_epoch_note": "epoch_duration is PINNED to 1.24 s at the ROOT level only (list form: [USER_INPUT, FASTEST_LINK] / [1.24, -1]; depths past the end of a list take its last entry, so every level below the coarse LP keeps deriving its own epoch). 1.24 s makes the 3.72 s spine-cut bound land on an integer epoch count (3) with nothing lost to the final ceiling, and is the SAME quantum the single-plane sibling pins, so the two runs are comparable epoch for epoch. FASTEST_LINK at the root would size the epoch off the coarse leaf-spine link, 2048 GB (a host's whole send buffer, the coarse chunk) / 800 GB/s = 2.56 s, which ceilings 3.72 s up to 5.12 s -- a 38% quantization loss, and a loss that grew when the fabric was tapered (at the old 12800 Gbps edges the derived epoch was 1.28 s). A flat scalar pin of 1.28 s -- what the dual-plane allgather sibling uses -- also gives 3 epochs, at 3.84 s; 1.24 s is the value that lands the bound exactly. The pin is legal because the root is solved by a real formulation (the LP answers a shorter epoch with more epochs); the >= fastest-link floor in hierarchy/solve.level_epoch_duration only guards the closed-form levels, which is why they are left on FASTEST_LINK.",
 
     "TopologyParams": {
         "topo_file": "teccl/topologies/topology-dsl-frontend/examples/rail_optimized_256gpu_dual_plane.topo",
@@ -26,8 +26,8 @@
         "formulation": 2,
         "switch_copy": false,
         "num_chunks": 1,
-        "epoch_type": 3,
-        "epoch_duration": 1.28,
+        "epoch_type": [3, 1],
+        "epoch_duration": [1.24, -1],
         "epoch_multiplier": 1,
         "num_epochs": -1,
         "alpha_threshold": 0.1,
