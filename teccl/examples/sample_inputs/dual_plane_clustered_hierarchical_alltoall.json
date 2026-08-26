@@ -40,7 +40,6 @@
         "objective_type": 6,
         "solution_method": 1,
         "hierarchical": true,
-        "intra_algo": "ring",
         "hierarchy_prefix": "dual_plane_clustered_alltoall",
         "hierarchy_side_outputs": true,
         "schedule_output_file": "Schedules/dual_plane_clustered_alltoall_flat.json"
