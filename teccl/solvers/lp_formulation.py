@@ -252,6 +252,28 @@ class LPFormulation(BaseFormulation):
             #  Buffer at the beginning of epoch k + flows that reach by end of epoch k >=
             #       buffer at the beginning of epoch (k + 1) + flows going out of the node in epoch (k + 1) + chunks portion consumed by the end of epoch k
             # TODO: this allows for flows getting dropped, we might want to just make it equality.
+            #
+            # DEFERRED (no-copy relay): consumption is DESTRUCTIVE here -- consumed_at_k is
+            # subtracted alongside the buffer carried forward, so volume a node consumes is gone
+            # and cannot also be forwarded. That matches the class docstring ("no
+            # replication/copy") and is right for a terminal delivery, but it means a node that
+            # both WANTS data and RELAYS it onward must receive it TWICE.
+            #
+            # Harmless when a node is a bare relay. Costly in the HIERARCHICAL solve, where a
+            # coarse node is a whole cell: a two-hop coarse route makes the intermediate cell pull
+            # a second copy across the fabric even though the first copy is already sitting on a
+            # peer GPU one NVLink hop away. Measured on the 96-GPU dual-plane clustered allgather:
+            # 8 two-hop coarse routes -> 704 identities cross an intermediate cell's ingress twice
+            # (768 extra pieces, 4.5% of paced network volume). It is all planned and
+            # rate-reserved; flat_schedule.back_trace then prunes every one of those pieces
+            # because the native copy plus an intra-cell fan-out beats them, so the bandwidth is
+            # simply spent for nothing.
+            #
+            # Fixing it needs copy semantics for a replicating collective (a node keeps what it
+            # consumed and may still forward it), which changes the LP's meaning for every
+            # collective routed through it -- hence deferred rather than patched here. A cheaper
+            # stopgap lives one level up: rewrite a transit ingress into an intra-cell hop when
+            # the cell is already receiving that identity natively.
             self.model.addConstr(flow_conservation >= 0,
                                  name=f"midFC-epoch_{k}-node_{n}-source_{s}")
 

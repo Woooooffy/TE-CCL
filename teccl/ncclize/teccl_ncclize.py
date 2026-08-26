@@ -31,12 +31,24 @@ MAX_DENOM = 64
 # unbounded M would blow up. Raise clearly instead.
 MAX_M = 128
 
-# EXPERIMENTAL: P4 remote pacing gates. A send that neither of the LOCAL clocks (P2/P3) can pin
-# to its epoch is instead gated on a paced delivery into its DESTINATION GPU -- the remote op
-# holding the network capacity this send is waiting for -- realized as remotedep/remotedeps on
-# the send and remotenotify on the remote recv. Off by default because it emits XML attributes a
-# stock runtime does not read; set TECCL_REMOTE_PACING_GATES=1 to derive them.
-REMOTE_PACING_GATES = os.environ.get('TECCL_REMOTE_PACING_GATES', '0').lower() not in (
+# P4 remote pacing gates. A send that neither of the LOCAL clocks (P2/P3) can pin to its epoch is
+# instead gated on a paced delivery into its DESTINATION GPU -- the remote op holding the network
+# capacity this send is waiting for -- realized as remotedep/remotedeps on the send and
+# remotenotify on the remote recv.
+#
+# ON by default. The local pools are both sender-side, so neither can observe a RECEIVER-side
+# bottleneck, and that is not a corner case: on the 96-GPU dual-plane clustered allgather it left
+# 16 sends (GPUs 0-15 at coarse epoch 4) pinned an epoch early, which put 16 receivers (GPUs
+# 80-95) at 150% of their 100 GB/s ingress for a full epoch -- the schedule's own timeline says
+# 125.83 us, the run measured 155.8 us, and the fabric paid for the difference in PFC. Every one
+# of those 16 is exactly the case P4 covers: a local candidate exists but lands early, and an
+# arrival at the destination lands exactly on time.
+#
+# The cost is that remotedep/remotedeps/remotenotify are attributes a stock MSCCL runtime does not
+# read. A runtime that ignores them behaves exactly as it did before (they add no steps and no
+# ordering the other carriers already express), so this is safe to emit by default; set
+# TECCL_REMOTE_PACING_GATES=0 to go back to local-only gates.
+REMOTE_PACING_GATES = os.environ.get('TECCL_REMOTE_PACING_GATES', '1').lower() not in (
     '0', '', 'false', 'no', 'off')
 
 try:                                  # sibling module; this file runs both as a script
@@ -523,6 +535,45 @@ def _finish_before_start_gates(paced_sends, remote_gates=False):
     return edges
 
 
+def unpinned_sends(paced_sends, gates):
+    """The paced sends the gate manifest could not pin to their own epoch.
+
+    This is the AUTHORITATIVE pacing report, and it is derived from the manifest itself rather
+    than re-deriving the rule: a send is pinned iff some emitted edge's producer LANDS EXACTLY at
+    that send's start. `_finish_before_start_gates` picks the latest producer landing at or before
+    the start, so it happily emits a best-effort edge from a producer that lands EARLY -- which
+    orders the send but does not hold it, and the send then fires as soon as its data dependency
+    allows. Those are the sends that break the schedule's epoch grid downstream.
+
+    Re-implementing the rule elsewhere is what went wrong before: the stitch's
+    flat_schedule.check_network_pacing ran the same predicate over `res.pieces`, a superset of
+    what ncclize actually emits, and reported everything pinned while 16 sends were firing an
+    epoch early. Reading the manifest cannot drift from the manifest, and it works for every
+    schedule source (flat LP and hierarchical alike), so prefer this.
+
+    A producer's landing time depends on its kind. A 'send' edge names a real send, which lands
+    when it finishes occupying its uplink. A 'recv' or 'remote' edge names a RECV MIRROR
+    (step, gpu, peer, path_key) whose arrival is the finish of the underlying send
+    (step, peer, gpu, path_key) -- the same transfer seen from the far end.
+
+    Returns a sorted list of (gpu, start_epoch) for the sends nothing pins.
+    """
+    landing = {}
+    for key, (_start, finish) in paced_sends.items():
+        step, src, dst, path_key = key
+        landing[('send', key)] = finish
+        landing[('recv', (step, dst, src, path_key))] = finish
+
+    pinned = set()
+    for consumer, producer, kind in gates:
+        at = landing.get(('send' if kind == 'send' else 'recv', producer))
+        if at is not None and at == paced_sends[consumer][0]:
+            pinned.add(consumer)
+
+    return sorted({(key[1], start) for key, (start, _f) in paced_sends.items()
+                   if start > 0 and key not in pinned})
+
+
 def parse_flows_lp(schedule, collective_name, port_qualify=None):
     """Parse an LP schedule (any collective) the way parse_flows() does for the
     allgather MILP, but generate sends from the nested "8-Chunk paths" so each
@@ -773,6 +824,22 @@ def parse_flows_lp(schedule, collective_name, port_qualify=None):
 
     pacing_gates = _finish_before_start_gates(paced_sends,
                                               remote_gates=REMOTE_PACING_GATES)
+
+    # Report straight off the manifest (see unpinned_sends): these sends carry at most a
+    # best-effort edge from a producer that lands early, so nothing holds them to their epoch and
+    # they fire as soon as their data dependency allows. Reported, not fatal -- the schedule is
+    # still correct, it just runs off its own epoch grid, which shows up downstream as link
+    # oversubscription the solver never planned for.
+    early = unpinned_sends(paced_sends, pacing_gates)
+    if early:
+        print(f'[ncclize] pacing: {len(early)} of {len(paced_sends)} paced sends are not pinned to '
+              f'their epoch by any gate -- they will fire early [(gpu, epoch)]: {early[:8]}'
+              + ('' if REMOTE_PACING_GATES else
+                 ' (P4 remote gates are OFF; TECCL_REMOTE_PACING_GATES=1 covers the '
+                 'receiver-side-bottleneck cases)'))
+    else:
+        print(f'[ncclize] pacing: all {len(paced_sends)} paced sends are pinned to their epoch by '
+              f'a gate landing exactly at their start')
 
     return (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
             sorted_epochs, flow_completion_epochs, flow_rates, root_dense,

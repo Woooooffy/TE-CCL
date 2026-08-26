@@ -382,7 +382,34 @@ def assert_link_capacity(records: Sequence[DeliveryRecord], fine_topology: Topol
             f"[(src, dst, epoch, GB, capacity)]: {over[:6]}")
 
 
-def check_network_pacing(res: IdentityResolution, coarse_epoch: float) -> List[Tuple[int, int]]:
+def _piece_key(identity, egress_gpu: int, ingress_gpu: int, send_epoch: int):
+    """The identity of a network send, shared by a ResolvedPiece and its DeliveryRecord.
+
+    `build_records` copies exactly these four fields across (record.epoch is the piece's
+    send_epoch scaled onto the fine axis), so this is what lets the caller intersect the surviving
+    records with `res.pieces` without carrying record objects into the check.
+    """
+    return (tuple(identity), egress_gpu, ingress_gpu, send_epoch)
+
+
+def emitted_network_sends(paths: Dict[Tuple[int, Identity], List[DeliveryRecord]],
+                          W: int, m: int) -> set:
+    """The network sends that survive `back_trace`, keyed by `_piece_key`.
+
+    A record reachable from some demand's chain is one ncclize will emit; everything else is
+    pruned and exists only as a "7-Flows" line. `m` un-scales record.epoch back to the coarse
+    epoch the piece was filed at (record.epoch = W + m * send_epoch, see build_records).
+    """
+    return {_piece_key(r.identity, r.sender, r.receiver, (r.epoch - W) // m)
+            for chain in paths.values() for r in chain if r.phase == NETWORK}
+
+
+def _piece_is_emitted(p, emitted: set) -> bool:
+    return _piece_key(p.identity, p.egress_gpu, p.ingress_gpu, p.send_epoch) in emitted
+
+
+def check_network_pacing(res: IdentityResolution, coarse_epoch: float,
+                         emitted: Optional[set] = None) -> List[Tuple[int, int]]:
     """Per-uplink (network-layer) realizability: which paced sends still fire early.
 
     This is the network layer's own pacing check, run in its own units (coarse epochs) -- the
@@ -392,6 +419,27 @@ def check_network_pacing(res: IdentityResolution, coarse_epoch: float) -> List[T
     uses (teccl_ncclize._finish_before_start_gates) so that what is reported here is exactly what
     that manifest cannot pin: both ask "did some paced event land on THIS GPU exactly when this
     send is due", not "did the same GPU start a send in the previous epoch".
+
+    `emitted` is what makes that mirroring real, and it is REQUIRED for the answer to mean
+    anything. `res.pieces` is a strict SUPERSET of what ships: ncclize builds its ops (and hence
+    its gate manifest) from the demand chains in "8-Chunk paths", so a piece that `back_trace`
+    pruned -- because that identity reached that receiver earlier by another route -- never
+    becomes an XML send. Those pruned pieces are not idle bookkeeping: counted here they
+    MANUFACTURE P2/P3 clock ticks at epochs where the emitted schedule has none, and every real
+    residual they cover is reported as pinned. Measured on the 96-GPU dual-plane clustered
+    allgather: 768 of 16896 pieces are pruned, and the phantom ticks they contribute hide all 16
+    genuine residuals (GPUs 0-15 at coarse epoch 4), whose sends then fire an epoch early and
+    drive 16 receivers to 150% of their ingress capacity.
+
+    So pass the emitted set built by `emitted_network_sends` from the NETWORK records that survive
+    `back_trace`. Pieces outside it are skipped on both sides of the rule -- they neither need
+    pinning nor may serve as anyone's clock. `None` means "no pruning information", which is only
+    correct for a caller that has not run `back_trace` yet.
+
+    Why the pruned pieces exist at all is a separate, deferred problem -- see the note on
+    `assert_native_ownership` / lp_formulation.node_constraint_helper: the coarse LP has no copy
+    semantics, so a cell that both wants an identity and relays it onward pulls it across the
+    fabric twice.
 
     A send occupies its uplink -- (egress_gpu, first switch on its route) -- from its send epoch for
     volume/rate coarse epochs, i.e. it FINISHES serializing at send_epoch + duration (duration = 1
@@ -429,6 +477,8 @@ def check_network_pacing(res: IdentityResolution, coarse_epoch: float) -> List[T
     for p in res.pieces:
         if p.rate is None:
             continue  # an unpaced network flow imposes no pacing (and none exists today)
+        if emitted is not None and not _piece_is_emitted(p, emitted):
+            continue  # pruned by back_trace: never an XML send, so never anyone's clock either
         duration = max(1, round(p.volume * chunk / (p.rate * coarse_epoch)))
         finishes[p.egress_gpu].add(p.send_epoch + duration)
         starts[p.egress_gpu].add(p.send_epoch)
@@ -462,24 +512,35 @@ def build_flat_schedule(res: IdentityResolution, intra_flows: Sequence[IntraFlow
     delta, m = grid if grid is not None else derive_grid(res.scale, fine_topology, coarse_epoch)
     assert_native_ownership(res)
 
+    # Bands 0..K-1 are pinned to the network sends, so they must fit inside a coarse epoch.
+    num_coarse_epochs = max((p.send_epoch for p in res.pieces), default=-1) + 1
+    assert_bands_fit(intra_flows, m, num_coarse_epochs)
+
+    records, W = build_records(res, intra_flows, m)
+    assert_link_capacity(records, fine_topology, coarse_epoch, scale=res.scale)
+    paths = back_trace(records, fine_demand, res.subdivision)
+
     # Network-layer pacing residuals (paced sends neither clock can pin). Reported, not fatal.
-    residual = check_network_pacing(res, coarse_epoch)
+    # Runs AFTER back_trace and on its surviving records only: ncclize derives its gate manifest
+    # from the demand chains, so a check over all of res.pieces would count pruned pieces as
+    # clock ticks the emitted schedule does not have and report residuals as pinned. See
+    # check_network_pacing's docstring for the measured case that motivated this.
+    emitted = emitted_network_sends(paths, W, m)
+    pruned = sum(1 for p in res.pieces
+                 if p.rate is not None and not _piece_is_emitted(p, emitted))
+    residual = check_network_pacing(res, coarse_epoch, emitted)
+    if pruned:
+        print(f"[flat] network pacing: {pruned} paced piece(s) are pruned by back_trace and never "
+              f"emitted; they are excluded from the pacing clocks below (see the deferred coarse "
+              f"no-copy relay gap in check_network_pacing's docstring)")
     if residual:
         print(f"[flat] network pacing: {len(residual)} (gpu, epoch) send group(s) fire early -- at "
               f"epoch k no send from that GPU finishes serializing (P2) and no paced delivery "
               f"arrives at it (P3), so nothing pins them to their coarse epoch [(gpu, epoch)]: "
               f"{residual[:8]}")
     else:
-        print("[flat] network pacing: every paced send is pinned to its coarse epoch, by one of "
-              "the GPU's own sends completing (P2) or by a delivery arriving at it (P3)")
-
-    # Bands 0..K-1 are pinned to the network sends, so they must fit inside a coarse epoch.
-    num_coarse_epochs = max((p.send_epoch for p in res.pieces), default=-1) + 1
-    assert_bands_fit(intra_flows, m, num_coarse_epochs)
-
-    records, _W = build_records(res, intra_flows, m)
-    assert_link_capacity(records, fine_topology, coarse_epoch, scale=res.scale)
-    paths = back_trace(records, fine_demand, res.subdivision)
+        print("[flat] network pacing: every emitted paced send is pinned to its coarse epoch, by "
+              "one of the GPU's own sends completing (P2) or by a delivery arriving at it (P3)")
 
     # Algorithmic bandwidth counts the demand-bearing sources, matching the convention in
     # lp_formulation.get_flow_schedule (len(self.sources)); payload_per_gpu comes from the scale,

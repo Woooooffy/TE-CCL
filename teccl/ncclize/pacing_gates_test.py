@@ -27,6 +27,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from teccl_ncclize import _finish_before_start_gates as gates  # noqa: E402
+from teccl_ncclize import unpinned_sends  # noqa: E402
 
 
 def check(name, paced, expect):
@@ -153,6 +154,7 @@ def main():
            ((7, 9, 0, None), (4, 9, 0, None), 'send')])
 
     remote_derivation_tests()
+    unpinned_report_tests()
     realization_tests()
     remote_realization_tests()
     remote_emission_tests()
@@ -160,10 +162,51 @@ def main():
     print("pacing gate tests OK")
 
 
+def unpinned_report_tests():
+    """The pacing REPORT, read straight off the manifest: a send counts as pinned only when some
+    emitted edge's producer lands exactly at its start. A best-effort edge from an early producer
+    orders the send but does not hold it, and must be reported."""
+
+    def ucheck(name, paced, expect, remote=False):
+        got = unpinned_sends(paced, gates(paced, remote_gates=remote))
+        if got != sorted(expect):
+            raise AssertionError(f"{name}: expected {sorted(expect)}, got {got}")
+        print(f"  [OK] {name}")
+
+    # gpu0's uplink freed at 1 but the send is due at 3: the manifest carries a 'send' edge to
+    # that stale producer, which orders it and nothing more. This is the case the old
+    # res.pieces-based check reported as pinned.
+    stalled = {(0, 0, 5, None): (0, 1),
+               (2, 9, 5, None): (2, 3),
+               (3, 0, 5, None): (3, 4)}
+    # (9, 2) comes along for free and is also correct: gpu9's own send has no producer at all,
+    # so nothing pins it either. A send with no gate and a send with an early gate are the same
+    # kind of residual.
+    ucheck("report: an early producer is a gate but not a pin", stalled, [(0, 3), (9, 2)])
+
+    # Same fixture with P4 on: the arrival at the DESTINATION lands exactly at 3, so the send is
+    # genuinely pinned and the report is clean. This is the 16-send dual-plane case in miniature.
+    ucheck("report: a remote gate pins what no local clock could", stalled, [(9, 2)], remote=True)
+
+    # A producer landing exactly on time pins, via either local carrier.
+    ucheck("report: an on-time send producer pins",
+           {(0, 0, 5, None): (0, 3), (3, 0, 5, None): (3, 4)}, [])
+    ucheck("report: an on-time arrival pins",
+           {(2, 9, 0, None): (2, 3), (3, 0, 5, None): (3, 4)}, [(9, 2)])
+
+    # Epoch 0 needs no clock -- it is held by the egress staging it depends on (P1).
+    ucheck("report: epoch 0 is never unpinned", {(0, 0, 5, None): (0, 1)}, [])
+
+    # One entry per (gpu, epoch), however many sends that GPU has due at once.
+    ucheck("report: collapsed per (gpu, epoch)",
+           {(0, 0, 5, None): (0, 1), (3, 0, 5, None): (3, 4), (3, 0, 6, None): (3, 4)},
+           [(0, 3)])
+
+
 def remote_derivation_tests():
     """P4, the EXPERIMENTAL remote pool: when neither local clock pins a send, gate it on a
     paced delivery into its DESTINATION -- the remote op holding the capacity it is waiting
-    behind. Off unless remote_gates=True, and never spent when a local gate already pins."""
+    behind. Skipped when remote_gates=False, and never spent when a local gate already pins."""
 
     def rcheck(name, paced, expect, remote=True):
         got = sorted(gates(paced, remote_gates=remote), key=repr)
@@ -183,7 +226,7 @@ def remote_derivation_tests():
 
     # Same fixture with the pool disabled: the derivation falls back to the stale local netdep,
     # which is best-effort only (finishes at 1, the send is due at 3) -- i.e. the residual.
-    rcheck("p4: off by default, falls back to the stale local gate",
+    rcheck("p4: disabled, falls back to the stale local gate",
            stalled, [((3, 0, 5, None), (0, 0, 5, None), 'send')], remote=False)
 
     # A local clock that DOES pin is never traded for a notification: gpu0's own send frees the
