@@ -1,0 +1,47 @@
+{
+    "_comment": "FLAT AllToAll on the shared-NIC PCIe variant: 4 hosts x 2 GPUs = 8 GPUs, one 100Gbps NIC PER HOST hanging off the PCIe root complex, 2 leaf + 2 spine switches (16 fine nodes). The fabric is bit-for-bit identical to mini_1gpu_1nic_alltoall.json, so the two are a controlled pair: same leaves, same spines, same 2:1 taper, twice the GPUs behind the same number of NICs.",
+
+    "_why_flat_only": "hierarchical is false and CANNOT be true here. DslTopology._build_cell asserts that a cell's external links are owned by its GPUs (abstract() reads a cell's boundary only through cell.gpus), and this host's one external link is the NIC, owned by `rc`. So the .topo file does not mark its hosts as cells and the host tier cannot be folded. That is a property of the shared-NIC shape, not of this input -- mini_2gpu_2nic_alltoall.json, whose GPUs own their own NICs, does have cells.",
+
+    "_why_alltoall": "Under AllGather the volume crossing the leaf cut depends on routing -- a far-leaf host can take one copy and relay it to its leaf-mate -- so the cut bound is soft and the spine tier can go slack. Under AllToAll every chunk has a unique destination GPU, so the cross-leaf volume is pinned by the demand matrix at exactly 16 GB per direction (4 GPUs x 4 remote GPUs x 1 GB) however it is routed. The cut bound is therefore EXACT, and the predictions below are predictions rather than estimates.",
+
+    "_expected": "T* = 1.28 s = 16 epochs, set by the LEAF CUT: 16 GB per direction against 2 x 50Gbps = 12.5 GB/s -> 1.28 s. Two slacker bounds to check are not binding: host NIC egress is 12 GB / 12.5 GB/s = 0.96 s (2 GPUs x 6 remote GPUs through one shared port), and PCIe is 6 GB / 25 GB/s = 0.24 s per GPU. THE MULTIPATH CHECK: delete one spine and T* must rise to 2.56 s = 32 epochs, an exact 2x. THE HOST-INTERIOR CHECK: each GPU's 1 GB for its own host peer should ride the NVLink bridge (1 GB / 56 GB/s = 0.018 s) and never touch the NIC -- objective_type 6's tier 2 minimizes exactly this kind of relay, so a schedule that sends peer traffic out to the leaf and back is a red flag.",
+
+    "_epoch_note": "epoch_duration is PINNED to 0.08 s (= 1 GB / 12.5 GB/s, the shared NIC) and here the pin is LOAD-BEARING, not cosmetic. FASTEST_LINK would size the epoch from the fastest link in the file, which is the 56 GBps NVLink bridge, giving 0.0179 s -- a quantum ~4.5x finer than needed, ~72 epochs instead of 16, and a correspondingly larger LP, with the 1.28 s bound landing at 71.6 epochs and losing most of an epoch to the ceiling. The NIC is the link the answer is actually made of, so the epoch is sized from it. 0.08 s divides 1.28 s exactly.",
+
+    "_topology_note": "The topology comes from the .topo DSL file; topo_file SELECTS it, so TECCLSolver.get_topology builds a DslTopology and `name` is only the free-form label for output filenames and the Gurobi log. There is no Python class for this topology and none is wanted. The path is relative to the repo root.",
+
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_2gpu_1nic.topo",
+        "name": "Mini2GPU1NIC",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 5,
+        "feasibility_tol": 1e-6,
+        "optimality_tol": 1e-6,
+        "output_flag": 1,
+        "log_file": "_mini_2g1n_a2a",
+        "log_to_console": 0,
+        "method": -1,
+        "crossover": -1
+    },
+    "InstanceParams": {
+        "collective": 2,
+        "formulation": 2,
+        "switch_copy": false,
+        "num_chunks": 1,
+        "epoch_type": 3,
+        "epoch_duration": 0.08,
+        "epoch_multiplier": 1,
+        "num_epochs": 24,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": true,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": false,
+        "schedule_output_file": "Schedules/mini_2gpu_1nic_alltoall_flat.json"
+    }
+}

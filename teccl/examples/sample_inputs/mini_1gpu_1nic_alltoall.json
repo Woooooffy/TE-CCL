@@ -1,0 +1,45 @@
+{
+    "_comment": "FLAT AllToAll on the smallest of the three mini multipath topologies: 4 GPUs, one per host, one 100Gbps NIC each, 2 leaf + 2 spine switches (8 fine nodes). No host tier, so nothing to abstract -- this is a flat solve by construction, and it is the cheapest of the set to run. A/B partner of mini_2gpu_1nic_alltoall.json, whose fabric is bit-for-bit identical; the only difference is what sits behind the NIC.",
+
+    "_why_alltoall": "AllToAll, not AllGather, and the choice is load-bearing. Under AllGather the volume that must cross the leaf cut depends on ROUTING -- a host on the far leaf can receive one copy and relay it to its leaf-mate -- so the cut bound is soft and the spine tier can go slack. Under AllToAll every chunk has a unique destination GPU, so the cross-leaf volume is fixed by the demand matrix at exactly 4 GB per direction (2 GPUs x 2 remote GPUs x 1 GB) no matter how anything is routed. That makes the cut bound EXACT rather than a lower bound, which is what lets the numbers below be predictions instead of estimates.",
+
+    "_expected": "T* = 0.32 s = 4 epochs, set by the LEAF CUT, not by the NICs. Cross-leaf demand is 4 GB per direction against 2 x 50Gbps = 12.5 GB/s of spine capacity -> 0.32 s. The per-GPU egress bound is slacker at 3 GB / 12.5 GB/s = 0.24 s. THE MULTIPATH CHECK: re-run with one spine deleted and T* must rise to 0.64 s = 8 epochs (4 GB / 6.25 GB/s), an exact 2x. If deleting a spine does NOT change the makespan, the topology is not testing what it claims to and the taper is wrong. Also inspect the emitted flows: every cross-leaf demand should appear split across spine0 and spine1, since neither alone can carry the cut.",
+
+    "_epoch_note": "epoch_duration is PINNED to 0.08 s (= 1 GB / 12.5 GB/s, one 100Gbps NIC) rather than derived. Here FASTEST_LINK would land on the same 0.08 s, since 100Gbps is the fastest link in the file -- but pinning keeps this input in step with the other two, where the derived value is badly wrong (see mini_2gpu_1nic_alltoall.json), and makes the 4-epoch prediction above a property of the file rather than of the solver's sizing heuristic. 0.08 s divides the 0.32 s bound exactly, so nothing is lost to the final ceiling.",
+
+    "_topology_note": "The topology comes from the .topo DSL file; topo_file SELECTS it, so TECCLSolver.get_topology builds a DslTopology and `name` is only the free-form label the output filenames and the Gurobi log are built from. There is no Python class for this topology and none is wanted. The path is relative to the repo root, i.e. to the directory `teccl solve` runs from.",
+
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_1gpu_1nic.topo",
+        "name": "Mini1GPU1NIC",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 2,
+        "feasibility_tol": 1e-6,
+        "optimality_tol": 1e-6,
+        "output_flag": 1,
+        "log_file": "_mini_1g1n_a2a",
+        "log_to_console": 0,
+        "method": -1,
+        "crossover": -1
+    },
+    "InstanceParams": {
+        "collective": 2,
+        "formulation": 2,
+        "switch_copy": false,
+        "num_chunks": 1,
+        "epoch_type": 3,
+        "epoch_duration": 0.08,
+        "epoch_multiplier": 1,
+        "num_epochs": 8,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": true,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": false,
+        "schedule_output_file": "Schedules/mini_1gpu_1nic_alltoall_flat.json"
+    }
+}

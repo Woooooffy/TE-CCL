@@ -20,7 +20,6 @@ from teccl.topologies.dsl_topology import DslTopology
 from teccl.topologies.fat_tree_pod import FatTreePod
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
 from teccl.topologies.nested_cluster import NestedCluster
-from teccl.topologies.rail_optimized_spine_leaf import RailOptimizedSpineLeaf
 from teccl.topologies.topology import Topology
 from teccl.topologies.two_pod_rail import TwoPodRailHostBound
 
@@ -53,7 +52,6 @@ EXPECTED_DIVERGENCES = {
 CASES = [
     ("two_pod_rail_hostbound_splitports.topo", TwoPodRailHostBound, 1.0, {}),
     ("hetero_tapered_cluster.topo", HeteroTaperedCluster, 1.0, {}),
-    ("rail_optimized_256gpu.topo", RailOptimizedSpineLeaf, 1.0, {}),
     # FatTreePod declares GPU twins ([0,1], [2,3]) alongside the spine twins. A GPU swap permutes
     # the source index, so the DSL's switch-restricted detector deliberately does not report them
     # (same restriction as hierarchy.abstract); the switch group [6, 7] must still match.
@@ -65,9 +63,24 @@ CASES = [
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dsl_test_files")
 
-# Built, not compared -- no Python class to compare against.
+# Built, not compared -- no Python class worth comparing against.
+#
+# rail_optimized_256gpu.topo is here rather than in CASES because RailOptimizedSpineLeaf is
+# STALE: the .topo file is now the topology, and the class is no longer the thing it is a port
+# of. The two disagree on port_count for every leaf-spine pair -- the file cables the bundle as
+# 8 parallel 400Gbps links and so reports 8 cables at 50 GB/s each, while the class writes one
+# 400 GB/s edge, never sets self.ports, and falls through to the default of 1. The file is the
+# side that is right: every port in this fabric IS 400Gbps, leaf0 and spine0 come out at exactly
+# 64 cables apiece (filling the 64-port part the design calls for), and port_capacity is what
+# ncclize/port_split.py pins a flow to, so the class's answer would let one flow spread across a
+# whole 8-cable bundle. Comparing against it asserted the wrong thing, and because the parity
+# loop aborts on the first mismatch it also blocked fat_tree_pod and nested_cluster -- the latter
+# being the only case that covers nested cells. Same demotion two_pod_rail_hostbound.topo got
+# when TwoPodRail gained explicit port maps (de75337); the difference is that that class was
+# taught about ports and this one is simply on the way out.
 SMOKE = ["fat_tree_pod_incast.topo", "two_pod_rail_hostbound.topo", "3gpus_ring.topo",
-         "2gpus1sw.topo", "nvswitch_test.topo", "hubs1-multipath.topo"]
+         "2gpus1sw.topo", "nvswitch_test.topo", "hubs1-multipath.topo",
+         "rail_optimized_256gpu.topo"]
 
 
 def build_dsl(filename: str, chunk_size: float = 1.0) -> DslTopology:
@@ -207,6 +220,28 @@ def check_node_attributes() -> None:
     print("  OK  node attributes (radix, passive)")
 
 
+def check_type_aliases() -> None:
+    """`pcie` and `self_routing` are spellings of `nvswitch` and vanish at the parse boundary."""
+    dsl = DslTopology(TopologyParams(name="alias",
+                                     topo_file=os.path.join(FIXTURES, "type_alias.topo")))
+    # a (pcie), b (self_routing) and c (nvswitch) are declared in that order and must be
+    # indistinguishable afterwards: same type, same _TYPE_ORDER block, contiguous indices.
+    names = dsl.node_names
+    aliased = [names.index("a"), names.index("b"), names.index("c")]
+    assert dsl.nvswitch_indices == sorted(aliased), \
+        f"aliases did not fold to nvswitch: {dsl.nvswitch_indices} vs {sorted(aliased)}"
+    assert all(dsl.node_types[i] == "nvswitch" for i in aliased), \
+        [dsl.node_types[i] for i in aliased]
+    # The attr must agree with the structural type -- a consumer reading either gets the same
+    # answer, so an alias cannot leak past the parser.
+    assert all(dsl._node_attrs(i)["type"] == "nvswitch" for i in aliased), \
+        [dsl._node_attrs(i)["type"] for i in aliased]
+    # An alias is self-routing, i.e. NOT programmable, exactly like the canonical spelling.
+    assert not set(aliased) & set(dsl.default_programmable_switch_indices()), \
+        "an aliased nvswitch was treated as a programmable switch"
+    print("  OK  node type aliases (pcie / self_routing -> nvswitch)")
+
+
 def check_symmetry() -> None:
     """Declared groups, inferred groups, and the check that a declaration is honest."""
     dsl = DslTopology(TopologyParams(name="sym",
@@ -309,6 +344,7 @@ def main() -> None:
         check_declaration_port_order(filename)
     print("cells and attributes:")
     check_node_attributes()
+    check_type_aliases()
     check_symmetry()
     check_rejections()
     print("units and scaling:")

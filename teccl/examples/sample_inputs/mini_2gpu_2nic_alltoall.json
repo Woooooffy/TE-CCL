@@ -1,0 +1,47 @@
+{
+    "_comment": "FLAT AllToAll on the NIC-per-GPU variant: 4 hosts x 2 GPUs = 8 GPUs, each GPU carrying its own 100Gbps NIC into its host's leaf, 2 leaf + 2 spine switches (16 fine nodes). Same 4 hosts and same 2:1 taper as the other two, doubled in fabric width because each host now presents two ports. Completes the set: mini_1gpu_1nic (no host tier), mini_2gpu_1nic (host tier as a mandatory funnel), this one (host tier as an OPTIONAL relay, since a GPU can reach the fabric without crossing it).",
+
+    "_expected": "T* = 0.64 s = 8 epochs, set by the LEAF CUT: 16 GB per direction (4 GPUs x 4 remote GPUs x 1 GB) against 2 x 100Gbps = 25 GB/s -> 0.64 s. The per-GPU egress bound is slacker at 6 GB / 12.5 GB/s = 0.48 s, and intra-host peer traffic is 1 GB / 25 GB/s = 0.04 s. THE MULTIPATH CHECK: delete one spine and T* must rise to 1.28 s = 16 epochs, an exact 2x; every cross-leaf demand should show up split across both spines, since neither alone can carry the cut. Note this variant is the FASTEST of the three despite matching mini_2gpu_1nic's GPU count -- twice the NICs doubles the leaf-spine cut, halving the binding bound from 1.28 s to 0.64 s. That gap is the price of the shared NIC, measured.",
+
+    "_hierarchical_note": "hierarchical is false here, but unlike mini_2gpu_1nic it need not be: this topology's .topo file marks its 4 hosts as cells (the GPUs own their own external links, so _build_cell accepts them). The flat solve is kept as the GROUND TRUTH -- 16 fine nodes is small enough to solve directly -- so that a hierarchical run on the same file has something to be validated against rather than only self-consistency-checked. To make that run, set hierarchical true, add a hierarchy_prefix, and expect a makespan at or ABOVE the 0.64 s here; below it means one of the two is wrong.",
+
+    "_why_alltoall": "Under AllGather the volume crossing the leaf cut depends on routing, so the cut bound is soft and the spine tier can go slack. Under AllToAll every chunk has a unique destination GPU, so the 16 GB per direction is pinned by the demand matrix however it is routed, making the cut bound EXACT.",
+
+    "_epoch_note": "epoch_duration is PINNED to 0.08 s (= 1 GB / 12.5 GB/s, one GPU's NIC), the same value as the other two inputs so all three are read on one clock. FASTEST_LINK would size it from the 200Gbps intra-host PCIe link instead (0.04 s), doubling the epoch count for no gain. 0.08 s divides the 0.64 s bound exactly, so nothing is lost to the final ceiling.",
+
+    "_topology_note": "The topology comes from the .topo DSL file; topo_file SELECTS it, so TECCLSolver.get_topology builds a DslTopology and `name` is only the free-form label for output filenames and the Gurobi log. There is no Python class for this topology and none is wanted. The path is relative to the repo root.",
+
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_2gpu_2nic.topo",
+        "name": "Mini2GPU2NIC",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 5,
+        "feasibility_tol": 1e-6,
+        "optimality_tol": 1e-6,
+        "output_flag": 1,
+        "log_file": "_mini_2g2n_a2a",
+        "log_to_console": 0,
+        "method": -1,
+        "crossover": -1
+    },
+    "InstanceParams": {
+        "collective": 2,
+        "formulation": 2,
+        "switch_copy": false,
+        "num_chunks": 1,
+        "epoch_type": 3,
+        "epoch_duration": 0.08,
+        "epoch_multiplier": 1,
+        "num_epochs": 12,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": true,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": false,
+        "schedule_output_file": "Schedules/mini_2gpu_2nic_alltoall_flat.json"
+    }
+}
