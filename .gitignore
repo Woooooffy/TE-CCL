@@ -162,3 +162,11 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# Local Claude Code settings
+.claude/
+
+# Local outputs, not for the repo
+# 191 MB flat solve: over GitHub's 100 MB per-file limit, so a push that includes it is rejected
+Schedules/dual_plane_clustered_allgather_flat.json
+logs/hetero_allgather_epochs.txt
