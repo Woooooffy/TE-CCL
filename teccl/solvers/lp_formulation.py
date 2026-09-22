@@ -11,6 +11,7 @@ from gurobipy import GRB
 from teccl.gurobi_env import get_gurobi_env
 from teccl.input_data import *
 from teccl.solvers.base_formulation import BaseFormulation
+from teccl.solvers import symmetrize
 from teccl.topologies.topology import Topology
 
 
@@ -690,18 +691,63 @@ class LPFormulation(BaseFormulation):
         # flow fractions here are >> 1e-4 (unit chunks, integer demands), so real flow
         # is never dropped.
         eps = self.user_input.gurobi.feasibility_tol
+        flow_values: Dict[Tuple[int, int, int, int], float] = {}
+        sat_values: Dict[Tuple[int, int, int], float] = {}
         for v in self.model.getVars():
             if 'f_' in v.varName and v.x > eps:
-                components = v.varName.split('_')
-                _, s, i, j, k = components
-                full_flow_list.append((int(s), int(i), int(j), round(v.x,6), int(k)))
+                _, s, i, j, k = v.varName.split('_')
+                flow_values[(int(s), int(i), int(j), int(k))] = v.x
             if 'T_' in v.varName and v.x > eps:
-                components = v.varName.split('_')
-                _, s, d, k = components
-                if int(d) not in consumed:
-                    consumed[int(d)] = []
-                consumed[int(d)].append((int(s), int(k), round(v.x,6)))
+                _, s, d, k = v.varName.split('_')
+                sat_values[(int(s), int(d), int(k))] = v.x
+
+        if self.user_input.instance.symmetry_average:
+            flow_values, sat_values = self._symmetry_average(flow_values, sat_values)
+
+        for (s, i, j, k), value in flow_values.items():
+            if value > eps:
+                full_flow_list.append((s, i, j, round(value, 6), k))
+        for (s, d, k), value in sat_values.items():
+            if value > eps:
+                consumed.setdefault(d, []).append((s, k, round(value, 6)))
         return (full_flow_list, consumed)
+
+    def _symmetry_average(self, flow_values, sat_values):
+        """Project the solved LP onto the symmetric optimum (InstanceParams.symmetry_average).
+
+        Averaging the finished solution over the topology's symmetry group leaves every
+        lexicographic tier at exactly the value the solver reached -- see the proof in
+        teccl/solvers/symmetrize.py -- while replacing an arbitrary vertex of a degenerate face
+        with the one balanced point on it. Flow and demand-satisfaction are averaged TOGETHER,
+        under the same group: they are coupled by the model's constraints, so averaging one and
+        leaving the other would produce a pair that is individually plausible and jointly
+        infeasible.
+
+        No-ops (with a log line, not silently) when the topology has no demand-preserving
+        symmetry, or when the group is too large to enumerate -- both leave the solver's own
+        answer untouched, which is the safe direction.
+        """
+        generators = symmetrize.find_generators(self.topology, self.demand)
+        if not generators:
+            logging.info("symmetry_average: no demand-preserving symmetry found; "
+                         "leaving the solution as solved")
+            return flow_values, sat_values
+        group = symmetrize.close_group(generators, self.num_nodes)
+        if group is None:
+            logging.warning("symmetry_average: %d generators span more than %d elements; "
+                            "skipping (a truncated set is not a group, so its mean would be "
+                            "just another arbitrary point)",
+                            len(generators), symmetrize.MAX_GROUP)
+            return flow_values, sat_values
+
+        averaged_flow = symmetrize.average_over_group(flow_values, group, node_axes=(0, 1, 2))
+        averaged_sat = symmetrize.average_over_group(sat_values, group, node_axes=(0, 1))
+        moved = max((abs(averaged_flow.get(key, 0.0) - value)
+                     for key, value in flow_values.items()), default=0.0)
+        logging.info("symmetry_average: %d generators -> group of %d; flow support %d -> %d, "
+                     "largest single change %.6g",
+                     len(generators), len(group), len(flow_values), len(averaged_flow), moved)
+        return averaged_flow, averaged_sat
 
     def account_for_consume(self, consume: float, source: int, destination: int, i: int, j: int, k: int, paths: Dict) -> Dict:
         """

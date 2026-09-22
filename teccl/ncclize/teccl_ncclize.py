@@ -808,6 +808,15 @@ def parse_flows_lp(schedule, collective_name, port_qualify=None):
     chunk_size = schedule.get('9-Chunk_Size', 1.0)
     delta = schedule['1-Epoch_Duration']
     paced_sends = {}   # (step_idx, src, dst, path_key) -> (start_fine, finish_fine)
+    # A FLAT single-level LP schedule carries no per-flow rate at all: only the hierarchical
+    # stitch writes "at rate R". Such a schedule is still paced -- build_algorithm stamps the
+    # legacy global rate chunk_size / (M * delta) on every op, under which each piece fills
+    # exactly one epoch -- so every send gets a one-epoch window here, the same (start,
+    # start + 1) rule the MILP flat path applies. Without it the manifest is empty, nothing
+    # gates a later epoch's sends, and they all fire at t=0 alongside the first epoch's.
+    # The test is schedule-WIDE, never per flow: in a hierarchical schedule a flow without a
+    # rate is deliberately unpaced (an intra-cell hop) and must not become a clock.
+    flat_schedule = all(rate is None for *_, rate in raw_flows)
     for hop_epoch, chunk_id, src, dst, path_key, completion_epoch, rate in raw_flows:
         step_idx = epoch_to_step_idx[hop_epoch]
         key = (step_idx, chunk_id, src, dst)
@@ -821,6 +830,8 @@ def parse_flows_lp(schedule, collective_name, port_qualify=None):
                     f'two different rates ({prev} and {rate}).')
             duration = max(1, round(chunk_size / (M * rate * delta)))
             paced_sends[(step_idx, src, dst, path_key)] = (hop_epoch, hop_epoch + duration)
+        elif flat_schedule:
+            paced_sends[(step_idx, src, dst, path_key)] = (hop_epoch, hop_epoch + 1)
 
     pacing_gates = _finish_before_start_gates(paced_sends,
                                               remote_gates=REMOTE_PACING_GATES)
@@ -837,6 +848,9 @@ def parse_flows_lp(schedule, collective_name, port_qualify=None):
               + ('' if REMOTE_PACING_GATES else
                  ' (P4 remote gates are OFF; TECCL_REMOTE_PACING_GATES=1 covers the '
                  'receiver-side-bottleneck cases)'))
+    elif not paced_sends:
+        print('[ncclize] pacing: no paced sends, so no gates -- every send fires as soon as its '
+              'data dependency allows')
     else:
         print(f'[ncclize] pacing: all {len(paced_sends)} paced sends are pinned to their epoch by '
               f'a gate landing exactly at their start')

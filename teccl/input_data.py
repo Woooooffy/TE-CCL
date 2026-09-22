@@ -172,6 +172,15 @@ class InstanceParams:
     alpha_threshold: float = 0.1 # Link alpha to epoch duration ratio threshold below which alpha is taken as 0
     alpha_epoch_duration_ratio_max: int = 200 # Maximum ratio of alpha to epoch duration (if exceeded, epoch duration is increased)
     switch_copy: bool = True # If True, switch can copy the chunks
+    # Opt-in post-solve pass (LP only): average the finished solution over the topology's
+    # symmetry group, projecting it onto the symmetric optimum. Default OFF because it changes
+    # nothing about the makespan and is not always wanted -- it DENSIFIES the flow, which is how
+    # it removes idle epochs but also means more emitted ops and more work for the decomposition.
+    # Turn it on when a degenerate face is actually hurting you, i.e. when ncclize reports sends
+    # it cannot realize, or when the chunk-path fractions come out with ugly denominators.
+    # No effect unless the topology has a symmetry that also preserves the demand matrix; see
+    # teccl/solvers/symmetrize.py for the correctness argument and the limits.
+    symmetry_average: bool = False
     switch_pipeline: bool = True # If True, switches are a cut-through (pipelined) fabric: a chunk relayed through switches only pays propagation delay per hop, not a full store-and-forward serialization epoch. If False, every switch hop is store-and-forward. Which hops are made cut-through depends on the formulation: allgather pipelines the switch->switch and switch->gpu (egress) hops; alltoall pipelines the gpu->switch (ingress) and switch->switch hops. (The complementary leg is already handled by each formulation's structure: the first gpu->switch hop for allgather, the final switch->gpu hop for alltoall.)
     debug: bool = False # If True, prints debug information
     debug_output_file: str = "" # If debug is True, prints debug information to this file
