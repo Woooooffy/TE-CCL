@@ -1,0 +1,53 @@
+{
+    "_comment": "SINGLE-PATH baseline for mini_2gpu_2nic_alltoall.json: the SAME NIC-per-GPU topology (4 hosts x 2 GPUs, each GPU carrying its own 100Gbps NIC, 16 fine nodes), the same collective, the same epoch clock and the same objective, solved with the chunk-level MILP (formulation 1) at num_chunks 1 instead of the continuous LP (formulation 2). Read the two side by side; every field that differs is called out in _vs_lp.",
+
+    "_why_milp_num_chunks_1": "The LP routes a continuous flow, so one (src, dst) demand may be SPLIT across as many paths as help -- across spine0 and spine1, and on this variant also between a GPU's own NIC and a relay through its host peer's NIC. The MILP's flow variables are INTEGER and a chunk is indivisible, so with num_chunks 1 each (src, dst) pair owns exactly one 1 GB chunk that traverses exactly ONE path end to end: the no-multipath regime a basic ring-style algorithm gives you. Because the solver still picks the BEST single-path assignment, the LP-minus-MILP gap is a LOWER bound on what per-pair multipath is worth.",
+
+    "_vs_lp": "Differences from mini_2gpu_2nic_alltoall.json, and only these: formulation 1 (MILP) not 2 (LP); symmetry false not true; num_epochs 12 kept; distinct log_file and schedule_output_file so neither run clobbers the other. Held fixed: topo_file, chunk_size 1, collective 2, switch_copy false, epoch_type 2 / epoch_duration -1 (both resolve to 0.08 s, the 100Gbps NIC and uplink), switch_pipeline true, objective_type 6, solution_method 1, time_limit 5. num_chunks is 1 in both and means per source per DESTINATION in both, so the difference is integrality alone, not granularity.",
+
+    "_why_symmetry_off": "symmetry true adds equal-aggregate-inflow/outflow constraints across topologically equivalent nodes. On the LP that is free -- the feasible set is convex, so the symmetric average of an optimum is an optimum and the constraint only picks a nicer point on the optimal face. On the MILP it is a REAL restriction: with 56 indivisible chunks to place, an exactly equal per-node count need not exist at the integral optimum, and cutting off that optimum is precisely the measurement error this file exists to avoid.",
+
+    "_horizon_note": "num_epochs is the MILP's time horizon and it costs: one integer flow variable per (source, link, chunk, epoch), so doubling it doubles the model. 12 is the LP file's value and is already tight enough -- the binding cut bound below is 8 epochs, leaving 50% headroom. If the solve comes back infeasible rather than merely slow, raise this first.",
+
+    "_expected": "The cut bound is 8 epochs = 0.64 s and it does NOT soften under integrality here. Cross-leaf demand is 16 chunks per direction (4 GPUs on a leaf x 4 remote GPUs); a 100Gbps uplink carries 12.5 GB/s x 0.08 s = exactly 1 GB = exactly one whole chunk per epoch, so 16 chunks over 2 uplinks needs 8 epochs whether chunks are splittable or not. Expect T* = 0.64 s, i.e. a TIE with the LP -- the chunk is an exact integer number of uplink-epochs, so there is no fragmentation for multipath to recover. Per-GPU NIC egress is the same 8 epochs (6 remote chunks at 1 per epoch, plus the host-peer chunk which rides hsw and never touches the NIC), so the two bounds coincide and the instance is tight from both sides. WHAT TO COMPARE WHEN THE MAKESPANS TIE: the routing, not the clock. Diff the '8-Chunk paths' sections -- each MILP demand should list ONE path and the LP's cross-leaf demands should list two (one per spine) -- and check that both keep the intra-host pair's chunk on hsw. TO MAKE THE GAP OPEN, break the exact divisibility: an epoch_duration that is not a whole multiple of 1 GB / 12.5 GB/s, or an odd taper, strands a fraction of an epoch on each single path that only splitting can reclaim.",
+
+    "_epoch_note": "epoch_type 2 (SLOWEST_LINK) with epoch_duration -1 resolves to 0.08 s = 1 GB / 12.5 GB/s, the 100Gbps NIC (which is also the uplink rate on this variant). Inherited verbatim from the LP file rather than re-derived: the comparison is only meaningful on one clock, and 0.08 s divides the 0.64 s cut bound exactly so neither run loses anything to the final ceiling.",
+
+    "_hierarchical_note": "hierarchical is false here, but unlike the shared-NIC variant it need not be: this .topo marks its 4 hosts as cells. The flat MILP solve is kept as the single-path GROUND TRUTH at 16 fine nodes. Note the hierarchical path is LP-only downstream (the stitch emits LP-format schedules), so a hierarchical run is not a substitute for this file.",
+
+    "_topology_note": "The topology comes from the .topo DSL file; topo_file SELECTS it, so TECCLSolver.get_topology builds a DslTopology and `name` is only the free-form label for output filenames and the Gurobi log. The path is relative to the repo root.",
+
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_2gpu_2nic.topo",
+        "name": "Mini2GPU2NIC",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 5,
+        "feasibility_tol": 1e-6,
+        "optimality_tol": 1e-6,
+        "output_flag": 1,
+        "log_file": "_mini_2g2n_a2a_milp",
+        "log_to_console": 0,
+        "method": -1,
+        "crossover": -1
+    },
+    "InstanceParams": {
+        "collective": 2,
+        "formulation": 1,
+        "switch_copy": false,
+        "num_chunks": 1,
+        "epoch_type": 2,
+        "epoch_duration": -1,
+        "epoch_multiplier": 1,
+        "num_epochs": 12,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": false,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": false,
+        "schedule_output_file": "Schedules/mini_2gpu_2nic_alltoall_milp.json"
+    }
+}

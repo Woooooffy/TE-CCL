@@ -86,12 +86,20 @@ class Collective(Enum):
 class Formulation(Enum):
     """
         Which solver formulation to use for the collective.
-            1 - MILP - The chunk-level integer program (AllGatherFormulation). Supports switch/GPU copy.
+            1 - MILP - The chunk-level integer program (AllGatherFormulation, despite the name --
+                       it is demand-tensor driven and never branches on the collective). Supports
+                       switch/GPU copy. Implemented for ALLGATHER and ALLTOALL. A chunk here is
+                       INDIVISIBLE and so takes ONE path end to end, which is what makes
+                       num_chunks=1 the single-path (no per-pair multipath, ring-like) baseline
+                       the LP optimum is measured against.
             2 - LP   - The continuous per-source flow LP (LPFormulation). Demand-matrix driven and
-                       collective-agnostic; used for AllToAll, and usable for AllGather only when
-                       switch_copy is disabled (the LP cannot represent copy/replication).
+                       collective-agnostic; the default for AllToAll, and usable for AllGather only
+                       when switch_copy is disabled (the LP cannot represent copy/replication). It
+                       may SPLIT one demand across several paths.
         Leave unset (None) on InstanceParams to use the per-collective default:
-            ALLGATHER -> MILP, ALLTOALL -> LP.
+            ALLGATHER -> MILP, ALLTOALL -> LP. The defaults are historical, not a restriction:
+            AllToAll runs on either formulation, and which one you pick is the multipath question
+            above, not a capability question.
     """
     MILP = 1
     LP = 2

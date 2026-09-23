@@ -104,9 +104,23 @@ def _parse_switch_path(switches):
     return tuple(int(s.strip()) for s in switches.split('->'))
 
 
-def parse_flows(schedule, port_qualify=None):
+def parse_flows(schedule, collective_name='allgather', port_qualify=None):
     """Group TE-CCL's '7-Flows' entries by epoch, remapping GPU ids to a dense
     0-indexed range.
+
+    `collective_name` selects the chunk ADDRESSING, exactly as it does in
+    parse_flows_lp() -- the collective identity and the schedule format are
+    independent axes (see is_lp_format):
+
+      - SRC-MAJOR, allgather / gather / broadcast: chunk_id = src_dense * S + c.
+        The destination is not part of the label, because there is only one
+        (gather's root) or every GPU is one (the replicating collectives).
+      - DST-MAJOR, alltoall: the MILP's own chunk index already encodes the
+        destination -- teccl.solvers.demand.all_to_all_demand lays source s's
+        chunks out as `dst_dense + rep * gpus` -- so it is unpacked into
+        chunk_id = (dst_dense * N + src_dense) * S + rep, the layout taccl's
+        alltoall(N).chunk_up(S) expects and the same one parse_flows_lp()
+        builds. S is then the per-PAIR sub-chunk count, not the per-source one.
 
     TE-CCL's node ids are raw 0-indexed topology indices that may include
     switch nodes at arbitrary positions (e.g. index 0 for NDv2, the last index
@@ -172,14 +186,36 @@ def parse_flows(schedule, port_qualify=None):
         max_subchunk = max(max_subchunk, subchunk)
         parsed.append((epoch, subchunk, origin, src, dst, path_key))
 
+    if collective_name not in ('alltoall', 'gather', 'allgather', 'broadcast'):
+        raise ValueError(f"Unknown MILP collective {collective_name!r}")
+    dst_major = collective_name == 'alltoall'
+
     rank_map = {raw: idx for idx, raw in enumerate(sorted(raw_ids))}
     switch_rank_map = {raw: idx for idx, raw in enumerate(sorted(switch_raw_ids))}
     num_nodes = len(rank_map)
-    num_subchunks = max_subchunk + 1
+    if dst_major:
+        # The solver's chunk axis is `pairs_per_source * N` wide (one slot per
+        # destination per sub-chunk), so the chunk_up factor is the per-PAIR count.
+        if (max_subchunk + 1) % num_nodes:
+            raise ValueError(
+                f'AllToAll chunk axis has {max_subchunk + 1} slots per source, which is '
+                f'not a multiple of the {num_nodes} GPUs; the schedule was not built by '
+                f'teccl.solvers.demand.all_to_all_demand.')
+        num_subchunks = (max_subchunk + 1) // num_nodes
+    else:
+        num_subchunks = max_subchunk + 1
+
+    def chunk_id_of(origin_raw, solver_chunk):
+        """The taccl chunk index for the solver's (source, chunk-slot) pair."""
+        src_dense = rank_map[origin_raw]
+        if not dst_major:
+            return src_dense * num_subchunks + solver_chunk
+        dst_dense, rep = solver_chunk % num_nodes, solver_chunk // num_nodes
+        return (dst_dense * num_nodes + src_dense) * num_subchunks + rep
 
     by_epoch = defaultdict(list)
     for epoch, subchunk, origin, src, dst, _ in parsed:
-        chunk_id = rank_map[origin] * num_subchunks + subchunk
+        chunk_id = chunk_id_of(origin, subchunk)
         by_epoch[epoch].append((chunk_id, rank_map[src], rank_map[dst]))
 
     sorted_epochs = sorted(by_epoch)
@@ -188,7 +224,7 @@ def parse_flows(schedule, port_qualify=None):
     epoch_to_step_idx = {epoch: idx for idx, epoch in enumerate(sorted_epochs)}
     flow_path_keys = {}
     for epoch, subchunk, origin, src, dst, path_key in parsed:
-        chunk_id = rank_map[origin] * num_subchunks + subchunk
+        chunk_id = chunk_id_of(origin, subchunk)
         step_idx = epoch_to_step_idx[epoch]
         flow_path_keys[(step_idx, chunk_id, rank_map[src], rank_map[dst])] = path_key
 
@@ -233,7 +269,12 @@ def parse_flows(schedule, port_qualify=None):
                 f'Epoch {hop_epoch} in "8-Chunk paths" entry {demand_key!r} '
                 f'does not appear in "7-Flows"')
 
-        chunk_id = rank_map[origin_raw] * num_subchunks + subchunk
+        if dst_major and subchunk % num_nodes != rank_map[dst_raw]:
+            raise ValueError(
+                f'AllToAll chunk label {subchunk} implies dense destination '
+                f'{subchunk % num_nodes} but demand {demand_key!r} is at raw {dst_raw} '
+                f'(dense {rank_map[dst_raw]}).')
+        chunk_id = chunk_id_of(origin_raw, subchunk)
         step_idx = epoch_to_step_idx[hop_epoch]
         flow_completion_epochs[
             (step_idx, chunk_id, rank_map[hop_src_raw], rank_map[hop_dst_raw])
@@ -1159,16 +1200,12 @@ def build_algorithm(schedule, name='teccl', topology=None):
          pacing_gates, gpu_rank_map) = parse_flows_lp(schedule, collective_name, port_qualify)
         collective = _build_collective(collective_name, num_nodes, root_dense)
     else:
-        # parse_flows labels chunks src-major (rank_map[origin] * S + subchunk), so
-        # it cannot express a collective whose chunk identity includes the
-        # destination. In practice the MILP only ever solves allgather; fail loudly
-        # rather than mislabel if that ever changes.
-        if collective_name == 'alltoall':
-            raise NotImplementedError(
-                "MILP-format schedules use src-major chunk labels, which cannot "
-                "represent alltoall's destination-major chunk identity.")
+        # parse_flows takes the collective for the same reason parse_flows_lp does:
+        # it decides the chunk ADDRESSING (src-major vs alltoall's dst-major), which
+        # is independent of the format branch we are in.
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
-         sorted_epochs, flow_completion_epochs, gpu_rank_map) = parse_flows(schedule, port_qualify)
+         sorted_epochs, flow_completion_epochs, gpu_rank_map) = parse_flows(
+            schedule, collective_name, port_qualify)
         flow_rates = {}
         collective = _build_collective(collective_name, num_nodes,
                                        schedule.get('0-Root'))
@@ -1176,11 +1213,19 @@ def build_algorithm(schedule, name='teccl', topology=None):
         # epoch, so the link-occupancy finish is start+1 for all of them. Same
         # finish-before-start rule as the LP path -> gate the first send of each epoch
         # on the previous epoch's send, never same-epoch sends.
+        #
+        # The key MUST carry the flow's real path key, not None. A gate is matched against
+        # op identities in taccl_ncclize._realize_pacing_gates, which key on (step, gpu,
+        # peer, op.path_key); a manifest keyed on None matches nothing the moment a flow
+        # crosses a switch -- i.e. on every switched topology -- and every gate is dropped
+        # silently, leaving the XML unpaced (all sends at step 0, each at the full per-op
+        # rate, so a GPU's uplink is emitted at N x its capacity).
         flat_sends = {}
         for step_idx, sends in enumerate(steps_in_order):
             start = sorted_epochs[step_idx]
             for chunk_id, src, dst in sends:
-                flat_sends[(step_idx, src, dst, None)] = (start, start + 1)
+                path_key = flow_path_keys.get((step_idx, chunk_id, src, dst))
+                flat_sends[(step_idx, src, dst, path_key)] = (start, start + 1)
         pacing_gates = _finish_before_start_gates(flat_sends)
 
     gpu_epoch_view = build_gpu_epoch_view(

@@ -17,7 +17,13 @@ from teccl.topologies.topology import Topology
 class AllGatherFormulation(BaseFormulation):
     def __init__(self, user_input: UserInputParams, topology: Topology) -> None:
         super().__init__(user_input, topology)
-        self.solver_name = "AllGather_MILP"
+        # The chunk-level integer program is demand-tensor driven and never branches on the
+        # collective: it just satisfies self.demand, which teccl.solvers.demand builds per
+        # collective. The class keeps its AllGather name for the callers that import it, but the
+        # solver/log/model labels follow the collective actually being solved so an alltoall run
+        # does not overwrite an allgather log.
+        self.collective_name = user_input.instance.collective.name.lower()
+        self.solver_name = f"{user_input.instance.collective.name.title()}_MILP"
         self.required_flows = []
         self.flows_str_info = {}
 
@@ -502,7 +508,7 @@ class AllGatherFormulation(BaseFormulation):
 
     def encode_problem(self, use_one_less_epoch: bool = False, previous_buffers: List[List[int]] = []) -> int:
         setup_start = time.time()
-        self.model = gp.Model('AllGather_MILP', env=get_gurobi_env())
+        self.model = gp.Model(self.solver_name, env=get_gurobi_env())
         self.initialize_variables()
         self.destination_constraints()
         self.node_constraints(previous_buffers)
@@ -818,7 +824,14 @@ class AllGatherFormulation(BaseFormulation):
         required_flows_str = list(required_flows_str)
         required_flows_str.sort(key=lambda x: x[0])
         flows_str_info = {}
-        flows_str_info["0-Collective"] = "allgather"
+        # The collective this MILP actually solved (allgather or alltoall), so ncclize builds the
+        # right collective instead of assuming allgather; "0-Formulation" is emitted alongside it
+        # because the two are independent axes downstream (teccl_ncclize.is_lp_format) and the
+        # structural nested-vs-flat sniff is only a fallback for schedules predating the field.
+        flows_str_info["0-Collective"] = self.collective_name
+        flows_str_info["0-Formulation"] = "MILP"
+        if self.user_input.instance.collective in (Collective.GATHER, Collective.BROADCAST):
+            flows_str_info["0-Root"] = self.user_input.instance.root
         flows_str_info["1-Epoch_Duration"] = self.epoch_duration
         flows_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
         flows_str_info["3-Epochs_Required"] = self.find_demand_satisfied_k() + 1

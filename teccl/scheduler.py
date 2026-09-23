@@ -128,24 +128,57 @@ class TECCLSolver(object):
     def _resolve_formulation(self, user_input: UserInputParams) -> Formulation:
         """
             Resolves the effective solver formulation. If the user set one explicitly it is
-            honored; otherwise the per-collective default is used: ALLGATHER -> MILP (the only
-            collective the MILP implements), every other collective -> LP.
+            honored; otherwise the per-collective default is used: ALLGATHER -> MILP, every other
+            collective -> LP. These are the historical defaults, NOT the limits of either solver:
+            the MILP also implements ALLTOALL, and picking it there is how you ask for a
+            single-path (integral, no per-pair multipath) schedule.
         """
         f = user_input.instance.formulation
         if f is not None:
             return f
         return Formulation.MILP if user_input.instance.collective == Collective.ALLGATHER else Formulation.LP
 
+    @staticmethod
+    def _scale_alltoall_num_chunks(user_input: UserInputParams, topology: Topology) -> UserInputParams:
+        """
+            AllToAll's chunk axis is per-DESTINATION: teccl.solvers.demand.all_to_all_demand lays
+            out a source's chunks as `device_chunk_map[t] + c * gpus`, so a request for
+            `num_chunks` chunks per (src, dst) PAIR needs a chunk axis `num_chunks * gpus` wide.
+            InstanceParams.num_chunks is per source per destination for every collective, so the
+            scaling happens here, once, for whichever formulation is about to run.
+
+            Done on a deep copy so the caller's instance is never mutated in place: get_solver is
+            called repeatedly (feasible search / iterative binary search) and an in-place scaling
+            would compound (num_chunks *= num_gpus every call), inflating every later solve.
+        """
+        scaled = copy.deepcopy(user_input)
+        scaled.instance.num_chunks = user_input.instance.num_chunks * \
+            (len(topology.capacity) - len(topology.switch_indices) - len(topology.passive_indices))
+        return scaled
+
     def get_solver(self, user_input: UserInputParams, topology: Topology) -> BaseFormulation:
         collective = user_input.instance.collective
         formulation = self._resolve_formulation(user_input)
 
         if formulation == Formulation.MILP:
-            if collective != Collective.ALLGATHER:
+            if collective not in (Collective.ALLGATHER, Collective.ALLTOALL):
                 raise NotImplementedError(
-                    f"MILP formulation is only implemented for ALLGATHER, not {collective}")
+                    f"MILP formulation is only implemented for ALLGATHER and ALLTOALL, "
+                    f"not {collective}")
             if user_input.instance.objective_type == ObjectiveType.ASTAR:
+                if collective != Collective.ALLGATHER:
+                    raise NotImplementedError(
+                        f"The A* objective is only implemented for ALLGATHER, not {collective}")
                 return AStarFormulation(user_input, topology)
+            if collective == Collective.ALLTOALL:
+                # The MILP is demand-tensor driven exactly like the LP -- it never branches on
+                # the collective, it just satisfies self.demand -- so alltoall needs nothing but
+                # the alltoall demand tensor and its wider chunk axis. What it buys over the LP
+                # is INTEGRALITY: a chunk is an indivisible unit that takes ONE path, so
+                # num_chunks=1 is the single-path (ring-like, no multipath) baseline the
+                # fractional LP optimum is measured against.
+                return AllGatherFormulation(
+                    self._scale_alltoall_num_chunks(user_input, topology), topology)
             return AllGatherFormulation(user_input, topology)
 
         # LP formulation: collective-agnostic, demand-matrix driven.
@@ -155,16 +188,8 @@ class TECCLSolver(object):
                 "AllGather with the LP formulation requires switch_copy=False: the LP aggregates "
                 "flow per source and cannot represent switch/GPU copy (replication).")
         if collective == Collective.ALLTOALL:
-            # Scale the per-GPU chunk count up to the total number of alltoall
-            # chunks (one group of chunks per active GPU). Do this on a copy so
-            # we never mutate the caller's instance in place: get_solver is
-            # called repeatedly (feasible search / iterative binary search) and
-            # an in-place scaling would compound (num_chunks *= num_gpus every
-            # call), inflating every subsequent solve.
-            lp_input = copy.deepcopy(user_input)
-            lp_input.instance.num_chunks = user_input.instance.num_chunks * \
-                (len(topology.capacity) - len(topology.switch_indices) - len(topology.passive_indices))
-            return LPFormulation(lp_input, topology)
+            return LPFormulation(
+                self._scale_alltoall_num_chunks(user_input, topology), topology)
         # AllGather (and future demand-driven collectives): num_chunks passes through unscaled.
         return LPFormulation(user_input, topology)
 
