@@ -1129,8 +1129,15 @@ class LPFormulation(BaseFormulation):
                     flows_str.add((epoch, f'Chunk {c} from {s} traveled over {path}'))
 
         required_flows = []
+        # find_demand_satisfied_k() is the INDEX of the last epoch in which demand is consumed,
+        # so the epochs carrying flow are 0..Kmax inclusive -- range(Kmax) dropped the final
+        # epoch. Only this list's EMPTINESS is load-bearing (scheduler.get_schedules treats a
+        # falsy schedule as "no solution" and the file it writes is flow_str_info, not this
+        # list), so the old bound was invisible on any multi-epoch solve and fatal on a
+        # single-epoch one: Kmax == 0 made range(Kmax) empty and a perfectly good 1-epoch
+        # schedule was reported as "No schedule found with the given parameters".
         Kmax = self.find_demand_satisfied_k()
-        for k in range(Kmax):
+        for k in range(Kmax + 1):
             if k in per_chunk_flows.keys():
                 required_flows += per_chunk_flows[k]
         flow_str_info = {}

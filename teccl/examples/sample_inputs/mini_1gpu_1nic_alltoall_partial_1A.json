@@ -1,0 +1,46 @@
+{
+    "_comment": "CASE 1A -- PARTIAL PARTICIPATION, LP (multipath) leg. mini_1gpu_1nic (4 GPUs, one per host, one 100Gbps NIC each, 2 leaf + 2 spine, 8 fine nodes) with only 2 of the 4 GPUs taking part: active = [0, 2], one per leaf. This is the smallest member of the partial set and the CLEANEST multipath demonstration in it: the whole collective is two 1 GB chunks, the epoch is pinned so that one 50Gbps uplink cannot carry a chunk inside it, and so the LP's optimum (0.08 s, the GB split across both spines) is exactly 2x better than any single-path schedule (0.16 s). Nothing else in the set isolates the effect this sharply. Read it against mini_1gpu_1nic_alltoall.json (all 4 active) and against its own MILP partner mini_1gpu_1nic_alltoall_partial_1A_milp.json.",
+    "_known_limitation": "KNOWN LIMITATION, ACCEPTED -- MILP timing on a non-uniform-bandwidth topology at a sub-chunk epoch. This topology mixes 100Gbps host ports with 50Gbps leaf-spine uplinks, and this file's pinned 0.08 s epoch is SHORTER than one chunk on the 50Gbps link (6.25 GB/s x 0.08 s = 0.5 GB against a 1 GB chunk), so get_beta_num_back returns beta = 1 there. In that regime the MILP's cut-through accounting under-charges TIME: allgather.py pays the store-and-forward cost (1 epoch + beta) ONCE at the first GPU->switch hop and charges every later fabric hop only propagation delay (see the branches at allgather.py switch->switch and the switch->GPU buffer credit), so the delivery epoch it credits is 1 + beta(FIRST hop) instead of the correct 1 + max(beta over the legs used) = ceil(chunk / min bandwidth along the path). CONSEQUENCE: in a MILP schedule from this file, 3-Epochs_Required, 4-Collective_Finish_Time and 5-Algo_Bandwidth are OPTIMISTIC and must not be quoted -- the ROUTING (7-Flows and 8-Chunk paths) is what the file is for, and real timing comes from simulating that routing. Measured on case 1A at this epoch: the MILP reports 0.08 s while every 50Gbps leg on its own chosen path needs 0.16 s to clock the chunk out; the identical run with switch_pipeline false (which does charge the -1 and beta) reports 0.48 s. The LP is NOT affected: continuous flow can be split across epochs, so it has no beta machinery and its per-epoch row (capacity x epoch_duration) is exact -- which is why the fine epoch is kept here rather than coarsened, since it is what makes the LP's makespan exact instead of rounded up. mini_2gpu_2nic (case 3A) is structurally immune: its links are uniform 100Gbps, so one chunk always fits one epoch and beta is 0 everywhere.",
+    "_participation": "active GPUs [0, 2]; passive GPUs [1, 3]. GPU index == node index on this .topo (gpu0..gpu3 = nodes 0..3, leaf0/leaf1 = 4/5, spine0/spine1 = 6/7), and gpu0,gpu1 home on leaf0 while gpu2,gpu3 home on leaf1 -- so the active pair is one GPU per leaf and every demand is cross-leaf. passive_node_indices is the mechanism: a passive GPU is PRESENT and may forward other GPUs' data, it just sources and sinks none of its own (teccl/solvers/demand.py::_demand_sources drops it from the demand tensor). num_chunks stays 1 and still means one chunk per (src, dst) PAIR: Scheduler._scale_alltoall_num_chunks widens the chunk axis by the ACTIVE GPU count, which already excludes passives, so the demand here is 2 chunks total (0->2 and 2->0), not 12.",
+    "_expected": "T* = 0.08 s = 1 epoch, and MULTIPATH IS MANDATORY to reach it -- which is the whole point of pinning this clock. Both bounds land on 0.08 s: cross-leaf demand is 1 GB per direction against 2 x 50Gbps = 12.5 GB/s of spine capacity, and gpu0's NIC egress is 1 GB / 12.5 GB/s. A SINGLE 50Gbps uplink carries only 6.25 GB/s x 0.08 s = 0.5 GB in that epoch, so the GB cannot get across on one spine; it must be split 0.5/0.5 across spine0 and spine1. MEASURED: the LP returns exactly that, 0.08 s in 1 epoch with both spines carrying 0.5 GB. The honest single-path answer is 0.16 s (one uplink, 1 GB, 6.25 GB/s), so this case is the clean 2x demonstration that per-pair multipath pays -- but read it off the LP against that hand-computed 0.16 s, NOT against the MILP partner's reported number, which is optimistic here (see _known_limitation). CONTRAST WITH FULL PARTICIPATION: with all 4 GPUs active the cut carries 4 GB per direction and no routing can beat the cut bound; dropping to 2 participants is what makes a single 1 GB demand the whole story.",
+    "_epoch_note": "epoch_type 3 (USER_INPUT) with epoch_duration PINNED to 0.08 s = 1 GB / 12.5 GB/s, one 100Gbps host port. Deliberately NOT the SLOWEST_LINK value (0.16 s, the 50Gbps uplink) that the full-participation files on this topology use: at 0.16 s the LP's answer is rounded up to the epoch grid, and pinning 0.08 s is what makes the LP's makespan land exactly on its true bound. The price is paid by the MILP leg only, and it is a KNOWN, ACCEPTED inaccuracy in its reported time -- see _known_limitation. Both legs share this clock so the routing comparison stays controlled.",
+    "_symmetry_note": "symmetry true is SAFE under partial participation and is not a no-op here. The orbit averaging verifies every candidate permutation against the demand matrix as well as the capacity matrix (teccl/solvers/symmetrize.py::preserves_demand), so a graph automorphism that would map an active GPU onto a passive one is REJECTED rather than trusted -- gpu0<->gpu1 is exactly such a swap and is thrown out. What survives is the leaf swap (0<->2, 1<->3) and the spine swap, which is the group that matters for balancing the two uplinks.",
+    "_topology_note": "The topology comes from the .topo DSL file; topo_file SELECTS it, so TECCLSolver.get_topology builds a DslTopology and `name` is only the free-form label for output filenames and the Gurobi log. The path is relative to the repo root.",
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_1gpu_1nic.topo",
+        "name": "Mini1GPU1NIC",
+        "chassis": 1,
+        "chunk_size": 1,
+        "passive_node_indices": [
+            1,
+            3
+        ]
+    },
+    "GurobiParams": {
+        "time_limit": 2,
+        "feasibility_tol": 1e-06,
+        "optimality_tol": 1e-06,
+        "output_flag": 1,
+        "log_file": "_mini_1g1n_a2a_1A",
+        "log_to_console": 0,
+        "method": -1,
+        "crossover": -1
+    },
+    "InstanceParams": {
+        "collective": 2,
+        "formulation": 2,
+        "switch_copy": false,
+        "num_chunks": 1,
+        "epoch_type": 3,
+        "epoch_duration": 0.08,
+        "epoch_multiplier": 1,
+        "num_epochs": 8,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": true,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": false,
+        "schedule_output_file": "Schedules/mini_1gpu_1nic_alltoall_partial_1A_lp.json"
+    }
+}

@@ -178,6 +178,27 @@ class AllGatherFormulation(BaseFormulation):
                                 self.flow[s][j][i][c][k - alpha_num_back - 1 - beta_num_back])
                     else:
                         # switch second link is ignored to remove double accounting of transmission delay
+                        #
+                        # KNOWN LIMITATION (non-uniform link bandwidths + sub-chunk epoch). Dropping
+                        # beta_num_back here, and in the SWITCH_SWITCH branch of the switch send rule
+                        # below, charges the whole cut-through traversal the cost of its FIRST
+                        # GPU->switch hop: the credited delivery time is 1 + beta(first hop), whereas
+                        # the physical cut-through time is ceil(chunk / min bandwidth ALONG THE PATH)
+                        # = 1 + max(beta over the legs used). The two agree whenever every link
+                        # carries at least one whole chunk per epoch (beta == 0 everywhere), which is
+                        # what epoch_type SLOWEST_LINK gives you and what uniform-bandwidth
+                        # topologies give you for free. They diverge when a fast ingress port feeds
+                        # narrower fabric links AND the epoch is shorter than a chunk on those links:
+                        # the solve then reports a makespan SHORTER than any single link on its own
+                        # chosen path can deliver -- optimistic, not infeasible. Measured on
+                        # mini_1gpu_1nic at a 0.08 s epoch with 1 GB chunks (100Gbps NICs, 50Gbps
+                        # uplinks): 0.08 s reported, 0.16 s physical, 0.48 s for the same run with
+                        # switch_pipeline=False. Charging the max needs the path identity, which this
+                        # per-link flow formulation does not carry; charging the SUM (keep
+                        # beta_num_back in both pipelined branches) would be sound but conservative.
+                        # ACCEPTED as-is: the routing is unaffected, and the affected inputs
+                        # (teccl/examples/sample_inputs/mini_*_partial_*.json) say in their
+                        # _known_limitation that their MILP timings are not to be quoted.
                         if k - alpha_num_back >= 0:
                             buffer_constr.add(
                                 self.flow[s][j][i][c][k - alpha_num_back])
@@ -220,6 +241,10 @@ class AllGatherFormulation(BaseFormulation):
                             # Chained switches act as a single cut-through fabric: the full
                             # store-and-forward cost was already paid once at the first
                             # GPU->switch hop, so a switch-to-switch hop only adds propagation delay.
+                            # KNOWN LIMITATION: "paid once at the first hop" is the wrong quantity
+                            # when link bandwidths differ -- the bottleneck leg, not the first leg,
+                            # paces a cut-through traversal. See the long note on the SWITCH_GPU
+                            # buffer credit in node_constraint_helper.
                             if k - alpha_num_back >= 0:
                                 switch_node_constr.add(
                                     self.flow[s][j][i][c][k - alpha_num_back])

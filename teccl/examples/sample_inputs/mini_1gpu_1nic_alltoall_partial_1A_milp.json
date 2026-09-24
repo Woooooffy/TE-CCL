@@ -1,0 +1,48 @@
+{
+    "_comment": "CASE 1A -- PARTIAL PARTICIPATION, MILP (single-path) leg. Same topology, same active set, same clock and same objective as mini_1gpu_1nic_alltoall_partial_1A.json, solved with the chunk-level MILP (formulation 1) at num_chunks 1 so each (src, dst) pair owns exactly ONE indivisible 1 GB chunk that takes exactly ONE path end to end. That is the no-multipath regime a ring-style algorithm gives you, except the solver still picks the BEST such assignment -- so LP-minus-MILP is a LOWER bound on what per-pair multipath is worth, not an upper one.",
+    "_known_limitation": "KNOWN LIMITATION, ACCEPTED -- MILP timing on a non-uniform-bandwidth topology at a sub-chunk epoch. This topology mixes 100Gbps host ports with 50Gbps leaf-spine uplinks, and this file's pinned 0.08 s epoch is SHORTER than one chunk on the 50Gbps link (6.25 GB/s x 0.08 s = 0.5 GB against a 1 GB chunk), so get_beta_num_back returns beta = 1 there. In that regime the MILP's cut-through accounting under-charges TIME: allgather.py pays the store-and-forward cost (1 epoch + beta) ONCE at the first GPU->switch hop and charges every later fabric hop only propagation delay (see the branches at allgather.py switch->switch and the switch->GPU buffer credit), so the delivery epoch it credits is 1 + beta(FIRST hop) instead of the correct 1 + max(beta over the legs used) = ceil(chunk / min bandwidth along the path). CONSEQUENCE: in a MILP schedule from this file, 3-Epochs_Required, 4-Collective_Finish_Time and 5-Algo_Bandwidth are OPTIMISTIC and must not be quoted -- the ROUTING (7-Flows and 8-Chunk paths) is what the file is for, and real timing comes from simulating that routing. Measured on case 1A at this epoch: the MILP reports 0.08 s while every 50Gbps leg on its own chosen path needs 0.16 s to clock the chunk out; the identical run with switch_pipeline false (which does charge the -1 and beta) reports 0.48 s. The LP is NOT affected: continuous flow can be split across epochs, so it has no beta machinery and its per-epoch row (capacity x epoch_duration) is exact -- which is why the fine epoch is kept here rather than coarsened, since it is what makes the LP's makespan exact instead of rounded up. mini_2gpu_2nic (case 3A) is structurally immune: its links are uniform 100Gbps, so one chunk always fits one epoch and beta is 0 everywhere.",
+    "_participation": "active GPUs [0, 2]; passive GPUs [1, 3]. GPU index == node index (gpu0..gpu3 = nodes 0..3; leaf0/leaf1 = 4/5; spine0/spine1 = 6/7); gpu0,gpu1 home on leaf0 and gpu2,gpu3 on leaf1, so the active pair is one GPU per leaf and both demands are cross-leaf. A passive GPU still exists and may RELAY -- gpu1 can forward for gpu0 -- it just sources and sinks no demand of its own. num_chunks 1 means one chunk per (src, dst) PAIR; Scheduler._scale_alltoall_num_chunks widens the chunk axis by the ACTIVE count only, so the instance is 2 chunks, not 12.",
+    "_vs_lp": "Differences from mini_1gpu_1nic_alltoall_partial_1A.json, and only these: formulation 1 (MILP) not 2 (LP); symmetry false not true; num_epochs 8 in both; distinct log_file and schedule_output_file so neither run clobbers the other. Held fixed: topo_file, passive_node_indices, chunk_size 1, collective 2, num_chunks 1, switch_copy false, epoch_type 3 / epoch_duration 0.08 (pinned, identical in both), switch_pipeline true, objective_type 6, solution_method 1, time_limit 2. The difference is integrality alone, not granularity.",
+    "_why_symmetry_off": "symmetry true adds an orbit-averaging projection that is free on the LP -- the feasible set is convex, so the symmetric average of an optimum is an optimum -- but is a REAL restriction on the integral problem, where an equal split across an orbit need not exist at the integral optimum. Cutting off that optimum is precisely the measurement error this file exists to avoid, so it is off and the reported makespan is the true single-path optimum.",
+    "_expected": "WHAT THIS FILE IS FOR IS THE ROUTING, NOT THE CLOCK. The correct single-path answer is 0.16 s = 2 epochs: the chunk is indivisible, so it rides ONE 50Gbps uplink, and 1 GB / 6.25 GB/s = 0.16 s = ceil(chunk / min bandwidth on the path) = 1 + max(beta) epochs. THE SOLVER WILL NOT SAY THAT -- it reports 0.08 s = 1 epoch, because its cut-through accounting charges the fabric traversal only the first hop's cost and that hop is the fast 100Gbps NIC (see _known_limitation). Treat 3-Epochs_Required / 4-Collective_Finish_Time / 5-Algo_Bandwidth from this file as unusable and take the timing from simulation. WHAT TO INSPECT: each direction's chunk should appear on ONE spine and never be split, against the LP partner's 0.5/0.5 fan across both -- that difference is integrality, it is real, and it is visible in 8-Chunk paths regardless of the timing defect. Relaying through the passive GPU buys nothing (it does not widen the leaf cut), so objective_type 6's relay tier should keep the path direct.",
+    "_epoch_note": "epoch_type 3 (USER_INPUT) with epoch_duration PINNED to 0.08 s = 1 GB / 12.5 GB/s, one 100Gbps host port. Deliberately NOT the SLOWEST_LINK value (0.16 s, the 50Gbps uplink) that the full-participation files on this topology use: at 0.16 s the LP's answer is rounded up to the epoch grid, and pinning 0.08 s is what makes the LP's makespan land exactly on its true bound. The price is paid by the MILP leg only, and it is a KNOWN, ACCEPTED inaccuracy in its reported time -- see _known_limitation. Both legs share this clock so the routing comparison stays controlled. For this leg specifically the pin is what EXPOSES the timing limitation: at 0.16 s every link carries a whole chunk per epoch, beta is 0, and the reported makespan would be correct. The routing is unaffected either way.",
+    "_horizon_note": "num_epochs is the MILP's time horizon and it costs -- one integer flow variable per (source, link, chunk, epoch) -- so it is kept tight: the bound below is 1 epoch and 4 leaves ample headroom. If the solve comes back INFEASIBLE rather than merely slow, raise this first; an infeasible horizon and a hard instance look nothing alike in the Gurobi log.",
+    "_topology_note": "The topology comes from the .topo DSL file; topo_file SELECTS it, so TECCLSolver.get_topology builds a DslTopology and `name` is only the free-form label for output filenames and the Gurobi log. The path is relative to the repo root.",
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_1gpu_1nic.topo",
+        "name": "Mini1GPU1NIC",
+        "chassis": 1,
+        "chunk_size": 1,
+        "passive_node_indices": [
+            1,
+            3
+        ]
+    },
+    "GurobiParams": {
+        "time_limit": 2,
+        "feasibility_tol": 1e-06,
+        "optimality_tol": 1e-06,
+        "output_flag": 1,
+        "log_file": "_mini_1g1n_a2a_1A_milp",
+        "log_to_console": 0,
+        "method": -1,
+        "crossover": -1
+    },
+    "InstanceParams": {
+        "collective": 2,
+        "formulation": 1,
+        "switch_copy": false,
+        "num_chunks": 1,
+        "epoch_type": 3,
+        "epoch_duration": 0.08,
+        "epoch_multiplier": 1,
+        "num_epochs": 8,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": false,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": false,
+        "schedule_output_file": "Schedules/mini_1gpu_1nic_alltoall_partial_1A_milp.json"
+    }
+}
