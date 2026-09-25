@@ -19,17 +19,17 @@
     }
   },
   "7-Flows": [
-    "Chunk 1 from 0 traveled over 0->2 in epoch 0 via switches 4 -> 6 -> 5",
-    "Chunk 0 from 2 traveled over 2->0 in epoch 0 via switches 5 -> 6 -> 4"
+    "Chunk 0 from 2 traveled over 2->0 in epoch 0 via switches 5 -> 7 -> 4",
+    "Chunk 1 from 0 traveled over 0->2 in epoch 0 via switches 4 -> 6 -> 5"
   ],
   "8-Chunk paths": {
     "Demand at 0 for chunk 0 from 2 met by epoch 0": [
-      "2->0 in epoch 0 via switches 5 -> 6 -> 4"
+      "2->0 in epoch 0 via switches 5 -> 7 -> 4"
     ],
     "Demand at 2 for chunk 1 from 0 met by epoch 0": [
       "0->2 in epoch 0 via switches 4 -> 6 -> 5"
     ]
   },
   "9-Chunk_Size": 1,
-  "Solver_Time": 0.1793818473815918
+  "Solver_Time": 0.08647727966308594
 }
