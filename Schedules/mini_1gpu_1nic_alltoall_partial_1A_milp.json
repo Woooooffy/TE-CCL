@@ -1,0 +1,35 @@
+{
+  "0-Collective": "alltoall",
+  "0-Formulation": "MILP",
+  "1-Epoch_Duration": 0.08,
+  "2-Expected_Epoch_Duration": 0.08,
+  "3-Epochs_Required": 1,
+  "4-Collective_Finish_Time": 0.08,
+  "5-Algo_Bandwidth": 50.0,
+  "6-Demand_Met": {
+    "GPU 0": {
+      "GPU 2": {
+        "Chunk 0": 0.08
+      }
+    },
+    "GPU 2": {
+      "GPU 0": {
+        "Chunk 1": 0.08
+      }
+    }
+  },
+  "7-Flows": [
+    "Chunk 1 from 0 traveled over 0->2 in epoch 0 via switches 4 -> 6 -> 5",
+    "Chunk 0 from 2 traveled over 2->0 in epoch 0 via switches 5 -> 6 -> 4"
+  ],
+  "8-Chunk paths": {
+    "Demand at 0 for chunk 0 from 2 met by epoch 0": [
+      "2->0 in epoch 0 via switches 5 -> 6 -> 4"
+    ],
+    "Demand at 2 for chunk 1 from 0 met by epoch 0": [
+      "0->2 in epoch 0 via switches 4 -> 6 -> 5"
+    ]
+  },
+  "9-Chunk_Size": 1,
+  "Solver_Time": 0.1793818473815918
+}
