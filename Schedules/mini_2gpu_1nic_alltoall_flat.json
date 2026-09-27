@@ -6,334 +6,334 @@
   "4-Collective_Finish_Time": 1.28,
   "5-Algo_Bandwidth": 50.0,
   "7-Flows": [
-    "Chunk 7 from 5 traveled over 5->7 with volume 0.25 in epoch 0 via switches 10->13->11",
-    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 0 via switches 9->12->15->13->10",
-    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 0 via switches 10->13->14->12->9",
-    "Chunk 3 from 2 traveled over 2->3 with volume 1.0 in epoch 0",
-    "Chunk 2 from 3 traveled over 3->2 with volume 1.0 in epoch 0",
-    "Chunk 6 from 7 traveled over 7->6 with volume 1.0 in epoch 0",
-    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 0",
-    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 0 via switches 9->12->14->13->11",
-    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 0 via switches 10->13->14->12->9",
-    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 0 via switches 8->12->15->13->10",
-    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 0 via switches 10->13->15->12->8",
-    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 0 via switches 9->12->14->13->11",
-    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 0 via switches 10->13->14->12->9",
-    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 0 via switches 9->12->14->13->11",
-    "Chunk 4 from 6 traveled over 6->4 with volume 0.25 in epoch 0 via switches 11->13->10",
-    "Chunk 6 from 5 traveled over 5->6 with volume 0.25 in epoch 0 via switches 10->13->11",
-    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 0 via switches 11->13->15->12->8",
-    "Chunk 7 from 6 traveled over 6->7 with volume 1.0 in epoch 0",
-    "Chunk 2 from 0 traveled over 0->2 with volume 0.25 in epoch 0 via switches 8->12->9",
-    "Chunk 5 from 7 traveled over 7->5 with volume 0.25 in epoch 0 via switches 11->13->10",
-    "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 0 via switches 8->12->15->13->10",
-    "Chunk 0 from 3 traveled over 3->0 with volume 0.25 in epoch 0 via switches 9->12->8",
-    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 0 via switches 10->13->15->12->8",
-    "Chunk 1 from 0 traveled over 0->1 with volume 1.0 in epoch 0",
-    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 0 via switches 10->13->14->12->9",
-    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 0 via switches 9->12->15->13->10",
-    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 0 via switches 10->13->15->12->8",
-    "Chunk 0 from 2 traveled over 2->0 with volume 0.25 in epoch 0 via switches 9->12->8",
-    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 0 via switches 8->12->14->13->11",
-    "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 0 via switches 11->13->14->12->9",
-    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 0 via switches 11->13->14->12->9",
-    "Chunk 2 from 1 traveled over 1->2 with volume 0.25 in epoch 0 via switches 8->12->9",
-    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 0 via switches 10->13->15->12->8",
-    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 0 via switches 9->12->14->13->11",
-    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 0 via switches 8->12->15->13->10",
-    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 0 via switches 11->13->15->12->8",
-    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 0 via switches 11->13->15->12->8",
-    "Chunk 5 from 6 traveled over 6->5 with volume 0.25 in epoch 0 via switches 11->13->10",
-    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 0 via switches 11->13->14->12->9",
-    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 0 via switches 9->12->15->13->10",
-    "Chunk 5 from 4 traveled over 4->5 with volume 1.0 in epoch 0",
     "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 0 via switches 9->12->15->13->10",
-    "Chunk 1 from 2 traveled over 2->1 with volume 0.25 in epoch 0 via switches 9->12->8",
-    "Chunk 3 from 0 traveled over 0->3 with volume 0.25 in epoch 0 via switches 8->12->9",
-    "Chunk 7 from 4 traveled over 4->7 with volume 0.25 in epoch 0 via switches 10->13->11",
-    "Chunk 3 from 1 traveled over 1->3 with volume 0.25 in epoch 0 via switches 8->12->9",
-    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 0 via switches 8->12->14->13->11",
-    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 0 via switches 11->13->15->12->8",
-    "Chunk 4 from 7 traveled over 7->4 with volume 0.25 in epoch 0 via switches 11->13->10",
-    "Chunk 4 from 5 traveled over 5->4 with volume 1.0 in epoch 0",
-    "Chunk 1 from 3 traveled over 3->1 with volume 0.25 in epoch 0 via switches 9->12->8",
+    "Chunk 0 from 2 traveled over 2->0 with volume 0.25 in epoch 0 via switches 9->12->8",
+    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 0 via switches 11->13->15->12->8",
+    "Chunk 0 from 3 traveled over 3->0 with volume 0.25 in epoch 0 via switches 9->12->8",
+    "Chunk 5 from 4 traveled over 4->5 with volume 1.0 in epoch 0",
+    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 0 via switches 9->12->15->13->10",
+    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 0 via switches 10->13->15->12->8",
     "Chunk 6 from 4 traveled over 4->6 with volume 0.25 in epoch 0 via switches 10->13->11",
-    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 0 via switches 11->13->14->12->9",
-    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 0 via switches 8->12->14->13->11",
+    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 0 via switches 11->13->14->12->9",
+    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 0 via switches 9->12->15->13->11",
+    "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 0 via switches 8->12->15->13->10",
+    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 0 via switches 10->13->14->12->9",
     "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 0 via switches 8->12->15->13->10",
+    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 0 via switches 10->13->14->12->8",
+    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 0 via switches 9->12->15->13->11",
+    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 0 via switches 11->13->14->12->9",
+    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 0 via switches 11->13->15->12->8",
+    "Chunk 1 from 0 traveled over 0->1 with volume 1.0 in epoch 0",
+    "Chunk 3 from 1 traveled over 1->3 with volume 0.25 in epoch 0 via switches 8->12->9",
+    "Chunk 4 from 7 traveled over 7->4 with volume 0.25 in epoch 0 via switches 11->13->10",
+    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 0 via switches 9->12->14->13->11",
+    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 0 via switches 10->13->15->12->9",
+    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 0 via switches 10->13->14->12->8",
+    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 0 via switches 8->12->15->13->11",
+    "Chunk 3 from 0 traveled over 0->3 with volume 0.25 in epoch 0 via switches 8->12->9",
+    "Chunk 1 from 3 traveled over 3->1 with volume 0.25 in epoch 0 via switches 9->12->8",
+    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 0 via switches 11->13->15->12->8",
+    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 0 via switches 10->13->14->12->9",
+    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 0 via switches 8->12->15->13->11",
+    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 0 via switches 11->13->14->12->9",
+    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 0 via switches 8->12->14->13->11",
+    "Chunk 2 from 3 traveled over 3->2 with volume 1.0 in epoch 0",
+    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 0 via switches 9->12->14->13->10",
+    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 0 via switches 9->12->14->13->11",
+    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 0 via switches 8->12->14->13->10",
+    "Chunk 3 from 2 traveled over 2->3 with volume 1.0 in epoch 0",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1.0 in epoch 0",
+    "Chunk 1 from 2 traveled over 2->1 with volume 0.25 in epoch 0 via switches 9->12->8",
+    "Chunk 7 from 5 traveled over 5->7 with volume 0.25 in epoch 0 via switches 10->13->11",
+    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 0 via switches 8->12->14->13->10",
+    "Chunk 6 from 5 traveled over 5->6 with volume 0.25 in epoch 0 via switches 10->13->11",
+    "Chunk 4 from 6 traveled over 6->4 with volume 0.25 in epoch 0 via switches 11->13->10",
+    "Chunk 6 from 7 traveled over 7->6 with volume 1.0 in epoch 0",
+    "Chunk 4 from 5 traveled over 5->4 with volume 1.0 in epoch 0",
+    "Chunk 2 from 0 traveled over 0->2 with volume 0.25 in epoch 0 via switches 8->12->9",
+    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 0 via switches 10->13->15->12->9",
+    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 0 via switches 11->13->15->12->8",
     "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 0 via switches 8->12->14->13->11",
+    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 0 via switches 9->12->14->13->10",
+    "Chunk 2 from 1 traveled over 1->2 with volume 0.25 in epoch 0 via switches 8->12->9",
+    "Chunk 5 from 7 traveled over 7->5 with volume 0.25 in epoch 0 via switches 11->13->10",
+    "Chunk 7 from 4 traveled over 4->7 with volume 0.25 in epoch 0 via switches 10->13->11",
+    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 0 via switches 10->13->15->12->8",
+    "Chunk 7 from 6 traveled over 6->7 with volume 1.0 in epoch 0",
+    "Chunk 5 from 6 traveled over 6->5 with volume 0.25 in epoch 0 via switches 11->13->10",
+    "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 0 via switches 11->13->14->12->9",
+    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 1 via switches 9->12->14->13->10",
+    "Chunk 0 from 3 traveled over 3->0 with volume 0.25 in epoch 1 via switches 9->12->8",
+    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 1 via switches 11->13->15->12->8",
+    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 1 via switches 11->13->15->12->8",
+    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 1 via switches 11->13->14->12->9",
     "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 1 via switches 8->12->15->13->10",
-    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 1 via switches 11->13->15->12->8",
-    "Chunk 7 from 5 traveled over 5->7 with volume 0.25 in epoch 1 via switches 10->13->11",
-    "Chunk 6 from 4 traveled over 4->6 with volume 0.25 in epoch 1 via switches 10->13->11",
-    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 1 via switches 9->12->15->13->10",
-    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 1 via switches 10->13->14->12->9",
+    "Chunk 2 from 0 traveled over 0->2 with volume 0.25 in epoch 1 via switches 8->12->9",
     "Chunk 7 from 4 traveled over 4->7 with volume 0.25 in epoch 1 via switches 10->13->11",
-    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 1 via switches 11->13->15->12->8",
-    "Chunk 3 from 0 traveled over 0->3 with volume 0.25 in epoch 1 via switches 8->12->9",
+    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 1 via switches 10->13->15->12->9",
+    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 1 via switches 9->12->14->13->11",
+    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 1 via switches 10->13->14->12->9",
+    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 1 via switches 10->13->15->12->8",
+    "Chunk 1 from 2 traveled over 2->1 with volume 0.25 in epoch 1 via switches 9->12->8",
     "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 1 via switches 10->13->15->12->8",
+    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 1 via switches 9->12->15->13->10",
+    "Chunk 2 from 1 traveled over 1->2 with volume 0.25 in epoch 1 via switches 8->12->9",
     "Chunk 0 from 2 traveled over 2->0 with volume 0.25 in epoch 1 via switches 9->12->8",
+    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 1 via switches 10->13->14->12->8",
+    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 1 via switches 9->12->15->13->11",
     "Chunk 3 from 1 traveled over 1->3 with volume 0.25 in epoch 1 via switches 8->12->9",
     "Chunk 6 from 5 traveled over 5->6 with volume 0.25 in epoch 1 via switches 10->13->11",
-    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 1 via switches 11->13->15->12->8",
-    "Chunk 4 from 7 traveled over 7->4 with volume 0.25 in epoch 1 via switches 11->13->10",
-    "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 1 via switches 8->12->15->13->10",
-    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 1 via switches 9->12->14->13->11",
-    "Chunk 4 from 6 traveled over 6->4 with volume 0.25 in epoch 1 via switches 11->13->10",
-    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 1 via switches 8->12->15->13->10",
-    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 1 via switches 9->12->14->13->11",
-    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 1 via switches 10->13->14->12->9",
-    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 1 via switches 9->12->15->13->10",
-    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 1 via switches 9->12->14->13->11",
-    "Chunk 1 from 3 traveled over 3->1 with volume 0.25 in epoch 1 via switches 9->12->8",
-    "Chunk 5 from 6 traveled over 6->5 with volume 0.25 in epoch 1 via switches 11->13->10",
-    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 1 via switches 11->13->14->12->9",
-    "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 1 via switches 11->13->14->12->9",
-    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 1 via switches 10->13->14->12->9",
-    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 1 via switches 10->13->14->12->9",
-    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 1 via switches 9->12->14->13->11",
-    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 1 via switches 8->12->14->13->11",
-    "Chunk 2 from 0 traveled over 0->2 with volume 0.25 in epoch 1 via switches 8->12->9",
-    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 1 via switches 10->13->15->12->8",
-    "Chunk 0 from 3 traveled over 3->0 with volume 0.25 in epoch 1 via switches 9->12->8",
-    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 1 via switches 8->12->14->13->11",
-    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 1 via switches 10->13->15->12->8",
+    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 1 via switches 8->12->15->13->11",
     "Chunk 5 from 7 traveled over 7->5 with volume 0.25 in epoch 1 via switches 11->13->10",
-    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 1 via switches 10->13->15->12->8",
-    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 1 via switches 8->12->14->13->11",
-    "Chunk 2 from 1 traveled over 1->2 with volume 0.25 in epoch 1 via switches 8->12->9",
-    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 1 via switches 9->12->15->13->10",
-    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 1 via switches 9->12->15->13->10",
-    "Chunk 1 from 2 traveled over 2->1 with volume 0.25 in epoch 1 via switches 9->12->8",
-    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 1 via switches 11->13->14->12->9",
-    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 1 via switches 8->12->15->13->10",
-    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 1 via switches 11->13->14->12->9",
+    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 1 via switches 9->12->14->13->10",
+    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 1 via switches 11->13->15->12->8",
     "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 1 via switches 8->12->14->13->11",
-    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 1 via switches 11->13->15->12->8",
-    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 2 via switches 9->12->15->13->10",
-    "Chunk 7 from 5 traveled over 5->7 with volume 0.25 in epoch 2 via switches 10->13->11",
-    "Chunk 6 from 5 traveled over 5->6 with volume 0.25 in epoch 2 via switches 10->13->11",
-    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 2 via switches 10->13->15->12->9",
-    "Chunk 5 from 7 traveled over 7->5 with volume 0.25 in epoch 2 via switches 11->13->10",
-    "Chunk 3 from 0 traveled over 0->3 with volume 0.25 in epoch 2 via switches 8->12->9",
-    "Chunk 3 from 1 traveled over 1->3 with volume 0.25 in epoch 2 via switches 8->12->9",
-    "Chunk 0 from 3 traveled over 3->0 with volume 0.25 in epoch 2 via switches 9->12->8",
-    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 2 via switches 10->13->14->12->8",
-    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 2 via switches 9->12->15->13->10",
-    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 2 via switches 11->13->15->12->8",
-    "Chunk 4 from 6 traveled over 6->4 with volume 0.25 in epoch 2 via switches 11->13->10",
-    "Chunk 2 from 0 traveled over 0->2 with volume 0.25 in epoch 2 via switches 8->12->9",
-    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 2 via switches 8->12->14->13->11",
+    "Chunk 4 from 7 traveled over 7->4 with volume 0.25 in epoch 1 via switches 11->13->10",
+    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 1 via switches 11->13->14->12->9",
+    "Chunk 5 from 6 traveled over 6->5 with volume 0.25 in epoch 1 via switches 11->13->10",
+    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 1 via switches 9->12->15->13->10",
+    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 1 via switches 9->12->15->13->11",
+    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 1 via switches 8->12->14->13->10",
+    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 1 via switches 8->12->14->13->10",
+    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 1 via switches 10->13->15->12->9",
+    "Chunk 1 from 3 traveled over 3->1 with volume 0.25 in epoch 1 via switches 9->12->8",
+    "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 1 via switches 11->13->14->12->9",
+    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 1 via switches 8->12->14->13->11",
+    "Chunk 4 from 6 traveled over 6->4 with volume 0.25 in epoch 1 via switches 11->13->10",
+    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 1 via switches 10->13->14->12->9",
+    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 1 via switches 9->12->14->13->11",
+    "Chunk 3 from 0 traveled over 0->3 with volume 0.25 in epoch 1 via switches 8->12->9",
+    "Chunk 7 from 5 traveled over 5->7 with volume 0.25 in epoch 1 via switches 10->13->11",
+    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 1 via switches 10->13->14->12->8",
+    "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 1 via switches 8->12->15->13->10",
+    "Chunk 6 from 4 traveled over 4->6 with volume 0.25 in epoch 1 via switches 10->13->11",
+    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 1 via switches 11->13->14->12->9",
+    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 1 via switches 11->13->15->12->8",
+    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 1 via switches 8->12->15->13->11",
     "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 2 via switches 11->13->14->12->9",
-    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 2 via switches 9->12->14->13->11",
-    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 2 via switches 9->12->14->13->11",
-    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 2 via switches 10->13->14->12->9",
-    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 2 via switches 11->13->15->12->8",
-    "Chunk 0 from 2 traveled over 2->0 with volume 0.25 in epoch 2 via switches 9->12->8",
-    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 2 via switches 11->13->15->12->8",
-    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 2 via switches 8->12->15->13->10",
-    "Chunk 6 from 4 traveled over 4->6 with volume 0.25 in epoch 2 via switches 10->13->11",
-    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 2 via switches 11->13->15->12->8",
-    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 2 via switches 11->13->14->12->9",
-    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 2 via switches 8->12->14->13->11",
-    "Chunk 7 from 4 traveled over 4->7 with volume 0.25 in epoch 2 via switches 10->13->11",
-    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 2 via switches 8->12->15->13->10",
-    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 2 via switches 11->13->14->12->9",
-    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 2 via switches 9->12->14->13->11",
-    "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 2 via switches 8->12->15->13->10",
-    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 2 via switches 10->13->15->12->9",
-    "Chunk 5 from 6 traveled over 6->5 with volume 0.25 in epoch 2 via switches 11->13->10",
-    "Chunk 1 from 2 traveled over 2->1 with volume 0.25 in epoch 2 via switches 9->12->8",
-    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 2 via switches 9->12->15->13->10",
+    "Chunk 5 from 7 traveled over 7->5 with volume 0.25 in epoch 2 via switches 11->13->10",
+    "Chunk 3 from 1 traveled over 1->3 with volume 0.25 in epoch 2 via switches 8->12->9",
     "Chunk 2 from 1 traveled over 1->2 with volume 0.25 in epoch 2 via switches 8->12->9",
-    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 2 via switches 10->13->15->12->8",
-    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 2 via switches 9->12->14->13->11",
-    "Chunk 4 from 7 traveled over 7->4 with volume 0.25 in epoch 2 via switches 11->13->10",
-    "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 2 via switches 8->12->15->13->10",
-    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 2 via switches 10->13->14->12->8",
     "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 2 via switches 11->13->14->12->9",
+    "Chunk 0 from 2 traveled over 2->0 with volume 0.25 in epoch 2 via switches 9->12->8",
+    "Chunk 2 from 0 traveled over 0->2 with volume 0.25 in epoch 2 via switches 8->12->9",
+    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 2 via switches 8->12->15->13->10",
+    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 2 via switches 11->13->15->12->8",
+    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 2 via switches 10->13->15->12->8",
+    "Chunk 4 from 7 traveled over 7->4 with volume 0.25 in epoch 2 via switches 11->13->10",
+    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 2 via switches 11->13->14->12->9",
+    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 2 via switches 8->12->15->13->11",
+    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 2 via switches 9->12->15->13->11",
+    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 2 via switches 10->13->14->12->9",
+    "Chunk 0 from 3 traveled over 3->0 with volume 0.25 in epoch 2 via switches 9->12->8",
+    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 2 via switches 10->13->14->12->8",
+    "Chunk 1 from 2 traveled over 2->1 with volume 0.25 in epoch 2 via switches 9->12->8",
+    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 2 via switches 11->13->15->12->8",
+    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 2 via switches 9->12->14->13->10",
+    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 2 via switches 10->13->14->12->9",
+    "Chunk 6 from 5 traveled over 5->6 with volume 0.25 in epoch 2 via switches 10->13->11",
+    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 2 via switches 11->13->14->12->9",
+    "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 2 via switches 8->12->14->13->10",
+    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 2 via switches 9->12->14->13->11",
+    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 2 via switches 10->13->15->12->9",
     "Chunk 1 from 3 traveled over 3->1 with volume 0.25 in epoch 2 via switches 9->12->8",
-    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 2 via switches 10->13->14->12->9",
+    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 2 via switches 8->12->15->13->10",
+    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 2 via switches 9->12->15->13->10",
+    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 2 via switches 9->12->15->13->11",
+    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 2 via switches 9->12->14->13->10",
+    "Chunk 3 from 0 traveled over 0->3 with volume 0.25 in epoch 2 via switches 8->12->9",
+    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 2 via switches 8->12->15->13->11",
+    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 2 via switches 10->13->15->12->9",
+    "Chunk 7 from 4 traveled over 4->7 with volume 0.25 in epoch 2 via switches 10->13->11",
+    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 2 via switches 9->12->15->13->10",
+    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 2 via switches 11->13->15->12->8",
+    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 2 via switches 10->13->14->12->8",
+    "Chunk 4 from 6 traveled over 6->4 with volume 0.25 in epoch 2 via switches 11->13->10",
+    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 2 via switches 11->13->15->12->8",
+    "Chunk 5 from 6 traveled over 6->5 with volume 0.25 in epoch 2 via switches 11->13->10",
+    "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 2 via switches 8->12->14->13->10",
+    "Chunk 6 from 4 traveled over 4->6 with volume 0.25 in epoch 2 via switches 10->13->11",
+    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 2 via switches 9->12->14->13->11",
+    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 2 via switches 8->12->14->13->11",
+    "Chunk 7 from 5 traveled over 5->7 with volume 0.25 in epoch 2 via switches 10->13->11",
+    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 2 via switches 10->13->15->12->8",
     "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 2 via switches 8->12->14->13->11",
-    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 2 via switches 9->12->15->13->10",
-    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 2 via switches 8->12->14->13->11",
-    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 2 via switches 10->13->15->12->8",
-    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 3 via switches 9->12->14->13->11",
-    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 3 via switches 11->13->14->12->9",
-    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 3 via switches 11->13->14->12->9",
-    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 3 via switches 9->12->14->13->11",
-    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 3 via switches 9->12->14->13->11",
-    "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 3 via switches 8->12->15->13->10",
-    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 3 via switches 10->13->14->12->9",
-    "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 3 via switches 11->13->14->12->9",
-    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 3 via switches 11->13->14->12->9",
-    "Chunk 4 from 6 traveled over 6->4 with volume 0.25 in epoch 3 via switches 11->13->10",
-    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 3 via switches 10->13->14->12->9",
-    "Chunk 6 from 4 traveled over 4->6 with volume 0.25 in epoch 3 via switches 10->13->11",
-    "Chunk 0 from 2 traveled over 2->0 with volume 0.25 in epoch 3 via switches 9->12->8",
-    "Chunk 7 from 4 traveled over 4->7 with volume 0.25 in epoch 3 via switches 10->13->11",
-    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 3 via switches 8->12->14->13->11",
-    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 3 via switches 8->12->15->13->10",
-    "Chunk 1 from 3 traveled over 3->1 with volume 0.25 in epoch 3 via switches 9->12->8",
-    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 3 via switches 10->13->14->12->8",
-    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 3 via switches 10->13->15->12->8",
-    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 3 via switches 9->12->15->13->10",
-    "Chunk 3 from 0 traveled over 0->3 with volume 0.25 in epoch 3 via switches 8->12->9",
-    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 3 via switches 9->12->15->13->10",
-    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 3 via switches 11->13->15->12->8",
-    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 3 via switches 8->12->15->13->10",
-    "Chunk 1 from 2 traveled over 2->1 with volume 0.25 in epoch 3 via switches 9->12->8",
     "Chunk 4 from 7 traveled over 7->4 with volume 0.25 in epoch 3 via switches 11->13->10",
-    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 3 via switches 10->13->15->12->9",
-    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 3 via switches 10->13->14->12->8",
-    "Chunk 2 from 1 traveled over 1->2 with volume 0.25 in epoch 3 via switches 8->12->9",
-    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 3 via switches 8->12->14->13->11",
-    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 3 via switches 9->12->15->13->10",
-    "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 3 via switches 8->12->15->13->10",
-    "Chunk 5 from 6 traveled over 6->5 with volume 0.25 in epoch 3 via switches 11->13->10",
-    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 3 via switches 8->12->14->13->11",
-    "Chunk 0 from 3 traveled over 3->0 with volume 0.25 in epoch 3 via switches 9->12->8",
-    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 3 via switches 11->13->15->12->8",
-    "Chunk 3 from 1 traveled over 1->3 with volume 0.25 in epoch 3 via switches 8->12->9",
-    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 3 via switches 8->12->14->13->11",
-    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 3 via switches 11->13->15->12->8",
-    "Chunk 2 from 0 traveled over 0->2 with volume 0.25 in epoch 3 via switches 8->12->9",
-    "Chunk 7 from 5 traveled over 5->7 with volume 0.25 in epoch 3 via switches 10->13->11",
-    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 3 via switches 10->13->15->12->9",
-    "Chunk 5 from 7 traveled over 7->5 with volume 0.25 in epoch 3 via switches 11->13->10",
-    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 3 via switches 9->12->14->13->11",
-    "Chunk 6 from 5 traveled over 5->6 with volume 0.25 in epoch 3 via switches 10->13->11",
+    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 3 via switches 9->12->14->13->10",
+    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 3 via switches 10->13->15->12->8",
     "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 3 via switches 11->13->15->12->8",
+    "Chunk 4 from 6 traveled over 6->4 with volume 0.25 in epoch 3 via switches 11->13->10",
+    "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 3 via switches 11->13->14->12->9",
+    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 3 via switches 8->12->15->13->11",
+    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 3 via switches 11->13->15->12->8",
+    "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 3 via switches 8->12->14->13->10",
+    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 3 via switches 10->13->14->12->9",
+    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 3 via switches 10->13->14->12->8",
+    "Chunk 1 from 2 traveled over 2->1 with volume 0.25 in epoch 3 via switches 9->12->8",
+    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 3 via switches 9->12->14->13->11",
+    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 3 via switches 8->12->15->13->10",
+    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 3 via switches 10->13->14->12->9",
+    "Chunk 3 from 1 traveled over 1->3 with volume 0.25 in epoch 3 via switches 8->12->9",
+    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 3 via switches 8->12->15->13->11",
+    "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 3 via switches 8->12->14->13->10",
+    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 3 via switches 9->12->15->13->10",
+    "Chunk 0 from 3 traveled over 3->0 with volume 0.25 in epoch 3 via switches 9->12->8",
+    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 3 via switches 10->13->15->12->9",
+    "Chunk 6 from 5 traveled over 5->6 with volume 0.25 in epoch 3 via switches 10->13->11",
+    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 3 via switches 9->12->15->13->10",
+    "Chunk 2 from 1 traveled over 1->2 with volume 0.25 in epoch 3 via switches 8->12->9",
+    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 3 via switches 10->13->14->12->8",
+    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 3 via switches 9->12->15->13->11",
     "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 3 via switches 10->13->15->12->8",
-    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 3 via switches 9->12->15->13->10",
-    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 4 via switches 11->13->14->12->9",
-    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 4 via switches 10->13->15->12->8",
-    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 4 via switches 8->12->15->13->10",
-    "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 4 via switches 8->12->15->13->10",
-    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 4 via switches 9->12->14->13->11",
-    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 4 via switches 9->12->15->13->10",
-    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 4 via switches 11->13->15->12->8",
-    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 4 via switches 10->13->14->12->9",
-    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 4 via switches 11->13->15->12->8",
-    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 4 via switches 9->12->15->13->10",
-    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 4 via switches 10->13->14->12->9",
-    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 4 via switches 10->13->15->12->8",
-    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 4 via switches 9->12->14->13->11",
-    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 4 via switches 11->13->15->12->8",
-    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 4 via switches 11->13->14->12->9",
-    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 4 via switches 8->12->14->13->11",
-    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 4 via switches 9->12->14->13->11",
-    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 4 via switches 10->13->14->12->9",
+    "Chunk 5 from 6 traveled over 6->5 with volume 0.25 in epoch 3 via switches 11->13->10",
+    "Chunk 2 from 0 traveled over 0->2 with volume 0.25 in epoch 3 via switches 8->12->9",
+    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 3 via switches 11->13->14->12->9",
+    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 3 via switches 8->12->14->13->11",
+    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 3 via switches 11->13->14->12->9",
+    "Chunk 1 from 3 traveled over 3->1 with volume 0.25 in epoch 3 via switches 9->12->8",
+    "Chunk 7 from 5 traveled over 5->7 with volume 0.25 in epoch 3 via switches 10->13->11",
+    "Chunk 3 from 0 traveled over 0->3 with volume 0.25 in epoch 3 via switches 8->12->9",
+    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 3 via switches 11->13->15->12->8",
+    "Chunk 7 from 4 traveled over 4->7 with volume 0.25 in epoch 3 via switches 10->13->11",
+    "Chunk 5 from 7 traveled over 7->5 with volume 0.25 in epoch 3 via switches 11->13->10",
+    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 3 via switches 8->12->14->13->11",
+    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 3 via switches 11->13->14->12->9",
+    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 3 via switches 9->12->14->13->10",
+    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 3 via switches 8->12->15->13->10",
+    "Chunk 0 from 2 traveled over 2->0 with volume 0.25 in epoch 3 via switches 9->12->8",
+    "Chunk 6 from 4 traveled over 4->6 with volume 0.25 in epoch 3 via switches 10->13->11",
+    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 3 via switches 9->12->14->13->11",
+    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 3 via switches 11->13->15->12->8",
+    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 3 via switches 9->12->15->13->11",
+    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 3 via switches 10->13->15->12->9",
     "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 4 via switches 11->13->14->12->9",
-    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 4 via switches 10->13->15->12->8",
-    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 4 via switches 11->13->15->12->8",
-    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 4 via switches 9->12->15->13->10",
-    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 4 via switches 10->13->14->12->9",
-    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 4 via switches 8->12->14->13->11",
-    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 4 via switches 9->12->14->13->11",
-    "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 4 via switches 8->12->15->13->10",
-    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 4 via switches 9->12->15->13->10",
-    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 4 via switches 8->12->14->13->11",
     "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 4 via switches 8->12->15->13->10",
-    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 4 via switches 8->12->14->13->11",
+    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 4 via switches 10->13->15->12->9",
+    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 4 via switches 10->13->14->12->9",
+    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 4 via switches 10->13->14->12->8",
+    "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 4 via switches 8->12->14->13->10",
+    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 4 via switches 8->12->14->13->11",
+    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 4 via switches 9->12->15->13->10",
+    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 4 via switches 9->12->14->13->11",
+    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 4 via switches 9->12->14->13->10",
+    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 4 via switches 10->13->14->12->8",
+    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 4 via switches 9->12->14->13->11",
+    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 4 via switches 8->12->15->13->11",
+    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 4 via switches 9->12->15->13->11",
+    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 4 via switches 11->13->15->12->8",
+    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 4 via switches 11->13->15->12->8",
     "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 4 via switches 10->13->15->12->8",
+    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 4 via switches 8->12->14->13->11",
     "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 4 via switches 11->13->14->12->9",
-    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 5 via switches 9->12->14->13->11",
-    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 5 via switches 8->12->15->13->10",
-    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 5 via switches 10->13->15->12->9",
-    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 5 via switches 9->12->14->13->11",
-    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 5 via switches 9->12->14->13->11",
-    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 5 via switches 9->12->15->13->10",
-    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 5 via switches 10->13->14->12->8",
-    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 5 via switches 11->13->14->12->9",
-    "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 5 via switches 8->12->15->13->10",
-    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 5 via switches 9->12->15->13->10",
-    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 5 via switches 11->13->15->12->8",
-    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 5 via switches 10->13->14->12->8",
-    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 5 via switches 8->12->14->13->11",
-    "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 5 via switches 8->12->15->13->10",
-    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 5 via switches 11->13->15->12->8",
-    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 5 via switches 11->13->14->12->9",
-    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 5 via switches 8->12->14->13->11",
-    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 5 via switches 11->13->15->12->8",
-    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 5 via switches 10->13->15->12->9",
-    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 5 via switches 11->13->15->12->8",
-    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 5 via switches 9->12->15->13->10",
-    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 5 via switches 10->13->14->12->9",
-    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 5 via switches 10->13->14->12->9",
-    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 5 via switches 9->12->14->13->11",
-    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 5 via switches 8->12->14->13->11",
-    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 5 via switches 8->12->15->13->10",
-    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 5 via switches 8->12->14->13->11",
+    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 4 via switches 9->12->15->13->11",
+    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 4 via switches 8->12->15->13->10",
+    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 4 via switches 8->12->15->13->11",
+    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 4 via switches 9->12->15->13->10",
+    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 4 via switches 11->13->14->12->9",
+    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 4 via switches 11->13->15->12->8",
+    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 4 via switches 11->13->14->12->9",
+    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 4 via switches 10->13->14->12->9",
+    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 4 via switches 9->12->14->13->10",
+    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 4 via switches 10->13->15->12->8",
+    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 4 via switches 10->13->15->12->9",
+    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 4 via switches 11->13->15->12->8",
+    "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 4 via switches 8->12->14->13->10",
     "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 5 via switches 11->13->14->12->9",
+    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 5 via switches 10->13->14->12->8",
     "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 5 via switches 11->13->14->12->9",
-    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 5 via switches 10->13->15->12->8",
-    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 5 via switches 10->13->15->12->8",
+    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 5 via switches 8->12->15->13->11",
+    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 5 via switches 11->13->15->12->8",
+    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 5 via switches 8->12->15->13->11",
+    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 5 via switches 9->12->15->13->11",
     "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 5 via switches 9->12->15->13->10",
-    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 6 via switches 9->12->14->13->11",
-    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 6 via switches 10->13->15->12->9",
-    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 6 via switches 9->12->15->13->10",
-    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 6 via switches 11->13->14->12->9",
-    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 6 via switches 9->12->14->13->11",
-    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 6 via switches 10->13->14->12->9",
-    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 6 via switches 11->13->14->12->9",
-    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 6 via switches 11->13->14->12->9",
-    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 6 via switches 9->12->14->13->11",
-    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 6 via switches 10->13->15->12->8",
-    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 6 via switches 10->13->14->12->9",
-    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 6 via switches 8->12->14->13->11",
-    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 6 via switches 8->12->14->13->11",
-    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 6 via switches 9->12->15->13->10",
-    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 6 via switches 10->13->15->12->9",
-    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 6 via switches 8->12->15->13->10",
-    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 6 via switches 10->13->15->12->8",
-    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 6 via switches 8->12->14->13->11",
-    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 6 via switches 10->13->14->12->8",
-    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 6 via switches 10->13->14->12->8",
-    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 6 via switches 9->12->15->13->10",
-    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 6 via switches 8->12->15->13->10",
+    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 5 via switches 10->13->15->12->9",
+    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 5 via switches 8->12->14->13->11",
+    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 5 via switches 8->12->15->13->10",
+    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 5 via switches 8->12->15->13->10",
+    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 5 via switches 10->13->15->12->9",
+    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 5 via switches 10->13->14->12->8",
+    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 5 via switches 9->12->14->13->10",
+    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 5 via switches 10->13->14->12->9",
+    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 5 via switches 9->12->14->13->10",
+    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 5 via switches 11->13->15->12->8",
+    "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 5 via switches 8->12->14->13->10",
+    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 5 via switches 11->13->14->12->9",
+    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 5 via switches 11->13->15->12->8",
+    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 5 via switches 9->12->15->13->11",
+    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 5 via switches 9->12->14->13->11",
+    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 5 via switches 11->13->14->12->9",
+    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 5 via switches 11->13->15->12->8",
+    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 5 via switches 9->12->15->13->10",
+    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 5 via switches 8->12->14->13->11",
+    "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 5 via switches 8->12->14->13->10",
+    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 5 via switches 10->13->15->12->8",
+    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 5 via switches 9->12->14->13->11",
+    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 5 via switches 10->13->15->12->8",
+    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 5 via switches 10->13->14->12->9",
+    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 6 via switches 9->12->15->13->11",
     "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 6 via switches 11->13->15->12->8",
-    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 6 via switches 9->12->15->13->10",
-    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 6 via switches 8->12->14->13->11",
-    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 6 via switches 11->13->15->12->8",
-    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 6 via switches 11->13->15->12->8",
-    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 6 via switches 11->13->15->12->8",
+    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 6 via switches 10->13->15->12->9",
+    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 6 via switches 10->13->14->12->8",
+    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 6 via switches 11->13->14->12->9",
     "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 6 via switches 8->12->15->13->10",
+    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 6 via switches 10->13->15->12->9",
+    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 6 via switches 11->13->14->12->9",
+    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 6 via switches 10->13->14->12->9",
     "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 6 via switches 8->12->15->13->10",
-    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 6 via switches 9->12->14->13->11",
+    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 6 via switches 8->12->14->13->10",
+    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 6 via switches 8->12->14->13->11",
+    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 6 via switches 10->13->14->12->9",
+    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 6 via switches 9->12->15->13->11",
+    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 6 via switches 11->13->14->12->9",
+    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 6 via switches 8->12->14->13->11",
     "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 6 via switches 11->13->14->12->9",
-    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 7 via switches 9->12->15->13->10",
-    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 7 via switches 9->12->15->13->10",
-    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 7 via switches 10->13->14->12->9",
-    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 7 via switches 9->12->14->13->11",
-    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 7 via switches 9->12->14->13->11",
-    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 7 via switches 10->13->14->12->9",
-    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 7 via switches 11->13->15->12->8",
-    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 7 via switches 8->12->15->13->10",
-    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 7 via switches 8->12->14->13->11",
-    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 7 via switches 11->13->14->12->9",
-    "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 7 via switches 11->13->14->12->9",
-    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 7 via switches 9->12->14->13->11",
-    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 7 via switches 10->13->15->12->8",
-    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 7 via switches 8->12->14->13->11",
-    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 7 via switches 11->13->15->12->8",
-    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 7 via switches 10->13->14->12->9",
-    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 7 via switches 9->12->14->13->11",
-    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 7 via switches 10->13->15->12->8",
+    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 6 via switches 9->12->14->13->11",
+    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 6 via switches 9->12->15->13->10",
+    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 6 via switches 10->13->15->12->8",
+    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 6 via switches 11->13->15->12->8",
+    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 6 via switches 8->12->15->13->11",
+    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 6 via switches 9->12->14->13->10",
+    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 6 via switches 10->13->14->12->8",
+    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 6 via switches 11->13->15->12->8",
+    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 6 via switches 10->13->15->12->8",
+    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 6 via switches 9->12->14->13->11",
+    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 6 via switches 8->12->14->13->10",
+    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 6 via switches 9->12->15->13->10",
+    "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 6 via switches 11->13->15->12->8",
+    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 6 via switches 8->12->15->13->11",
+    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 6 via switches 9->12->14->13->10",
     "Chunk 0 from 6 traveled over 6->0 with volume 0.125 in epoch 7 via switches 11->13->15->12->8",
-    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 7 via switches 8->12->14->13->11",
-    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 7 via switches 11->13->15->12->8",
-    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 7 via switches 8->12->15->13->10",
-    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 7 via switches 11->13->14->12->9",
-    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 7 via switches 11->13->14->12->9",
+    "Chunk 7 from 3 traveled over 3->7 with volume 0.125 in epoch 7 via switches 9->12->14->13->11",
+    "Chunk 7 from 2 traveled over 2->7 with volume 0.125 in epoch 7 via switches 9->12->15->13->11",
+    "Chunk 4 from 0 traveled over 0->4 with volume 0.125 in epoch 7 via switches 8->12->14->13->10",
+    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 7 via switches 8->12->15->13->11",
+    "Chunk 3 from 4 traveled over 4->3 with volume 0.125 in epoch 7 via switches 10->13->15->12->9",
     "Chunk 4 from 1 traveled over 1->4 with volume 0.125 in epoch 7 via switches 8->12->15->13->10",
-    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 7 via switches 10->13->15->12->8",
-    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 7 via switches 9->12->15->13->10",
-    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 7 via switches 10->13->14->12->9",
-    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 7 via switches 9->12->15->13->10",
+    "Chunk 0 from 4 traveled over 4->0 with volume 0.125 in epoch 7 via switches 10->13->14->12->8",
+    "Chunk 1 from 6 traveled over 6->1 with volume 0.125 in epoch 7 via switches 11->13->15->12->8",
+    "Chunk 2 from 5 traveled over 5->2 with volume 0.125 in epoch 7 via switches 10->13->14->12->9",
+    "Chunk 5 from 3 traveled over 3->5 with volume 0.125 in epoch 7 via switches 9->12->15->13->10",
+    "Chunk 3 from 7 traveled over 7->3 with volume 0.125 in epoch 7 via switches 11->13->14->12->9",
     "Chunk 5 from 1 traveled over 1->5 with volume 0.125 in epoch 7 via switches 8->12->15->13->10",
-    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 7 via switches 10->13->15->12->8",
-    "Chunk 6 from 0 traveled over 0->6 with volume 0.125 in epoch 7 via switches 8->12->14->13->11"
+    "Chunk 6 from 2 traveled over 2->6 with volume 0.125 in epoch 7 via switches 9->12->15->13->11",
+    "Chunk 6 from 1 traveled over 1->6 with volume 0.125 in epoch 7 via switches 8->12->14->13->11",
+    "Chunk 2 from 4 traveled over 4->2 with volume 0.125 in epoch 7 via switches 10->13->15->12->9",
+    "Chunk 0 from 5 traveled over 5->0 with volume 0.125 in epoch 7 via switches 10->13->15->12->8",
+    "Chunk 1 from 4 traveled over 4->1 with volume 0.125 in epoch 7 via switches 10->13->14->12->8",
+    "Chunk 7 from 1 traveled over 1->7 with volume 0.125 in epoch 7 via switches 8->12->14->13->11",
+    "Chunk 4 from 2 traveled over 2->4 with volume 0.125 in epoch 7 via switches 9->12->14->13->10",
+    "Chunk 0 from 7 traveled over 7->0 with volume 0.125 in epoch 7 via switches 11->13->15->12->8",
+    "Chunk 1 from 7 traveled over 7->1 with volume 0.125 in epoch 7 via switches 11->13->15->12->8",
+    "Chunk 5 from 2 traveled over 2->5 with volume 0.125 in epoch 7 via switches 9->12->14->13->10",
+    "Chunk 7 from 0 traveled over 0->7 with volume 0.125 in epoch 7 via switches 8->12->15->13->11",
+    "Chunk 2 from 6 traveled over 6->2 with volume 0.125 in epoch 7 via switches 11->13->14->12->9",
+    "Chunk 3 from 6 traveled over 6->3 with volume 0.125 in epoch 7 via switches 11->13->14->12->9",
+    "Chunk 6 from 3 traveled over 3->6 with volume 0.125 in epoch 7 via switches 9->12->14->13->11",
+    "Chunk 5 from 0 traveled over 0->5 with volume 0.125 in epoch 7 via switches 8->12->14->13->10",
+    "Chunk 4 from 3 traveled over 3->4 with volume 0.125 in epoch 7 via switches 9->12->15->13->10",
+    "Chunk 1 from 5 traveled over 5->1 with volume 0.125 in epoch 7 via switches 10->13->15->12->8",
+    "Chunk 3 from 5 traveled over 5->3 with volume 0.125 in epoch 7 via switches 10->13->14->12->9",
+    "Chunk 2 from 7 traveled over 7->2 with volume 0.125 in epoch 7 via switches 11->13->14->12->9"
   ],
   "8-Chunk paths": {
     "Demand at 0 for chunk 0 from 1 met by epoch 0": [
@@ -400,19 +400,19 @@
       [
         [
           0,
-          "4->0 with volume 0.125 in epoch 0 via switches 10->13->15->12->8"
+          "4->0 with volume 0.125 in epoch 0 via switches 10->13->14->12->8"
         ]
       ],
       [
         [
           1,
-          "4->0 with volume 0.125 in epoch 1 via switches 10->13->15->12->8"
+          "4->0 with volume 0.125 in epoch 1 via switches 10->13->14->12->8"
         ]
       ],
       [
         [
           2,
-          "4->0 with volume 0.125 in epoch 2 via switches 10->13->14->12->8"
+          "4->0 with volume 0.125 in epoch 2 via switches 10->13->15->12->8"
         ]
       ],
       [
@@ -442,7 +442,7 @@
       [
         [
           7,
-          "4->0 with volume 0.125 in epoch 7 via switches 10->13->15->12->8"
+          "4->0 with volume 0.125 in epoch 7 via switches 10->13->14->12->8"
         ]
       ]
     ],
@@ -462,7 +462,7 @@
       [
         [
           2,
-          "5->0 with volume 0.125 in epoch 2 via switches 10->13->15->12->8"
+          "5->0 with volume 0.125 in epoch 2 via switches 10->13->14->12->8"
         ]
       ],
       [
@@ -474,7 +474,7 @@
       [
         [
           4,
-          "5->0 with volume 0.125 in epoch 4 via switches 10->13->15->12->8"
+          "5->0 with volume 0.125 in epoch 4 via switches 10->13->14->12->8"
         ]
       ],
       [
@@ -660,19 +660,19 @@
       [
         [
           0,
-          "4->1 with volume 0.125 in epoch 0 via switches 10->13->15->12->8"
+          "4->1 with volume 0.125 in epoch 0 via switches 10->13->14->12->8"
         ]
       ],
       [
         [
           1,
-          "4->1 with volume 0.125 in epoch 1 via switches 10->13->15->12->8"
+          "4->1 with volume 0.125 in epoch 1 via switches 10->13->14->12->8"
         ]
       ],
       [
         [
           2,
-          "4->1 with volume 0.125 in epoch 2 via switches 10->13->14->12->8"
+          "4->1 with volume 0.125 in epoch 2 via switches 10->13->15->12->8"
         ]
       ],
       [
@@ -702,7 +702,7 @@
       [
         [
           7,
-          "4->1 with volume 0.125 in epoch 7 via switches 10->13->15->12->8"
+          "4->1 with volume 0.125 in epoch 7 via switches 10->13->14->12->8"
         ]
       ]
     ],
@@ -722,7 +722,7 @@
       [
         [
           2,
-          "5->1 with volume 0.125 in epoch 2 via switches 10->13->15->12->8"
+          "5->1 with volume 0.125 in epoch 2 via switches 10->13->14->12->8"
         ]
       ],
       [
@@ -734,7 +734,7 @@
       [
         [
           4,
-          "5->1 with volume 0.125 in epoch 4 via switches 10->13->15->12->8"
+          "5->1 with volume 0.125 in epoch 4 via switches 10->13->14->12->8"
         ]
       ],
       [
@@ -920,19 +920,19 @@
       [
         [
           0,
-          "4->2 with volume 0.125 in epoch 0 via switches 10->13->14->12->9"
+          "4->2 with volume 0.125 in epoch 0 via switches 10->13->15->12->9"
         ]
       ],
       [
         [
           1,
-          "4->2 with volume 0.125 in epoch 1 via switches 10->13->14->12->9"
+          "4->2 with volume 0.125 in epoch 1 via switches 10->13->15->12->9"
         ]
       ],
       [
         [
           2,
-          "4->2 with volume 0.125 in epoch 2 via switches 10->13->15->12->9"
+          "4->2 with volume 0.125 in epoch 2 via switches 10->13->14->12->9"
         ]
       ],
       [
@@ -962,7 +962,7 @@
       [
         [
           7,
-          "4->2 with volume 0.125 in epoch 7 via switches 10->13->14->12->9"
+          "4->2 with volume 0.125 in epoch 7 via switches 10->13->15->12->9"
         ]
       ]
     ],
@@ -982,7 +982,7 @@
       [
         [
           2,
-          "5->2 with volume 0.125 in epoch 2 via switches 10->13->14->12->9"
+          "5->2 with volume 0.125 in epoch 2 via switches 10->13->15->12->9"
         ]
       ],
       [
@@ -994,7 +994,7 @@
       [
         [
           4,
-          "5->2 with volume 0.125 in epoch 4 via switches 10->13->14->12->9"
+          "5->2 with volume 0.125 in epoch 4 via switches 10->13->15->12->9"
         ]
       ],
       [
@@ -1180,19 +1180,19 @@
       [
         [
           0,
-          "4->3 with volume 0.125 in epoch 0 via switches 10->13->14->12->9"
+          "4->3 with volume 0.125 in epoch 0 via switches 10->13->15->12->9"
         ]
       ],
       [
         [
           1,
-          "4->3 with volume 0.125 in epoch 1 via switches 10->13->14->12->9"
+          "4->3 with volume 0.125 in epoch 1 via switches 10->13->15->12->9"
         ]
       ],
       [
         [
           2,
-          "4->3 with volume 0.125 in epoch 2 via switches 10->13->15->12->9"
+          "4->3 with volume 0.125 in epoch 2 via switches 10->13->14->12->9"
         ]
       ],
       [
@@ -1222,7 +1222,7 @@
       [
         [
           7,
-          "4->3 with volume 0.125 in epoch 7 via switches 10->13->14->12->9"
+          "4->3 with volume 0.125 in epoch 7 via switches 10->13->15->12->9"
         ]
       ]
     ],
@@ -1242,7 +1242,7 @@
       [
         [
           2,
-          "5->3 with volume 0.125 in epoch 2 via switches 10->13->14->12->9"
+          "5->3 with volume 0.125 in epoch 2 via switches 10->13->15->12->9"
         ]
       ],
       [
@@ -1254,7 +1254,7 @@
       [
         [
           4,
-          "5->3 with volume 0.125 in epoch 4 via switches 10->13->14->12->9"
+          "5->3 with volume 0.125 in epoch 4 via switches 10->13->15->12->9"
         ]
       ],
       [
@@ -1380,13 +1380,13 @@
       [
         [
           0,
-          "0->4 with volume 0.125 in epoch 0 via switches 8->12->15->13->10"
+          "0->4 with volume 0.125 in epoch 0 via switches 8->12->14->13->10"
         ]
       ],
       [
         [
           1,
-          "0->4 with volume 0.125 in epoch 1 via switches 8->12->15->13->10"
+          "0->4 with volume 0.125 in epoch 1 via switches 8->12->14->13->10"
         ]
       ],
       [
@@ -1416,13 +1416,13 @@
       [
         [
           6,
-          "0->4 with volume 0.125 in epoch 6 via switches 8->12->15->13->10"
+          "0->4 with volume 0.125 in epoch 6 via switches 8->12->14->13->10"
         ]
       ],
       [
         [
           7,
-          "0->4 with volume 0.125 in epoch 7 via switches 8->12->15->13->10"
+          "0->4 with volume 0.125 in epoch 7 via switches 8->12->14->13->10"
         ]
       ]
     ],
@@ -1442,25 +1442,25 @@
       [
         [
           2,
-          "1->4 with volume 0.125 in epoch 2 via switches 8->12->15->13->10"
+          "1->4 with volume 0.125 in epoch 2 via switches 8->12->14->13->10"
         ]
       ],
       [
         [
           3,
-          "1->4 with volume 0.125 in epoch 3 via switches 8->12->15->13->10"
+          "1->4 with volume 0.125 in epoch 3 via switches 8->12->14->13->10"
         ]
       ],
       [
         [
           4,
-          "1->4 with volume 0.125 in epoch 4 via switches 8->12->15->13->10"
+          "1->4 with volume 0.125 in epoch 4 via switches 8->12->14->13->10"
         ]
       ],
       [
         [
           5,
-          "1->4 with volume 0.125 in epoch 5 via switches 8->12->15->13->10"
+          "1->4 with volume 0.125 in epoch 5 via switches 8->12->14->13->10"
         ]
       ],
       [
@@ -1480,13 +1480,13 @@
       [
         [
           0,
-          "2->4 with volume 0.125 in epoch 0 via switches 9->12->15->13->10"
+          "2->4 with volume 0.125 in epoch 0 via switches 9->12->14->13->10"
         ]
       ],
       [
         [
           1,
-          "2->4 with volume 0.125 in epoch 1 via switches 9->12->15->13->10"
+          "2->4 with volume 0.125 in epoch 1 via switches 9->12->14->13->10"
         ]
       ],
       [
@@ -1516,13 +1516,13 @@
       [
         [
           6,
-          "2->4 with volume 0.125 in epoch 6 via switches 9->12->15->13->10"
+          "2->4 with volume 0.125 in epoch 6 via switches 9->12->14->13->10"
         ]
       ],
       [
         [
           7,
-          "2->4 with volume 0.125 in epoch 7 via switches 9->12->15->13->10"
+          "2->4 with volume 0.125 in epoch 7 via switches 9->12->14->13->10"
         ]
       ]
     ],
@@ -1542,25 +1542,25 @@
       [
         [
           2,
-          "3->4 with volume 0.125 in epoch 2 via switches 9->12->15->13->10"
+          "3->4 with volume 0.125 in epoch 2 via switches 9->12->14->13->10"
         ]
       ],
       [
         [
           3,
-          "3->4 with volume 0.125 in epoch 3 via switches 9->12->15->13->10"
+          "3->4 with volume 0.125 in epoch 3 via switches 9->12->14->13->10"
         ]
       ],
       [
         [
           4,
-          "3->4 with volume 0.125 in epoch 4 via switches 9->12->15->13->10"
+          "3->4 with volume 0.125 in epoch 4 via switches 9->12->14->13->10"
         ]
       ],
       [
         [
           5,
-          "3->4 with volume 0.125 in epoch 5 via switches 9->12->15->13->10"
+          "3->4 with volume 0.125 in epoch 5 via switches 9->12->14->13->10"
         ]
       ],
       [
@@ -1640,13 +1640,13 @@
       [
         [
           0,
-          "0->5 with volume 0.125 in epoch 0 via switches 8->12->15->13->10"
+          "0->5 with volume 0.125 in epoch 0 via switches 8->12->14->13->10"
         ]
       ],
       [
         [
           1,
-          "0->5 with volume 0.125 in epoch 1 via switches 8->12->15->13->10"
+          "0->5 with volume 0.125 in epoch 1 via switches 8->12->14->13->10"
         ]
       ],
       [
@@ -1676,13 +1676,13 @@
       [
         [
           6,
-          "0->5 with volume 0.125 in epoch 6 via switches 8->12->15->13->10"
+          "0->5 with volume 0.125 in epoch 6 via switches 8->12->14->13->10"
         ]
       ],
       [
         [
           7,
-          "0->5 with volume 0.125 in epoch 7 via switches 8->12->15->13->10"
+          "0->5 with volume 0.125 in epoch 7 via switches 8->12->14->13->10"
         ]
       ]
     ],
@@ -1702,25 +1702,25 @@
       [
         [
           2,
-          "1->5 with volume 0.125 in epoch 2 via switches 8->12->15->13->10"
+          "1->5 with volume 0.125 in epoch 2 via switches 8->12->14->13->10"
         ]
       ],
       [
         [
           3,
-          "1->5 with volume 0.125 in epoch 3 via switches 8->12->15->13->10"
+          "1->5 with volume 0.125 in epoch 3 via switches 8->12->14->13->10"
         ]
       ],
       [
         [
           4,
-          "1->5 with volume 0.125 in epoch 4 via switches 8->12->15->13->10"
+          "1->5 with volume 0.125 in epoch 4 via switches 8->12->14->13->10"
         ]
       ],
       [
         [
           5,
-          "1->5 with volume 0.125 in epoch 5 via switches 8->12->15->13->10"
+          "1->5 with volume 0.125 in epoch 5 via switches 8->12->14->13->10"
         ]
       ],
       [
@@ -1740,13 +1740,13 @@
       [
         [
           0,
-          "2->5 with volume 0.125 in epoch 0 via switches 9->12->15->13->10"
+          "2->5 with volume 0.125 in epoch 0 via switches 9->12->14->13->10"
         ]
       ],
       [
         [
           1,
-          "2->5 with volume 0.125 in epoch 1 via switches 9->12->15->13->10"
+          "2->5 with volume 0.125 in epoch 1 via switches 9->12->14->13->10"
         ]
       ],
       [
@@ -1776,13 +1776,13 @@
       [
         [
           6,
-          "2->5 with volume 0.125 in epoch 6 via switches 9->12->15->13->10"
+          "2->5 with volume 0.125 in epoch 6 via switches 9->12->14->13->10"
         ]
       ],
       [
         [
           7,
-          "2->5 with volume 0.125 in epoch 7 via switches 9->12->15->13->10"
+          "2->5 with volume 0.125 in epoch 7 via switches 9->12->14->13->10"
         ]
       ]
     ],
@@ -1802,25 +1802,25 @@
       [
         [
           2,
-          "3->5 with volume 0.125 in epoch 2 via switches 9->12->15->13->10"
+          "3->5 with volume 0.125 in epoch 2 via switches 9->12->14->13->10"
         ]
       ],
       [
         [
           3,
-          "3->5 with volume 0.125 in epoch 3 via switches 9->12->15->13->10"
+          "3->5 with volume 0.125 in epoch 3 via switches 9->12->14->13->10"
         ]
       ],
       [
         [
           4,
-          "3->5 with volume 0.125 in epoch 4 via switches 9->12->15->13->10"
+          "3->5 with volume 0.125 in epoch 4 via switches 9->12->14->13->10"
         ]
       ],
       [
         [
           5,
-          "3->5 with volume 0.125 in epoch 5 via switches 9->12->15->13->10"
+          "3->5 with volume 0.125 in epoch 5 via switches 9->12->14->13->10"
         ]
       ],
       [
@@ -1900,13 +1900,13 @@
       [
         [
           0,
-          "0->6 with volume 0.125 in epoch 0 via switches 8->12->14->13->11"
+          "0->6 with volume 0.125 in epoch 0 via switches 8->12->15->13->11"
         ]
       ],
       [
         [
           1,
-          "0->6 with volume 0.125 in epoch 1 via switches 8->12->14->13->11"
+          "0->6 with volume 0.125 in epoch 1 via switches 8->12->15->13->11"
         ]
       ],
       [
@@ -1936,13 +1936,13 @@
       [
         [
           6,
-          "0->6 with volume 0.125 in epoch 6 via switches 8->12->14->13->11"
+          "0->6 with volume 0.125 in epoch 6 via switches 8->12->15->13->11"
         ]
       ],
       [
         [
           7,
-          "0->6 with volume 0.125 in epoch 7 via switches 8->12->14->13->11"
+          "0->6 with volume 0.125 in epoch 7 via switches 8->12->15->13->11"
         ]
       ]
     ],
@@ -1962,25 +1962,25 @@
       [
         [
           2,
-          "1->6 with volume 0.125 in epoch 2 via switches 8->12->14->13->11"
+          "1->6 with volume 0.125 in epoch 2 via switches 8->12->15->13->11"
         ]
       ],
       [
         [
           3,
-          "1->6 with volume 0.125 in epoch 3 via switches 8->12->14->13->11"
+          "1->6 with volume 0.125 in epoch 3 via switches 8->12->15->13->11"
         ]
       ],
       [
         [
           4,
-          "1->6 with volume 0.125 in epoch 4 via switches 8->12->14->13->11"
+          "1->6 with volume 0.125 in epoch 4 via switches 8->12->15->13->11"
         ]
       ],
       [
         [
           5,
-          "1->6 with volume 0.125 in epoch 5 via switches 8->12->14->13->11"
+          "1->6 with volume 0.125 in epoch 5 via switches 8->12->15->13->11"
         ]
       ],
       [
@@ -2000,13 +2000,13 @@
       [
         [
           0,
-          "2->6 with volume 0.125 in epoch 0 via switches 9->12->14->13->11"
+          "2->6 with volume 0.125 in epoch 0 via switches 9->12->15->13->11"
         ]
       ],
       [
         [
           1,
-          "2->6 with volume 0.125 in epoch 1 via switches 9->12->14->13->11"
+          "2->6 with volume 0.125 in epoch 1 via switches 9->12->15->13->11"
         ]
       ],
       [
@@ -2036,13 +2036,13 @@
       [
         [
           6,
-          "2->6 with volume 0.125 in epoch 6 via switches 9->12->14->13->11"
+          "2->6 with volume 0.125 in epoch 6 via switches 9->12->15->13->11"
         ]
       ],
       [
         [
           7,
-          "2->6 with volume 0.125 in epoch 7 via switches 9->12->14->13->11"
+          "2->6 with volume 0.125 in epoch 7 via switches 9->12->15->13->11"
         ]
       ]
     ],
@@ -2062,25 +2062,25 @@
       [
         [
           2,
-          "3->6 with volume 0.125 in epoch 2 via switches 9->12->14->13->11"
+          "3->6 with volume 0.125 in epoch 2 via switches 9->12->15->13->11"
         ]
       ],
       [
         [
           3,
-          "3->6 with volume 0.125 in epoch 3 via switches 9->12->14->13->11"
+          "3->6 with volume 0.125 in epoch 3 via switches 9->12->15->13->11"
         ]
       ],
       [
         [
           4,
-          "3->6 with volume 0.125 in epoch 4 via switches 9->12->14->13->11"
+          "3->6 with volume 0.125 in epoch 4 via switches 9->12->15->13->11"
         ]
       ],
       [
         [
           5,
-          "3->6 with volume 0.125 in epoch 5 via switches 9->12->14->13->11"
+          "3->6 with volume 0.125 in epoch 5 via switches 9->12->15->13->11"
         ]
       ],
       [
@@ -2160,13 +2160,13 @@
       [
         [
           0,
-          "0->7 with volume 0.125 in epoch 0 via switches 8->12->14->13->11"
+          "0->7 with volume 0.125 in epoch 0 via switches 8->12->15->13->11"
         ]
       ],
       [
         [
           1,
-          "0->7 with volume 0.125 in epoch 1 via switches 8->12->14->13->11"
+          "0->7 with volume 0.125 in epoch 1 via switches 8->12->15->13->11"
         ]
       ],
       [
@@ -2196,13 +2196,13 @@
       [
         [
           6,
-          "0->7 with volume 0.125 in epoch 6 via switches 8->12->14->13->11"
+          "0->7 with volume 0.125 in epoch 6 via switches 8->12->15->13->11"
         ]
       ],
       [
         [
           7,
-          "0->7 with volume 0.125 in epoch 7 via switches 8->12->14->13->11"
+          "0->7 with volume 0.125 in epoch 7 via switches 8->12->15->13->11"
         ]
       ]
     ],
@@ -2222,25 +2222,25 @@
       [
         [
           2,
-          "1->7 with volume 0.125 in epoch 2 via switches 8->12->14->13->11"
+          "1->7 with volume 0.125 in epoch 2 via switches 8->12->15->13->11"
         ]
       ],
       [
         [
           3,
-          "1->7 with volume 0.125 in epoch 3 via switches 8->12->14->13->11"
+          "1->7 with volume 0.125 in epoch 3 via switches 8->12->15->13->11"
         ]
       ],
       [
         [
           4,
-          "1->7 with volume 0.125 in epoch 4 via switches 8->12->14->13->11"
+          "1->7 with volume 0.125 in epoch 4 via switches 8->12->15->13->11"
         ]
       ],
       [
         [
           5,
-          "1->7 with volume 0.125 in epoch 5 via switches 8->12->14->13->11"
+          "1->7 with volume 0.125 in epoch 5 via switches 8->12->15->13->11"
         ]
       ],
       [
@@ -2260,13 +2260,13 @@
       [
         [
           0,
-          "2->7 with volume 0.125 in epoch 0 via switches 9->12->14->13->11"
+          "2->7 with volume 0.125 in epoch 0 via switches 9->12->15->13->11"
         ]
       ],
       [
         [
           1,
-          "2->7 with volume 0.125 in epoch 1 via switches 9->12->14->13->11"
+          "2->7 with volume 0.125 in epoch 1 via switches 9->12->15->13->11"
         ]
       ],
       [
@@ -2296,13 +2296,13 @@
       [
         [
           6,
-          "2->7 with volume 0.125 in epoch 6 via switches 9->12->14->13->11"
+          "2->7 with volume 0.125 in epoch 6 via switches 9->12->15->13->11"
         ]
       ],
       [
         [
           7,
-          "2->7 with volume 0.125 in epoch 7 via switches 9->12->14->13->11"
+          "2->7 with volume 0.125 in epoch 7 via switches 9->12->15->13->11"
         ]
       ]
     ],
@@ -2322,25 +2322,25 @@
       [
         [
           2,
-          "3->7 with volume 0.125 in epoch 2 via switches 9->12->14->13->11"
+          "3->7 with volume 0.125 in epoch 2 via switches 9->12->15->13->11"
         ]
       ],
       [
         [
           3,
-          "3->7 with volume 0.125 in epoch 3 via switches 9->12->14->13->11"
+          "3->7 with volume 0.125 in epoch 3 via switches 9->12->15->13->11"
         ]
       ],
       [
         [
           4,
-          "3->7 with volume 0.125 in epoch 4 via switches 9->12->14->13->11"
+          "3->7 with volume 0.125 in epoch 4 via switches 9->12->15->13->11"
         ]
       ],
       [
         [
           5,
-          "3->7 with volume 0.125 in epoch 5 via switches 9->12->14->13->11"
+          "3->7 with volume 0.125 in epoch 5 via switches 9->12->15->13->11"
         ]
       ],
       [
@@ -2418,5 +2418,5 @@
     ]
   },
   "9-Chunk_Size": 1,
-  "Solver_Time": 0.873786211013794
+  "Solver_Time": 0.6473293304443359
 }
