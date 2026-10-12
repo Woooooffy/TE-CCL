@@ -400,6 +400,74 @@ class AllGatherFormulation(BaseFormulation):
         logging.debug(
             f'Finished adding capacity constraints in {time.time() - start}')
 
+    def switch_acyclicity_constraints(self) -> None:
+        """
+            Forbid same-epoch switch cut-through CYCLES of any length. Only needed when
+            switches BOTH cut through AND copy (see the guard below).
+
+            The switch flow constraint (node_constraint_helper, switch branch) is pure
+            flow *conservation*, and a cut-through leg relays within the SAME epoch
+            (alpha_num_back == 0). Conservation is satisfied by a circulation with zero
+            external injection, so the solver can route chunk (s, c) around a same-epoch
+            switch loop (e.g. T0->T1->T0) that no GPU ever fed. Under switch_copy the egress
+            is `max(outgoing)`, so that one circulating unit can ALSO be copied to a real
+            delivery -- the loop then satisfies a demand that is physically unrealizable
+            (nothing produces the chunk at any switch within the epoch). See
+            diagnose_switch_phantom_cycles / dfs_remove_unnecessary_flows.
+
+            Fix: an MTZ ordering per (source, chunk, epoch). Give each cut-through-fabric
+            switch v a continuous potential u[s][v][c][k] in [1, N] and require, for every
+            switch->switch flow that is 1, u[a] < u[b]. A directed cycle would need a value
+            strictly less than itself, so no same-epoch switch cycle of ANY length can exist,
+            while a legitimate same-epoch multi-hop cut-through chain (GPU->a->b->GPU') is
+            still allowed -- it just has strictly increasing potential. A chunk genuinely
+            sent one direction never needs to complete a same-epoch loop, so this removes no
+            realizable optimum. Potentials are created lazily, only for (s, c, k) that carry
+            a switch->switch flow, keeping the added model small.
+        """
+        # Needed only when switches BOTH cut through and copy:
+        #  - without cut-through (switch_pipeline), a switch->switch hop advances the epoch,
+        #    so no same-epoch cycle can form at all;
+        #  - without copy, the switch egress is pure sum-conservation (Sum out <= Sum in,
+        #    like the LP): a same-epoch circulation cancels and CANNOT feed a delivery, so it
+        #    is a benign/removable waste loop that the backtracking extractor routes around
+        #    (and prunes) -- no constraint required.
+        # Only the copy (max-egress) case lets a circulation manufacture an ungrounded
+        # delivery, which is the physically-unrealizable phantom this constraint forbids.
+        if not (self.user_input.instance.switch_pipeline and self.user_input.instance.switch_copy):
+            return
+        switches = set(self.topology.switch_indices)
+        ss_links = [(a, b) for a in switches for b in switches
+                    if a != b and self.topology.capacity[a][b] > 0]
+        fabric = sorted({v for link in ss_links for v in link})
+        if len(fabric) < 2:
+            # No switch<->switch pair -> no same-epoch switch cycle is possible.
+            return
+        logging.debug('Adding switch acyclicity (MTZ) constraints')
+        start = time.time()
+        N = len(fabric)
+        order = {}
+
+        def order_var(s: int, v: int, c: int, k: int) -> gp.Var:
+            key = (s, v, c, k)
+            if key not in order:
+                order[key] = self.model.addVar(
+                    1, N, vtype=GRB.CONTINUOUS,
+                    name='switch_order_%d_%d_%d_%d' % (s, v, c, k))
+            return order[key]
+
+        for s, c, k in product(self.sources, self.chunks, self.epochs):
+            for (a, b) in ss_links:
+                f = self.flow[s][a][b][c][k]
+                if not isinstance(f, gp.Var):
+                    continue
+                # f == 1  =>  u[a] - u[b] <= -1  (u[a] < u[b]); f == 0 leaves it slack.
+                self.model.addConstr(
+                    order_var(s, a, c, k) - order_var(s, b, c, k) + N * f <= N - 1,
+                    name="switch_acyc_s_%d_a_%d_b_%d_c_%d_k_%d" % (s, a, b, c, k))
+        logging.debug(
+            f'Finished adding switch acyclicity constraints in {time.time() - start}')
+
     def use_one_less_epoch(self) -> None:
         """
            Constraints to find the solution using one less epoch than the input number of epochs.
@@ -619,6 +687,7 @@ class AllGatherFormulation(BaseFormulation):
         self.node_constraints(previous_buffers)
         self.forward_dwell_constraints()
         self.capacity_constraints()
+        self.switch_acyclicity_constraints()
         if use_one_less_epoch:
             self.use_one_less_epoch()
         if self.user_input.instance.symmetry:
@@ -1048,7 +1117,11 @@ class AllGatherFormulation(BaseFormulation):
 
     def get_schedule(self) -> Tuple[List[Tuple[int, int, int, int, int]], Dict]:
         if self.model.SolCount > 0:
-            self.diagnose_switch_phantom_cycles()
+            if self.user_input.instance.debug:
+                # Phantom cycles are made infeasible by switch_acyclicity_constraints when
+                # switch_pipeline+switch_copy are on, so this is normally a no-op; run it only
+                # under debug to confirm/locate any (e.g. if that constraint is disabled).
+                self.diagnose_switch_phantom_cycles()
             if not self.required_flows:
                 self.required_flows, self.flows_str_info = self.dfs_remove_unnecessary_flows(
                     astar=False)
