@@ -522,9 +522,11 @@ def _realize_pacing_gates(gpus, pacing_gates):
     redundant. (For ``depends`` that drop is also done downstream by nop expansion; doing it
     here keeps both kinds symmetric and keeps a redundant edge from reaching the cycle check.)
 
-    ``_finish_before_start_gates`` emits at most one edge per consumer key, so a send carries
-    at most one gate -- which is what the single ``netdepid``/``netdeps`` pair, and equally the
-    single ``remotedep``/``remotedeps`` pair, can express.
+    ``_finish_before_start_gates`` emits at most one LOCAL edge ('send' or 'recv') and at most
+    one 'remote' edge per consumer key, so a send carries at most one gate per carrier -- which
+    is what the single ``netdepid``/``netdeps`` pair, and equally the single
+    ``remotedep``/``remotedeps`` pair, can express. The two coexist on one send when the local
+    edge is a best-effort fallback for a runtime that ignores the remote one.
     Several sends in ONE threadblock may each carry their own gate; that is an ordinary
     schedule and is not reduced here. Requires ``op.block_rbid`` to be assigned already;
     ``op.idx`` is read later, at XML emission. A ``send`` edge must therefore run before nop
@@ -1243,7 +1245,14 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     # Generate the XML structure
     algo_elem = ET.Element('algo')
     algo_elem.set('name', "taccl")
-    algo_elem.set('nchannels', str(1 + max(max(tb.channel for tb in gpu.threadblocks) for gpu in gpus.values())))
+    # `default=-1` on the inner max: a rank can legitimately have NO threadblocks. Under partial
+    # participation the collective spans only the contributing GPUs while the rank space spans the
+    # whole machine (so GPU ids keep their topology indices), and a GPU that neither contributes
+    # data nor relays for anyone has no ops at all. It contributes no channel, so -1 drops it out
+    # of the maximum; the <gpu> element below still emits, with no <tb> children, which is the
+    # correct description of an idle rank. With every rank busy this is unchanged.
+    algo_elem.set('nchannels', str(1 + max(max((tb.channel for tb in gpu.threadblocks), default=-1)
+                                           for gpu in gpus.values())))
     if old_format:
         algo_elem.set('nchunksperloop', str(max(max(gpu.input_chunks, gpu.output_chunks) for gpu in gpus.values())))
         algo_elem.set('proto', "Simple")
@@ -1362,6 +1371,15 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
                 # notification from that rank"), and the far end's recv carries the matching
                 # remotenotify. Both attributes are omitted when unused, so a schedule derived
                 # without remote gates emits byte-identical XML.
+                # NOTE FOR RUNTIME READERS: a send carrying remotedep may ALSO carry a local
+                # fallback gate for runtimes that ignore remotedep (see
+                # _finish_before_start_gates). A reader should honor just ONE of the two: a
+                # P4-aware runtime takes remotedep and may skip netdepid on that send -- when
+                # both are present, netdepid is always the fallback, and it lands earlier, so it
+                # adds nothing. A stock runtime reads netdepid and ignores remotedep. A 'recv'
+                # fallback rides depid instead, alongside real data dependencies, so depid must
+                # always be honored; it too lands no later than remotedep, so waiting on it is
+                # harmless.
                 if op.remote_dep is not None:
                     producer, ordinal = op.remote_dep
                     assert op.is_send and not producer.is_send, (
