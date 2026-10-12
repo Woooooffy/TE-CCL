@@ -985,6 +985,25 @@ def _place_tree_route(route: "_CoarseRoute", identity: Identity, first_egress_gp
 
     Returns the per-leg (egress GPU, ingress GPU) tuple.
     """
+    def forward_room(outbound: "_CoarsePiece") -> Dict[int, float]:
+        """Per-epoch uplink room left on each gateway of a forwarded leg, over its whole window."""
+        gateways = [g for g, _cap in _leg_gateways(outbound, mapping, fine_topology)]
+        out_cap = _egress_epoch_capacity(outbound, gateways, mapping, fine_topology,
+                                         epoch_duration)
+        return {g: out_cap[g] - max(egress_ledger.get((g, outbound.egress_neighbor, e), 0.0)
+                                    for e in range(outbound.send_epoch,
+                                                   outbound.send_epoch + outbound.occupancy))
+                for g in gateways}
+
+    def land(leg, candidates, preferred, what):
+        in_cap = _ingress_epoch_capacity(leg, candidates, mapping, fine_topology, epoch_duration)
+        # Per-epoch volume: a leg occupying n epochs uses 1/n of its link in each (the MILP's
+        # windowed capacity constraint), so that is what the per-epoch ledgers are charged.
+        [(landed, _v)] = _pick_ingress(leg, candidates, identity, volume / leg.occupancy,
+                                       preferred, in_cap, ingress_ledger, tol=tol, what=what,
+                                       allow_split=False)
+        return landed
+
     placed: List[Tuple[int, int]] = []
     egress_gpu = first_egress_gpu
     for i, leg in enumerate(route.legs):
@@ -1001,18 +1020,36 @@ def _place_tree_route(route: "_CoarseRoute", identity: Identity, first_egress_gp
         else:
             candidates = list(_leg_ingress_candidates(leg, mapping))
             if is_last:
-                preferred = set(target_gpus)
+                landed = land(leg, candidates, set(target_gpus), "ingress")
             else:
-                # Land where the bytes can be re-sent without a relay, when there is such a GPU.
-                preferred = set(_bridging_gpus(leg.dst_cell, leg, outbound, mapping))
-            in_cap = _ingress_epoch_capacity(leg, candidates, mapping, fine_topology,
-                                             epoch_duration)
-            # Per-epoch volume: a leg occupying n epochs uses 1/n of its link in each (the MILP's
-            # windowed capacity constraint), so that is what the per-epoch ledgers are charged.
-            [(landed, _v)] = _pick_ingress(leg, candidates, identity, volume / leg.occupancy,
-                                           preferred, in_cap, ingress_ledger, tol=tol,
-                                           what="ingress" if is_last else "transit",
-                                           allow_split=False)
+                # A transit GPU must LAND the bytes and then SEND them on, so co-location needs a
+                # bridging GPU with room on BOTH sides -- chosen jointly, as the LP's
+                # _place_downstream_legs does with `room_limit`. Choosing on ingress room alone
+                # can land on a bridge whose uplink is already full while another bridge has room,
+                # and then the only way out is a relay the dwell may not allow.
+                bridging = _bridging_gpus(leg.dst_cell, leg, outbound, mapping)
+                room = forward_room(outbound)
+                per_epoch = volume / outbound.occupancy
+                joint = [g for g in bridging if room.get(g, 0.0) >= per_epoch - tol]
+                landed = None
+                if joint:
+                    try:
+                        landed = land(leg, joint, set(), "transit")
+                    except RuntimeError:
+                        landed = None            # no joint bridge has ingress room either
+                if landed is None:
+                    if outbound.send_epoch < leg.arrival_epoch + 2:
+                        raise RuntimeError(
+                            f"cell {leg.dst_cell} must forward identity {identity} in epoch "
+                            f"{outbound.send_epoch}, one epoch after it lands (arrival "
+                            f"{leg.arrival_epoch}), so it must land on a GPU that can also send "
+                            f"it -- but no bridging GPU {bridging} has room on both its ingress "
+                            f"and its uplink toward coarse neighbor {outbound.egress_neighbor} "
+                            f"(uplink room {room}). The coarse level sees only the cell's "
+                            f"AGGREGATE link capacity, so it can co-locate more forwarding than "
+                            f"any single GPU's links carry.")
+                    # The dwell leaves an epoch for a relay: land anywhere, relay to a gateway.
+                    landed = land(leg, candidates, set(bridging), "transit")
             placed_legs[key] = (egress_gpu, landed)
         placed.append((egress_gpu, landed))
         if is_last:
@@ -1022,14 +1059,9 @@ def _place_tree_route(route: "_CoarseRoute", identity: Identity, first_egress_gp
         if out_key in placed_legs:
             egress_gpu = placed_legs[out_key][0]
             continue
-        gateways = [g for g, _cap in _leg_gateways(outbound, mapping, fine_topology)]
-        out_cap = _egress_epoch_capacity(outbound, gateways, mapping, fine_topology,
-                                         epoch_duration)
+        room = forward_room(outbound)
+        gateways = sorted(room)
         per_epoch = volume / outbound.occupancy
-        room = {g: out_cap[g] - max(egress_ledger.get((g, outbound.egress_neighbor, e), 0.0)
-                                    for e in range(outbound.send_epoch,
-                                                   outbound.send_epoch + outbound.occupancy))
-                for g in gateways}
         if landed in room and room[landed] >= per_epoch - tol:
             egress_gpu = landed                     # co-located: no intra-cell work
         elif outbound.send_epoch >= leg.arrival_epoch + 2:

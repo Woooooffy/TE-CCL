@@ -177,6 +177,40 @@ def test_shared_leg_once():
           "co-located forward")
 
 
+def test_transit_lands_where_it_can_forward():
+    """Regression for the mini_2gpu_2nic remote failure (2026-10-12).
+
+    Both GPUs of a mini_2gpu_2nic host hang off the SAME leaf, so either can land a chunk from
+    the leaf and re-send it to the leaf -- co-location is possible on both. The landing used to be
+    chosen on ingress room alone: it picked gpu 6 although gpu 6's uplink was already full in the
+    forwarding epoch, then found it could not forward and gpu 7 (which had room) would need a relay
+    the one-epoch dwell does not allow. The landing must be chosen JOINTLY with the outgoing room,
+    exactly as the LP's _place_downstream_legs does with `room_limit`.
+    """
+    from teccl.hierarchy.reconstruct import _place_tree_route, snap_tolerance
+    from teccl.topologies.dsl_topology import DslTopology
+
+    topo = DslTopology(TopologyParams(
+        name="Mini2GPU2NIC", chunk_size=1,
+        topo_file="teccl/topologies/topology-dsl-frontend/examples/mini_2gpu_2nic.topo"))
+    _coarse, mapping = abstract(topo)
+    leaf0, leaf1, sp0 = 4, 5, 6
+    f = mapping.coarse_passthrough
+    assert mapping.boundary_gpu[(3, leaf1)] == [6, 7], mapping.boundary_gpu
+    # identity (0, 0): cell 0 -> leaf0 -> spine -> leaf1 -> cell 3, then cell 3 -> leaf1 -> cell 2
+    into3 = _leg(0, 3, leaf0, leaf1, (f[leaf0], f[sp0], f[leaf1]), 0)
+    out3 = _leg(3, 2, leaf1, leaf1, (f[leaf1],), 1)
+    route = _CoarseRoute(origin=(0, 2), legs=(into3, out3), volume=1.0)
+    epoch = 0.16                                   # 12.5 GB/s fine uplink -> 2 chunks / epoch
+    egress_ledger = {(6, leaf1, 1): 2.0}           # gpu 6's uplink is full in the forward epoch
+    placed = _place_tree_route(route, (0, 0), 0, 1.0, {4, 5}, mapping, topo, epoch, {},
+                               egress_ledger, tol=snap_tolerance(), placed_legs={})
+    assert placed[0] == (0, 7) and placed[1][0] == 7, (
+        f"must land on gpu 7, the bridging GPU with room to forward, and forward from it: {placed}")
+    assert egress_ledger[(7, leaf1, 1)] == 1.0, egress_ledger
+    print("  [4b] transit landing chosen jointly with the forward's uplink room (gpu 7, not 6)")
+
+
 def test_occupancy_pacing():
     scale = ChunkScale(bytes_per_chunk=1.0, num_chunks=1)
     assert _piece_rate(1.0, scale, 0.01) == 100.0
@@ -276,6 +310,7 @@ if __name__ == "__main__":
     test_count_demand()
     test_uncrossed()
     test_shared_leg_once()
+    test_transit_lands_where_it_can_forward()
     test_occupancy_pacing()
     test_level_policy()
     if "--no-gurobi" not in sys.argv:
