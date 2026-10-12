@@ -39,7 +39,7 @@ from teccl.hierarchy.reconstruct import (
     Identity, _Assignment, _CoarsePiece, _CoarseRoute, _Hop, _Slot, _TierWeights,
     _commit_egress, _egress_epoch_capacity, _leg_gateways, _leg_ingress_candidates,
     _legs_of_hops, _place_decisions, _validate_route, identity_sets, resolve_max_denom,
-    snap_tolerance)
+    send_group, snap_tolerance)
 from teccl.topologies.topology import Topology
 
 logger = logging.getLogger(__name__)
@@ -221,14 +221,17 @@ def extract_trees(milp, mapping: HierarchyMapping, demand: PreservingDemand) -> 
 # ------------------------------------------------------------------------------------------------
 # M4: integral identity resolution
 # ------------------------------------------------------------------------------------------------
-def _first_legs(routes: Dict[int, _CoarseRoute]) -> List[_CoarsePiece]:
-    """The distinct legs leaving the tree's root cell (a cell may copy to several neighbours)."""
-    out: List[_CoarsePiece] = []
+def _first_legs(routes: Dict[int, _CoarseRoute]) -> Dict[_CoarsePiece, List[_CoarsePiece]]:
+    """The physical sends leaving the tree's root cell, each as {representative leg: every leg it
+    starts}. A cell may copy to several neighbours (several groups), and under switch copy one
+    send may start several legs (one group, several members) -- see `send_group`."""
+    groups: Dict[Tuple[int, int, int], List[_CoarsePiece]] = {}
     for v in sorted(routes):
         leg = routes[v].first
-        if leg not in out:
-            out.append(leg)
-    return out
+        members = groups.setdefault(send_group(leg), [])
+        if leg not in members:
+            members.append(leg)
+    return {members[0]: members for members in groups.values()}
 
 
 def _window(leg: _CoarsePiece) -> range:
@@ -255,7 +258,10 @@ def _solve_integral_assignment(cell: int, groups: Sequence[MilpGroup], trees: Tr
     transportation structure; the instances are one cell's identities, so they are tiny. One MIP
     per CELL, not per group, because all of a cell's groups share its uplinks.
 
-    Returns identity -> (column, {first leg: gateway}).
+    A first leg is one per physical SEND (`send_group`): under switch copy several legs of a tree
+    can start with the same send, and they get one gateway and one capacity charge between them.
+
+    Returns identity -> (column, {first leg: gateway}), with every leg of a send group listed.
     """
     from scipy.optimize import Bounds, LinearConstraint, milp
     from scipy.sparse import lil_matrix
@@ -344,7 +350,8 @@ def _solve_integral_assignment(cell: int, groups: Sequence[MilpGroup], trees: Tr
     for (d, c, leg, gw), j in z_index.items():
         if x[j] > 0.5:
             assert out[d][0] == c
-            out[d][1][leg] = gw
+            for member in first[(cell, c)][leg]:
+                out[d][1][member] = gw
     return out
 
 
@@ -382,9 +389,9 @@ def assign_identities_integral(trees: Trees, demand: PreservingDemand, mapping: 
             for d in g.identities:
                 c, gws = chosen[d]
                 for leg, gw in gws.items():
-                    if (d, leg) in committed:
-                        continue
-                    committed.add((d, leg))
+                    if (d, send_group(leg)) in committed:
+                        continue                      # one send, several legs (switch copy)
+                    committed.add((d, send_group(leg)))
                     for e in _window(leg):
                         _commit_egress(replace(leg, send_epoch=e), gw, 1.0 / leg.occupancy, d,
                                        mapping, fine_topology, epoch_duration, egress_ledger, tol)

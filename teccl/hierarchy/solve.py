@@ -308,14 +308,6 @@ def gurobi_level_solver(problem: Subproblem, ctx: LevelContext, mapping, demand_
     # default (TECCLSolver._resolve_formulation: ALLGATHER -> MILP), which is how a hierarchical
     # allgather that never named a formulation used to land on the MILP's weighted-demand failure.
     ui.instance.formulation = formulation
-    if formulation == Formulation.MILP and ui.instance.switch_copy:
-        # The stitch emits merged per-(sender, receiver) records, so a switch fanning one uplink
-        # send out to several cells would be charged to the uplink once per receiver -- and real
-        # NCCL has no switch multicast. Copy at a CELL (the MILP's max_ over a node's out-links)
-        # is unaffected and is the copy that matters here.
-        logger.warning("level depth=%d: switch_copy forced off for the MILP (switch fan-out "
-                       "cannot be lowered); copy at cells is kept", problem.depth)
-        ui.instance.switch_copy = False
     # num_chunks is irrelevant with a demand_override in place -- BaseFormulation reads the injected
     # tensor and sets num_chunks from it -- but a level below the root must not inherit the root's
     # output path, or each one would overwrite the last.

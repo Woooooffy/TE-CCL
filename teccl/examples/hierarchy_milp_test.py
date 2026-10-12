@@ -211,6 +211,40 @@ def test_transit_lands_where_it_can_forward():
     print("  [4b] transit landing chosen jointly with the forward's uplink room (gpu 7, not 6)")
 
 
+def test_switch_copy_send_charged_once():
+    """Under switch copy one send can start several legs of a tree (send_group): host B, whose
+    single uplink g4 -> T0 carries ONE chunk per epoch, sends each identity once and T0 copies it
+    to A and to C. Charged per leg, every epoch would need two chunks on g4 -- infeasible. Charged
+    per send it fits exactly, and the two legs share the gateway and the ledger entry.
+    """
+    topo, _coarse, mapping = _hetero()
+    A, B, C, T0 = 0, 1, 2, 3
+    t0 = mapping.coarse_passthrough[T0]
+    trees = {(B, col): {A: _CoarseRoute(origin=(B, A), legs=(_leg(B, A, T0, T0, (t0,), col),),
+                                        volume=1.0),
+                        C: _CoarseRoute(origin=(B, C), legs=(_leg(B, C, T0, T0, (t0,), col),),
+                                        volume=1.0)}
+             for col in range(4)}
+    ids = [(g, 0) for g in range(4, 8)]
+    demand = PreservingDemand(tensor=[], b=1, policy="fine", groups=[
+        MilpGroup(cell=B, dest_cells=(A, C), identities=ids, holders={d: d[0] for d in ids},
+                  columns=[0, 1, 2, 3])])
+    fine = build_demand(Collective.ALLGATHER, topo, 1)
+    epoch = 0.02                                   # g4's 50 GB/s uplink -> 1 chunk per epoch
+    assignments, targets, ep = assign_identities_integral(trees, demand, mapping, fine, topo,
+                                                          epoch_duration=epoch)
+    for d in ids:
+        gws = {a.egress_gpu for a in assignments if a.identity == d}
+        assert gws == {4}, f"{d}: both legs of one send leave through g4, got {gws}"
+    res = build_child_problems(assignments, targets, mapping, fine, topo, ep, copy_aware=True)
+    assert res.copy_aware and res.subdivision == 1
+    for k in range(4):
+        sends = [p for p in res.pieces if p.egress_gpu == 4 and p.send_epoch == k]
+        assert len(sends) == 2 and len({p.identity for p in sends}) == 1, (
+            f"epoch {k}: one identity, two legs (to A and C) through T0: {sends}")
+    print("  [4c] switch copy: one send starts two legs -- one gateway, charged once (g4 at 100%)")
+
+
 def test_occupancy_pacing():
     scale = ChunkScale(bytes_per_chunk=1.0, num_chunks=1)
     assert _piece_rate(1.0, scale, 0.01) == 100.0
@@ -257,12 +291,12 @@ def test_level_policy():
     print("  [5] hierarchical default LP; per-level formulation / chunking lists resolve by depth")
 
 
-def _ui(coll, chunking):
+def _ui(coll, chunking, switch_copy=False):
     ui = UserInputParams()
     ui.instance = InstanceParams(
         collective=coll, formulation=Formulation.MILP, num_chunks=1,
         epoch_type=EpochType.SLOWEST_LINK, objective_type=ObjectiveType.PAPER,
-        solution_method=SolutionMethod.ONE_SHOT, switch_copy=False, milp_chunking=chunking,
+        solution_method=SolutionMethod.ONE_SHOT, switch_copy=switch_copy, milp_chunking=chunking,
         schedule_output_file=os.path.join(tempfile.mkdtemp(), "coarse.json"))
     ui.gurobi.output_flag = 0
     return ui
@@ -274,16 +308,20 @@ def test_end_to_end():
 
     # (topology, collective, policy, chunks per source per destination). The num_chunks=2 holder
     # case is the one whose bundle is b = 2, so it is what exercises the level RESCALE.
-    for cls, coll, chunking, nc in [(BridgedIslandsCluster, Collective.ALLGATHER, "holder", 1),
-                                    (BridgedIslandsSplitCluster, Collective.ALLGATHER, "holder", 1),
-                                    (BridgedIslandsSplitCluster, Collective.ALLGATHER, "holder", 2),
-                                    (BridgedIslandsCluster, Collective.ALLTOALL, "cell", 1),
-                                    (BridgedIslandsSplitCluster, Collective.ALLTOALL, "cell", 1)]:
+    # The last case turns switch copy ON: HeteroTaperedCluster's T0/T1 can fan one send out to
+    # several hosts, which the assignment, the rate check and the stitch must charge once.
+    for cls, coll, chunking, nc, copy in [
+            (BridgedIslandsCluster, Collective.ALLGATHER, "holder", 1, False),
+            (BridgedIslandsSplitCluster, Collective.ALLGATHER, "holder", 1, False),
+            (BridgedIslandsSplitCluster, Collective.ALLGATHER, "holder", 2, False),
+            (BridgedIslandsCluster, Collective.ALLTOALL, "cell", 1, False),
+            (BridgedIslandsSplitCluster, Collective.ALLTOALL, "cell", 1, False),
+            (HeteroTaperedCluster, Collective.ALLGATHER, "cell", 1, True)]:
         topo = cls(TopologyParams(name=cls.__name__, chunk_size=1))
         n = len(topo.capacity) - len(topo.switch_indices)
-        tag = f"{cls.__name__}/{coll.name.lower()}/{chunking}/{nc}chunks"
+        tag = f"{cls.__name__}/{coll.name.lower()}/{chunking}/{nc}chunks" + ("/copy" if copy else "")
         try:
-            info, sol = solve_hierarchical(topo, _ui(coll, chunking), coll,
+            info, sol = solve_hierarchical(topo, _ui(coll, chunking, copy), coll,
                                            nc if coll == Collective.ALLGATHER else n * nc)
         except Exception as e:                     # gurobipy is imported lazily by the solve
             if "size-limited license" in str(e):
@@ -311,6 +349,7 @@ if __name__ == "__main__":
     test_uncrossed()
     test_shared_leg_once()
     test_transit_lands_where_it_can_forward()
+    test_switch_copy_send_charged_once()
     test_occupancy_pacing()
     test_level_policy()
     if "--no-gurobi" not in sys.argv:

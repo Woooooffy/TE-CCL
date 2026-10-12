@@ -49,6 +49,22 @@ alltoall) instead of the LP. Branch `hierarchical-milp`, cut from
 >   windowed `_assert_rate_within_capacity` backstops. SLOWEST_LINK avoids it (occupancy 1).
 > * The LP half of cell-relay step 5 is still open.
 >
+> **Update 2026-10-12, switch copy:**
+> * The switch-copy gate at MILP levels is REMOVED; `switch_copy` is honored.
+> * The rule everything follows is `reconstruct.send_group`: one chunk's legs that leave a cell
+>   toward the same switch in the same epoch are ONE send, because the MILP's flow on a link in
+>   an epoch is one binary. Such legs share a gateway, are charged once by the integral
+>   assignment, the forwarding ledger, `_assert_rate_within_capacity` and
+>   `flat_schedule.assert_link_capacity` (copy-aware levels only; the LP still counts per piece).
+>   `IdentityResolution.copy_aware` carries the semantics to the stitch.
+> * The MTZ switch-acyclicity constraint (folded from `forbid-same-epoch-switch-cycles`) stops
+>   copy + cut-through from conjuring chunks out of same-epoch switch loops.
+> * Verified: hetero allgather with copy runs end to end through `check_implements`, with 3
+>   coarse fan-outs; an independent link count is within capacity when a fan-out is counted once.
+> * OPEN (step 2): the flat JSON still has one record per branch, and ncclize lowers each to its
+>   own send, so a fan-out puts its uplink at 200% on hardware. This is identical to the flat
+>   MILP's output, so one output-representation fix covers both.
+>
 > The original 2026-10-03 plan follows unchanged. Where it and the bullets above disagree, the
 > bullets win.
 
@@ -236,7 +252,7 @@ it cannot trace (`allgather.py:822`, a phantom same-epoch switch cycle) and only
 logs a warning. That is tolerable for a flat run. In the hierarchy it is a
 silently missing delivery, so the adapter must turn it into an error.
 
-### 2.4 `switch_copy=False` at every hierarchical MILP level
+### 2.4 `switch_copy=False` at every hierarchical MILP level *(superseded 2026-10-12: switch copy is honored, see status)*
 
 A switch fan-out shows up as one uplink send and several deliveries. The stitch
 emits merged per-(sender, receiver) records `via switches`, so it would charge

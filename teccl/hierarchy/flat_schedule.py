@@ -360,20 +360,31 @@ def serialize(records: Sequence[DeliveryRecord],
 # Orchestration
 # ----------------------------------------------------------------------------------------------
 def assert_link_capacity(records: Sequence[DeliveryRecord], fine_topology: Topology,
-                         coarse_epoch: float, scale: ChunkScale) -> None:
+                         coarse_epoch: float, scale: ChunkScale,
+                         one_copy_per_link: bool = False) -> None:
     """Per fine link per COARSE epoch, the network traffic must fit the link.
 
     Only network records are checked: they are the ones the coarse solve made a capacity promise
     about, and the intra flows are certified separately by the phase-3 round bound (`rounds <= m`),
     which is the same statement in the NVSwitch's own units.
+
+    `one_copy_per_link` (a copy-aware level, IdentityResolution.copy_aware): records of the same
+    sub-identity on the same link in the same epoch are the branches of one switch-copy fan-out
+    and share that hop, so the link carries them once.
     """
     load: Dict[Tuple[int, int, int], float] = defaultdict(float)
+    counted = set()
     for r in records:
         if r.phase != NETWORK:
             continue
         gb = r.volume * scale.bytes_per_chunk
-        load[(r.sender, r.via_switches[0], r.epoch)] += gb
-        load[(r.via_switches[-1], r.receiver, r.completion)] += gb
+        for key in ((r.sender, r.via_switches[0], r.epoch),
+                    (r.via_switches[-1], r.receiver, r.completion)):
+            if one_copy_per_link:
+                if (r.identity, key) in counted:
+                    continue
+                counted.add((r.identity, key))
+            load[key] += gb
     over = [(a, b, k, round(v, 4), round(fine_topology.capacity[a][b] * coarse_epoch, 4))
             for (a, b, k), v in sorted(load.items())
             if v > fine_topology.capacity[a][b] * coarse_epoch + 1e-9]
@@ -518,7 +529,8 @@ def build_flat_schedule(res: IdentityResolution, intra_flows: Sequence[IntraFlow
     assert_bands_fit(intra_flows, m, num_coarse_epochs)
 
     records, W = build_records(res, intra_flows, m)
-    assert_link_capacity(records, fine_topology, coarse_epoch, scale=res.scale)
+    assert_link_capacity(records, fine_topology, coarse_epoch, scale=res.scale,
+                         one_copy_per_link=getattr(res, "copy_aware", False))
     paths = back_trace(records, fine_demand, res.subdivision)
 
     # Network-layer pacing residuals (paced sends neither clock can pin). Reported, not fatal.

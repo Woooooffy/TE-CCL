@@ -179,6 +179,11 @@ class IdentityResolution:
     # which stays the un-refined root value. See teccl/hierarchy/scale.py.
     scale: Optional[ChunkScale] = None
     subdivision: int = 1              # the Q that was applied (1 == no refinement)
+    # Whether the level that produced these pieces keeps ONE copy of a chunk and fans it out (the
+    # MILP): pieces of one sub-identity that share a fine link in an epoch -- the legs of a
+    # switch-copy fan-out -- are then a single transfer, and every capacity check downstream must
+    # count them once. False for the LP, whose same-identity pieces are separate flows.
+    copy_aware: bool = False
 
 
 # --------------------------------------------------------------------------------------------
@@ -954,6 +959,18 @@ def _place_downstream_legs(route: "_CoarseRoute", identity: Identity, first_egre
     return [(placed, vol) for placed, vol, _ in frags]
 
 
+def send_group(leg: "_CoarsePiece") -> Tuple[int, int, int]:
+    """The physical send a leg starts with: (sending cell, egress switch, send epoch).
+
+    The MILP's flow on a link in an epoch is ONE binary per chunk, so all legs of one chunk's tree
+    that leave a cell toward the same switch in the same epoch begin with the SAME transfer -- the
+    switch then fans it out (switch copy). They must share a gateway GPU and be charged to its
+    uplink once. Without switch copy a switch forwards one copy per copy received, so every group
+    is a single leg and nothing below changes.
+    """
+    return (leg.src_cell, leg.egress_neighbor, leg.send_epoch)
+
+
 def _place_tree_route(route: "_CoarseRoute", identity: Identity, first_egress_gpu: int,
                       volume: float, target_gpus: AbstractSet[int],
                       mapping: HierarchyMapping, fine_topology: Topology, epoch_duration: float,
@@ -1059,6 +1076,13 @@ def _place_tree_route(route: "_CoarseRoute", identity: Identity, first_egress_gp
         if out_key in placed_legs:
             egress_gpu = placed_legs[out_key][0]
             continue
+        # Under switch copy, another out-leg of this tree may already have made the SAME send
+        # (same cell, egress switch and epoch -- see send_group). It is one transfer: same
+        # gateway, already charged to the ledger.
+        group_key = ("send", identity, send_group(outbound))
+        if group_key in placed_legs:
+            egress_gpu = placed_legs[group_key]
+            continue
         room = forward_room(outbound)
         gateways = sorted(room)
         per_epoch = volume / outbound.occupancy
@@ -1084,6 +1108,7 @@ def _place_tree_route(route: "_CoarseRoute", identity: Identity, first_egress_gp
         for e in range(outbound.send_epoch, outbound.send_epoch + outbound.occupancy):
             _commit_egress(replace(outbound, send_epoch=e), egress_gpu, per_epoch, identity,
                            mapping, fine_topology, epoch_duration, egress_ledger, tol)
+        placed_legs[group_key] = egress_gpu
     return tuple(placed)
 
 
@@ -1542,7 +1567,7 @@ def _piece_rate(volume: float, scale: ChunkScale, coarse_epoch: float, occupancy
 
 
 def _assert_rate_within_capacity(result: IdentityResolution, fine_topology: Topology,
-                                 coarse_epoch: float) -> None:
+                                 coarse_epoch: float, one_copy_per_link: bool = False) -> None:
     """Per fine link per coarse epoch, the paced rates must fit the link bandwidth.
 
     This is the capacity guarantee the coarse solve was entitled to assume, re-expressed in
@@ -1555,6 +1580,10 @@ def _assert_rate_within_capacity(result: IdentityResolution, fine_topology: Topo
     egress: Dict[Tuple[int, int, int], float] = defaultdict(float)
     ingress: Dict[Tuple[int, int, int], float] = defaultdict(float)
     bytes_per_chunk = result.scale.bytes_per_chunk if result.scale else None
+    # `one_copy_per_link` (copy-aware levels): two pieces of the SAME sub-identity on the same
+    # fine link in the same epoch are one transfer -- the legs of a switch-copy fan-out share
+    # their first hop. Never for the LP, whose same-identity pieces are separate flows it paid for.
+    counted = set()
     for p in result.pieces:
         if p.rate is None:
             continue
@@ -1565,8 +1594,14 @@ def _assert_rate_within_capacity(result: IdentityResolution, fine_topology: Topo
         if bytes_per_chunk:
             span = max(1, ceil(p.volume * bytes_per_chunk / (p.rate * coarse_epoch) - 1e-9))
         for e in range(span):
-            egress[(p.egress_gpu, p.via_switches[0], p.send_epoch + e)] += p.rate
-            ingress[(p.via_switches[-1], p.ingress_gpu, p.arrival_epoch - e)] += p.rate
+            out_key = (p.egress_gpu, p.via_switches[0], p.send_epoch + e)
+            in_key = (p.via_switches[-1], p.ingress_gpu, p.arrival_epoch - e)
+            if not one_copy_per_link or (p.identity, "out", out_key) not in counted:
+                egress[out_key] += p.rate
+                counted.add((p.identity, "out", out_key))
+            if not one_copy_per_link or (p.identity, "in", in_key) not in counted:
+                ingress[in_key] += p.rate
+                counted.add((p.identity, "in", in_key))
     over = []
     for (a, b, k), rate in sorted(egress.items()) + sorted(ingress.items()):
         bw = fine_topology.capacity[a][b]
@@ -1982,12 +2017,14 @@ def build_child_problems(assignments: Sequence[_Assignment],
             raise AssertionError(f"a copy-aware level refined by Q={q}; its volumes are whole "
                                  f"identities, so a shared leg's pieces would not be identical")
         result.pieces = list(dict.fromkeys(result.pieces))
+    result.copy_aware = copy_aware
     result.scale = refined
     result.subdivision = q
     _coalesce_egress(result)
     _emit_self_distribution(result, fine_demand, mapping, q, relabel=relabel)
     _dedup_deliveries(result)
-    _assert_rate_within_capacity(result, fine_topology, epoch_duration)
+    _assert_rate_within_capacity(result, fine_topology, epoch_duration,
+                                 one_copy_per_link=copy_aware)
     return result
 
 
