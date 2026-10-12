@@ -9,7 +9,7 @@
   "6-Demand_Met": {
     "GPU 0": {
       "GPU 1": {
-        "Chunk 0": 0.12,
+        "Chunk 0": 0.04,
         "Chunk 1": 0.08
       },
       "GPU 2": {
@@ -20,12 +20,12 @@
     },
     "GPU 1": {
       "GPU 0": {
-        "Chunk 0": 0.04,
+        "Chunk 0": 0.2,
         "Chunk 1": 0.08
       },
       "GPU 2": {
-        "Chunk 0": 0.2,
-        "Chunk 1": 0.16,
+        "Chunk 0": 0.16,
+        "Chunk 1": 0.04,
         "Chunk 2": 0.12
       }
     },
@@ -35,55 +35,54 @@
         "Chunk 1": 0.04
       },
       "GPU 1": {
-        "Chunk 0": 0.08,
-        "Chunk 1": 0.04
+        "Chunk 0": 0.04,
+        "Chunk 1": 0.08
       }
     }
   },
   "7-Flows": [
-    "Chunk 0 from 2 traveled over 2->0 in epoch 0 via switches 4",
-    "Chunk 1 from 2 traveled over 2->0 in epoch 0 via switches 3",
-    "Chunk 1 from 0 traveled over 0->2 in epoch 0 via switches 3",
+    "Chunk 1 from 2 traveled over 2->0 in epoch 0 via switches 4",
+    "Chunk 0 from 1 traveled over 1->0 in epoch 0 via switches 3",
+    "Chunk 0 from 1 traveled over 1->2 in epoch 0 via switches 3",
+    "Chunk 1 from 0 traveled over 0->2 in epoch 0 via switches 4",
     "Chunk 0 from 0 traveled over 0->2 in epoch 0 via switches 4",
-    "Chunk 0 from 0 traveled over 0->1 in epoch 0 via switches 3",
-    "Chunk 2 from 2 traveled over 2->0 in epoch 0 via switches 3",
-    "Chunk 1 from 1 traveled over 1->2 in epoch 0 via switches 3 -> 4",
+    "Chunk 1 from 2 traveled over 2->1 in epoch 0 via switches 4 -> 3",
+    "Chunk 0 from 2 traveled over 2->0 in epoch 0 via switches 4",
+    "Chunk 2 from 2 traveled over 2->0 in epoch 0 via switches 4 -> 3",
+    "Chunk 1 from 1 traveled over 1->2 in epoch 1 via switches 3",
+    "Chunk 1 from 1 traveled over 1->0 in epoch 1 via switches 3",
     "Chunk 1 from 0 traveled over 0->1 in epoch 1 via switches 3",
-    "Chunk 0 from 1 traveled over 1->2 in epoch 1 via switches 3 -> 4",
-    "Chunk 1 from 1 traveled over 2->0 in epoch 1 via switches 4 -> 3",
-    "Chunk 0 from 1 traveled over 1->0 in epoch 2 via switches 3",
     "Chunk 2 from 2 traveled over 2->1 in epoch 2 via switches 3",
-    "Chunk 1 from 2 traveled over 2->1 in epoch 3 via switches 3",
-    "Chunk 0 from 2 traveled over 2->1 in epoch 4 via switches 3"
+    "Chunk 0 from 2 traveled over 2->1 in epoch 3 via switches 3",
+    "Chunk 0 from 0 traveled over 0->1 in epoch 4 via switches 3"
   ],
   "8-Chunk paths": {
-    "Demand at 0 for chunk 0 from 1 met by epoch 2": [
-      "1->0 in epoch 2 via switches 3"
+    "Demand at 0 for chunk 0 from 1 met by epoch 0": [
+      "1->0 in epoch 0 via switches 3"
     ],
     "Demand at 0 for chunk 0 from 2 met by epoch 0": [
       "2->0 in epoch 0 via switches 4"
     ],
     "Demand at 0 for chunk 1 from 1 met by epoch 1": [
-      "1->2 in epoch 0 via switches 3 -> 4",
-      "2->0 in epoch 1 via switches 4 -> 3"
+      "1->0 in epoch 1 via switches 3"
     ],
     "Demand at 0 for chunk 1 from 2 met by epoch 0": [
-      "2->0 in epoch 0 via switches 3"
+      "2->0 in epoch 0 via switches 4"
     ],
     "Demand at 0 for chunk 2 from 2 met by epoch 0": [
-      "2->0 in epoch 0 via switches 3"
+      "2->0 in epoch 0 via switches 4 -> 3"
     ],
-    "Demand at 1 for chunk 0 from 0 met by epoch 0": [
-      "0->1 in epoch 0 via switches 3"
+    "Demand at 1 for chunk 0 from 0 met by epoch 4": [
+      "0->1 in epoch 4 via switches 3"
     ],
-    "Demand at 1 for chunk 0 from 2 met by epoch 4": [
-      "2->1 in epoch 4 via switches 3"
+    "Demand at 1 for chunk 0 from 2 met by epoch 3": [
+      "2->1 in epoch 3 via switches 3"
     ],
     "Demand at 1 for chunk 1 from 0 met by epoch 1": [
       "0->1 in epoch 1 via switches 3"
     ],
-    "Demand at 1 for chunk 1 from 2 met by epoch 3": [
-      "2->1 in epoch 3 via switches 3"
+    "Demand at 1 for chunk 1 from 2 met by epoch 0": [
+      "2->1 in epoch 0 via switches 4 -> 3"
     ],
     "Demand at 1 for chunk 2 from 2 met by epoch 2": [
       "2->1 in epoch 2 via switches 3"
@@ -91,16 +90,16 @@
     "Demand at 2 for chunk 0 from 0 met by epoch 0": [
       "0->2 in epoch 0 via switches 4"
     ],
-    "Demand at 2 for chunk 0 from 1 met by epoch 1": [
-      "1->2 in epoch 1 via switches 3 -> 4"
+    "Demand at 2 for chunk 0 from 1 met by epoch 0": [
+      "1->2 in epoch 0 via switches 3"
     ],
     "Demand at 2 for chunk 1 from 0 met by epoch 0": [
-      "0->2 in epoch 0 via switches 3"
+      "0->2 in epoch 0 via switches 4"
     ],
-    "Demand at 2 for chunk 1 from 1 met by epoch 0": [
-      "1->2 in epoch 0 via switches 3 -> 4"
+    "Demand at 2 for chunk 1 from 1 met by epoch 1": [
+      "1->2 in epoch 1 via switches 3"
     ]
   },
   "9-Chunk_Size": 2,
-  "Solver_Time": 0.14936184883117676
+  "Solver_Time": 0.2121906280517578
 }

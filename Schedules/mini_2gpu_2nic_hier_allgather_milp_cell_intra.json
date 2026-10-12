@@ -46,7 +46,7 @@
   {
     "cell": 0,
     "identity": [
-      6,
+      2,
       0
     ],
     "sender": 0,
@@ -54,6 +54,94 @@
     "via_switch": 8,
     "volume": 1.0,
     "band": 1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 1,
+    "receiver": 0,
+    "via_switch": 8,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 0,
+    "receiver": 1,
+    "via_switch": 8,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 1,
+    "receiver": 0,
+    "via_switch": 8,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 0,
+    "receiver": 1,
+    "via_switch": 8,
+    "volume": 1.0,
+    "band": 2,
     "local_round": 0,
     "span": 1,
     "identities": [
@@ -71,12 +159,12 @@
       7,
       0
     ],
-    "sender": 1,
-    "receiver": 0,
+    "sender": 0,
+    "receiver": 1,
     "via_switch": 8,
     "volume": 1.0,
-    "band": 1,
-    "local_round": 0,
+    "band": 2,
+    "local_round": 1,
     "span": 1,
     "identities": [
       [
@@ -88,94 +176,6 @@
     "hard": false
   },
   {
-    "cell": 0,
-    "identity": [
-      4,
-      0
-    ],
-    "sender": 0,
-    "receiver": 1,
-    "via_switch": 8,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        4,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      2,
-      0
-    ],
-    "sender": 1,
-    "receiver": 0,
-    "via_switch": 8,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        2,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      5,
-      0
-    ],
-    "sender": 0,
-    "receiver": 1,
-    "via_switch": 8,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        5,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      3,
-      0
-    ],
-    "sender": 1,
-    "receiver": 0,
-    "via_switch": 8,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        3,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
     "cell": 1,
     "identity": [
       2,
@@ -217,72 +217,6 @@
       ]
     ],
     "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      4,
-      0
-    ],
-    "sender": 2,
-    "receiver": 3,
-    "via_switch": 9,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        4,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      5,
-      0
-    ],
-    "sender": 3,
-    "receiver": 2,
-    "via_switch": 9,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        5,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      6,
-      0
-    ],
-    "sender": 2,
-    "receiver": 3,
-    "via_switch": 9,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        6,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
     "hard": false
   },
   {
@@ -291,11 +225,11 @@
       0,
       0
     ],
-    "sender": 3,
-    "receiver": 2,
+    "sender": 2,
+    "receiver": 3,
     "via_switch": 9,
     "volume": 1.0,
-    "band": 2,
+    "band": 1,
     "local_round": 0,
     "span": 1,
     "identities": [
@@ -310,14 +244,58 @@
   {
     "cell": 1,
     "identity": [
-      7,
+      6,
+      0
+    ],
+    "sender": 3,
+    "receiver": 2,
+    "via_switch": 9,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      1,
       0
     ],
     "sender": 2,
     "receiver": 3,
     "via_switch": 9,
     "volume": 1.0,
-    "band": 2,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 3,
+    "receiver": 2,
+    "via_switch": 9,
+    "volume": 1.0,
+    "band": 1,
     "local_round": 1,
     "span": 1,
     "identities": [
@@ -332,11 +310,33 @@
   {
     "cell": 1,
     "identity": [
-      1,
+      4,
       0
     ],
-    "sender": 3,
-    "receiver": 2,
+    "sender": 2,
+    "receiver": 3,
+    "via_switch": 9,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 2,
+    "receiver": 3,
     "via_switch": 9,
     "volume": 1.0,
     "band": 2,
@@ -344,7 +344,7 @@
     "span": 1,
     "identities": [
       [
-        1,
+        5,
         0
       ]
     ],
@@ -420,7 +420,7 @@
   {
     "cell": 2,
     "identity": [
-      3,
+      6,
       0
     ],
     "sender": 5,
@@ -429,6 +429,28 @@
     "volume": 1.0,
     "band": 1,
     "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 10,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
     "span": 1,
     "identities": [
       [
@@ -442,6 +464,28 @@
   {
     "cell": 2,
     "identity": [
+      7,
+      0
+    ],
+    "sender": 5,
+    "receiver": 4,
+    "via_switch": 10,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
       0,
       0
     ],
@@ -464,28 +508,6 @@
   {
     "cell": 2,
     "identity": [
-      6,
-      0
-    ],
-    "sender": 5,
-    "receiver": 4,
-    "via_switch": 10,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        6,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
       1,
       0
     ],
@@ -499,28 +521,6 @@
     "identities": [
       [
         1,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      7,
-      0
-    ],
-    "sender": 5,
-    "receiver": 4,
-    "via_switch": 10,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        7,
         0
       ]
     ],
@@ -569,50 +569,6 @@
       ]
     ],
     "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 3,
-    "identity": [
-      0,
-      0
-    ],
-    "sender": 6,
-    "receiver": 7,
-    "via_switch": 11,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        0,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 3,
-    "identity": [
-      1,
-      0
-    ],
-    "sender": 7,
-    "receiver": 6,
-    "via_switch": 11,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        1,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
     "hard": false
   },
   {
@@ -625,7 +581,7 @@
     "receiver": 7,
     "via_switch": 11,
     "volume": 1.0,
-    "band": 2,
+    "band": 1,
     "local_round": 0,
     "span": 1,
     "identities": [
@@ -647,7 +603,7 @@
     "receiver": 6,
     "via_switch": 11,
     "volume": 1.0,
-    "band": 2,
+    "band": 1,
     "local_round": 0,
     "span": 1,
     "identities": [
@@ -669,7 +625,7 @@
     "receiver": 7,
     "via_switch": 11,
     "volume": 1.0,
-    "band": 2,
+    "band": 1,
     "local_round": 1,
     "span": 1,
     "identities": [
@@ -691,12 +647,56 @@
     "receiver": 6,
     "via_switch": 11,
     "volume": 1.0,
-    "band": 2,
+    "band": 1,
     "local_round": 1,
     "span": 1,
     "identities": [
       [
         5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 3,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 6,
+    "receiver": 7,
+    "via_switch": 11,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 3,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 6,
+    "receiver": 7,
+    "via_switch": 11,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        1,
         0
       ]
     ],

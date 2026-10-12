@@ -24,10 +24,10 @@
         0,
         0
       ],
-      "egress_gpu": 0,
-      "ingress_gpu": 8,
+      "egress_gpu": 1,
+      "ingress_gpu": 11,
       "via_switches": [
-        17
+        18
       ],
       "volume": 1.0,
       "send_epoch": 0,
@@ -47,8 +47,8 @@
         17
       ],
       "volume": 1.0,
-      "send_epoch": 0,
-      "arrival_epoch": 0,
+      "send_epoch": 4,
+      "arrival_epoch": 4,
       "rate": 25.0
     },
     {
@@ -81,8 +81,8 @@
         17
       ],
       "volume": 1.0,
-      "send_epoch": 0,
-      "arrival_epoch": 0,
+      "send_epoch": 4,
+      "arrival_epoch": 4,
       "rate": 25.0
     },
     {
@@ -126,7 +126,41 @@
         3,
         0
       ],
-      "egress_gpu": 0,
+      "egress_gpu": 1,
+      "ingress_gpu": 11,
+      "via_switches": [
+        18
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 1,
+      "dst_cell": 0,
+      "identity": [
+        4,
+        0
+      ],
+      "egress_gpu": 4,
+      "ingress_gpu": 0,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 1,
+      "dst_cell": 2,
+      "identity": [
+        4,
+        0
+      ],
+      "egress_gpu": 4,
       "ingress_gpu": 8,
       "via_switches": [
         17
@@ -140,7 +174,7 @@
       "src_cell": 1,
       "dst_cell": 0,
       "identity": [
-        4,
+        5,
         0
       ],
       "egress_gpu": 4,
@@ -149,26 +183,8 @@
         17
       ],
       "volume": 1.0,
-      "send_epoch": 2,
-      "arrival_epoch": 2,
-      "rate": 25.0
-    },
-    {
-      "src_cell": 1,
-      "dst_cell": 2,
-      "identity": [
-        4,
-        0
-      ],
-      "egress_gpu": 4,
-      "ingress_gpu": 11,
-      "via_switches": [
-        17,
-        18
-      ],
-      "volume": 1.0,
-      "send_epoch": 1,
-      "arrival_epoch": 1,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
       "rate": 25.0
     },
     {
@@ -179,10 +195,9 @@
         0
       ],
       "egress_gpu": 4,
-      "ingress_gpu": 11,
+      "ingress_gpu": 8,
       "via_switches": [
-        17,
-        18
+        17
       ],
       "volume": 1.0,
       "send_epoch": 0,
@@ -190,16 +205,15 @@
       "rate": 25.0
     },
     {
-      "src_cell": 2,
+      "src_cell": 1,
       "dst_cell": 0,
       "identity": [
-        5,
+        6,
         0
       ],
-      "egress_gpu": 11,
+      "egress_gpu": 4,
       "ingress_gpu": 0,
       "via_switches": [
-        18,
         17
       ],
       "volume": 1.0,
@@ -215,27 +229,8 @@
         0
       ],
       "egress_gpu": 4,
-      "ingress_gpu": 11,
+      "ingress_gpu": 8,
       "via_switches": [
-        17,
-        18
-      ],
-      "volume": 1.0,
-      "send_epoch": 0,
-      "arrival_epoch": 0,
-      "rate": 25.0
-    },
-    {
-      "src_cell": 2,
-      "dst_cell": 0,
-      "identity": [
-        6,
-        0
-      ],
-      "egress_gpu": 11,
-      "ingress_gpu": 0,
-      "via_switches": [
-        18,
         17
       ],
       "volume": 1.0,
@@ -256,8 +251,8 @@
         17
       ],
       "volume": 1.0,
-      "send_epoch": 2,
-      "arrival_epoch": 2,
+      "send_epoch": 1,
+      "arrival_epoch": 1,
       "rate": 25.0
     },
     {
@@ -268,10 +263,9 @@
         0
       ],
       "egress_gpu": 4,
-      "ingress_gpu": 11,
+      "ingress_gpu": 8,
       "via_switches": [
-        17,
-        18
+        17
       ],
       "volume": 1.0,
       "send_epoch": 1,
@@ -285,9 +279,10 @@
         8,
         0
       ],
-      "egress_gpu": 8,
+      "egress_gpu": 13,
       "ingress_gpu": 0,
       "via_switches": [
+        18,
         17
       ],
       "volume": 1.0,
@@ -319,10 +314,10 @@
         9,
         0
       ],
-      "egress_gpu": 8,
-      "ingress_gpu": 0,
+      "egress_gpu": 11,
+      "ingress_gpu": 1,
       "via_switches": [
-        17
+        18
       ],
       "volume": 1.0,
       "send_epoch": 0,
@@ -353,9 +348,10 @@
         10,
         0
       ],
-      "egress_gpu": 8,
+      "egress_gpu": 11,
       "ingress_gpu": 0,
       "via_switches": [
+        18,
         17
       ],
       "volume": 1.0,
@@ -376,8 +372,8 @@
         17
       ],
       "volume": 1.0,
-      "send_epoch": 3,
-      "arrival_epoch": 3,
+      "send_epoch": 2,
+      "arrival_epoch": 2,
       "rate": 25.0
     },
     {
@@ -410,8 +406,8 @@
         17
       ],
       "volume": 1.0,
-      "send_epoch": 4,
-      "arrival_epoch": 4,
+      "send_epoch": 3,
+      "arrival_epoch": 3,
       "rate": 25.0
     },
     {
@@ -421,10 +417,10 @@
         12,
         0
       ],
-      "egress_gpu": 8,
-      "ingress_gpu": 0,
+      "egress_gpu": 11,
+      "ingress_gpu": 1,
       "via_switches": [
-        17
+        18
       ],
       "volume": 1.0,
       "send_epoch": 0,
@@ -438,14 +434,15 @@
         12,
         0
       ],
-      "egress_gpu": 8,
+      "egress_gpu": 11,
       "ingress_gpu": 4,
       "via_switches": [
+        18,
         17
       ],
       "volume": 1.0,
-      "send_epoch": 2,
-      "arrival_epoch": 2,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
       "rate": 25.0
     },
     {
@@ -472,18 +469,35 @@
         13,
         0
       ],
-      "egress_gpu": 8,
+      "egress_gpu": 13,
       "ingress_gpu": 4,
       "via_switches": [
+        18,
         17
       ],
       "volume": 1.0,
-      "send_epoch": 4,
-      "arrival_epoch": 4,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
       "rate": 25.0
     }
   ],
   "intra_demands": [
+    {
+      "cell": 0,
+      "kind": "egress_stage",
+      "identity": [
+        0,
+        0
+      ],
+      "src_gpu": 0,
+      "dst_gpus": [
+        1
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0,
+      "release_band": null,
+      "hard": null
+    },
     {
       "cell": 0,
       "kind": "egress_stage",
@@ -496,7 +510,7 @@
         0
       ],
       "volume": 1.0,
-      "deadline_epoch": 0,
+      "deadline_epoch": 4,
       "release_band": null,
       "hard": null
     },
@@ -512,7 +526,7 @@
         0
       ],
       "volume": 1.0,
-      "deadline_epoch": 0,
+      "deadline_epoch": 4,
       "release_band": null,
       "hard": null
     },
@@ -544,9 +558,25 @@
         0
       ],
       "volume": 1.0,
+      "deadline_epoch": 1,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 0,
+      "kind": "egress_stage",
+      "identity": [
+        3,
+        0
+      ],
+      "src_gpu": 3,
+      "dst_gpus": [
+        1
+      ],
+      "volume": 1.0,
       "deadline_epoch": 0,
       "release_band": null,
-      "hard": true
+      "hard": null
     },
     {
       "cell": 1,
@@ -576,7 +606,7 @@
         4
       ],
       "volume": 1.0,
-      "deadline_epoch": 0,
+      "deadline_epoch": 1,
       "release_band": null,
       "hard": true
     },
@@ -600,6 +630,38 @@
       "cell": 2,
       "kind": "egress_stage",
       "identity": [
+        8,
+        0
+      ],
+      "src_gpu": 8,
+      "dst_gpus": [
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 2,
+      "kind": "egress_stage",
+      "identity": [
+        9,
+        0
+      ],
+      "src_gpu": 9,
+      "dst_gpus": [
+        11
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 2,
+      "kind": "egress_stage",
+      "identity": [
         9,
         0
       ],
@@ -608,9 +670,25 @@
         8
       ],
       "volume": 1.0,
+      "deadline_epoch": 3,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 2,
+      "kind": "egress_stage",
+      "identity": [
+        10,
+        0
+      ],
+      "src_gpu": 10,
+      "dst_gpus": [
+        11
+      ],
+      "volume": 1.0,
       "deadline_epoch": 0,
       "release_band": null,
-      "hard": true
+      "hard": null
     },
     {
       "cell": 2,
@@ -624,9 +702,9 @@
         8
       ],
       "volume": 1.0,
-      "deadline_epoch": 0,
+      "deadline_epoch": 2,
       "release_band": null,
-      "hard": true
+      "hard": null
     },
     {
       "cell": 2,
@@ -640,7 +718,7 @@
         8
       ],
       "volume": 1.0,
-      "deadline_epoch": 4,
+      "deadline_epoch": 3,
       "release_band": null,
       "hard": null
     },
@@ -653,7 +731,7 @@
       ],
       "src_gpu": 12,
       "dst_gpus": [
-        8
+        11
       ],
       "volume": 1.0,
       "deadline_epoch": 0,
@@ -661,15 +739,58 @@
       "hard": true
     },
     {
-      "cell": 2,
-      "kind": "egress_stage",
+      "cell": 1,
+      "kind": "ingress_distribution",
       "identity": [
-        13,
+        0,
         0
       ],
-      "src_gpu": 13,
+      "src_gpu": 4,
       "dst_gpus": [
-        8
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 1,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 2,
+      "kind": "ingress_distribution",
+      "identity": [
+        0,
+        0
+      ],
+      "src_gpu": 11,
+      "dst_gpus": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        1,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
       ],
       "volume": 1.0,
       "deadline_epoch": 4,
@@ -677,65 +798,6 @@
       "hard": null
     },
     {
-      "cell": 1,
-      "kind": "ingress_distribution",
-      "identity": [
-        0,
-        0
-      ],
-      "src_gpu": 4,
-      "dst_gpus": [
-        4,
-        5,
-        6,
-        7
-      ],
-      "volume": 1.0,
-      "deadline_epoch": 1,
-      "release_band": null,
-      "hard": null
-    },
-    {
-      "cell": 2,
-      "kind": "ingress_distribution",
-      "identity": [
-        0,
-        0
-      ],
-      "src_gpu": 8,
-      "dst_gpus": [
-        8,
-        9,
-        10,
-        11,
-        12,
-        13
-      ],
-      "volume": 1.0,
-      "deadline_epoch": 0,
-      "release_band": null,
-      "hard": null
-    },
-    {
-      "cell": 1,
-      "kind": "ingress_distribution",
-      "identity": [
-        1,
-        0
-      ],
-      "src_gpu": 4,
-      "dst_gpus": [
-        4,
-        5,
-        6,
-        7
-      ],
-      "volume": 1.0,
-      "deadline_epoch": 0,
-      "release_band": null,
-      "hard": null
-    },
-    {
       "cell": 2,
       "kind": "ingress_distribution",
       "identity": [
@@ -771,7 +833,7 @@
         7
       ],
       "volume": 1.0,
-      "deadline_epoch": 0,
+      "deadline_epoch": 4,
       "release_band": null,
       "hard": null
     },
@@ -822,6 +884,46 @@
         3,
         0
       ],
+      "src_gpu": 11,
+      "dst_gpus": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        4,
+        0
+      ],
+      "src_gpu": 0,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 2,
+      "kind": "ingress_distribution",
+      "identity": [
+        4,
+        0
+      ],
       "src_gpu": 8,
       "dst_gpus": [
         8,
@@ -840,46 +942,6 @@
       "cell": 0,
       "kind": "ingress_distribution",
       "identity": [
-        4,
-        0
-      ],
-      "src_gpu": 0,
-      "dst_gpus": [
-        0,
-        1,
-        2,
-        3
-      ],
-      "volume": 1.0,
-      "deadline_epoch": 2,
-      "release_band": null,
-      "hard": null
-    },
-    {
-      "cell": 2,
-      "kind": "ingress_distribution",
-      "identity": [
-        4,
-        0
-      ],
-      "src_gpu": 11,
-      "dst_gpus": [
-        8,
-        9,
-        10,
-        11,
-        12,
-        13
-      ],
-      "volume": 1.0,
-      "deadline_epoch": 1,
-      "release_band": null,
-      "hard": null
-    },
-    {
-      "cell": 0,
-      "kind": "ingress_distribution",
-      "identity": [
         5,
         0
       ],
@@ -891,7 +953,7 @@
         3
       ],
       "volume": 1.0,
-      "deadline_epoch": 1,
+      "deadline_epoch": 0,
       "release_band": null,
       "hard": null
     },
@@ -902,7 +964,7 @@
         5,
         0
       ],
-      "src_gpu": 11,
+      "src_gpu": 8,
       "dst_gpus": [
         8,
         9,
@@ -942,7 +1004,7 @@
         6,
         0
       ],
-      "src_gpu": 11,
+      "src_gpu": 8,
       "dst_gpus": [
         8,
         9,
@@ -952,7 +1014,7 @@
         13
       ],
       "volume": 1.0,
-      "deadline_epoch": 0,
+      "deadline_epoch": 1,
       "release_band": null,
       "hard": null
     },
@@ -971,7 +1033,7 @@
         3
       ],
       "volume": 1.0,
-      "deadline_epoch": 2,
+      "deadline_epoch": 1,
       "release_band": null,
       "hard": null
     },
@@ -982,7 +1044,7 @@
         7,
         0
       ],
-      "src_gpu": 11,
+      "src_gpu": 8,
       "dst_gpus": [
         8,
         9,
@@ -1041,7 +1103,7 @@
         9,
         0
       ],
-      "src_gpu": 0,
+      "src_gpu": 1,
       "dst_gpus": [
         0,
         1,
@@ -1106,82 +1168,6 @@
         7
       ],
       "volume": 1.0,
-      "deadline_epoch": 3,
-      "release_band": null,
-      "hard": null
-    },
-    {
-      "cell": 0,
-      "kind": "ingress_distribution",
-      "identity": [
-        11,
-        0
-      ],
-      "src_gpu": 1,
-      "dst_gpus": [
-        0,
-        1,
-        2,
-        3
-      ],
-      "volume": 1.0,
-      "deadline_epoch": 0,
-      "release_band": null,
-      "hard": null
-    },
-    {
-      "cell": 1,
-      "kind": "ingress_distribution",
-      "identity": [
-        11,
-        0
-      ],
-      "src_gpu": 4,
-      "dst_gpus": [
-        4,
-        5,
-        6,
-        7
-      ],
-      "volume": 1.0,
-      "deadline_epoch": 4,
-      "release_band": null,
-      "hard": null
-    },
-    {
-      "cell": 0,
-      "kind": "ingress_distribution",
-      "identity": [
-        12,
-        0
-      ],
-      "src_gpu": 0,
-      "dst_gpus": [
-        0,
-        1,
-        2,
-        3
-      ],
-      "volume": 1.0,
-      "deadline_epoch": 0,
-      "release_band": null,
-      "hard": null
-    },
-    {
-      "cell": 1,
-      "kind": "ingress_distribution",
-      "identity": [
-        12,
-        0
-      ],
-      "src_gpu": 4,
-      "dst_gpus": [
-        4,
-        5,
-        6,
-        7
-      ],
-      "volume": 1.0,
       "deadline_epoch": 2,
       "release_band": null,
       "hard": null
@@ -1190,6 +1176,82 @@
       "cell": 0,
       "kind": "ingress_distribution",
       "identity": [
+        11,
+        0
+      ],
+      "src_gpu": 1,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        11,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 3,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        12,
+        0
+      ],
+      "src_gpu": 1,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        12,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0,
+      "release_band": null,
+      "hard": null
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
         13,
         0
       ],
@@ -1220,7 +1282,7 @@
         7
       ],
       "volume": 1.0,
-      "deadline_epoch": 4,
+      "deadline_epoch": 0,
       "release_band": null,
       "hard": null
     },
@@ -1233,7 +1295,6 @@
       ],
       "src_gpu": 0,
       "dst_gpus": [
-        1,
         2,
         3
       ],
@@ -1284,7 +1345,6 @@
       ],
       "src_gpu": 3,
       "dst_gpus": [
-        1,
         2
       ],
       "volume": 1.0,
@@ -1373,8 +1433,7 @@
         9,
         10,
         11,
-        12,
-        13
+        12
       ],
       "volume": 1.0,
       "deadline_epoch": 0,
@@ -1391,7 +1450,6 @@
       "src_gpu": 9,
       "dst_gpus": [
         10,
-        11,
         12,
         13
       ],
@@ -1410,7 +1468,6 @@
       "src_gpu": 10,
       "dst_gpus": [
         9,
-        11,
         12,
         13
       ],
@@ -1447,9 +1504,9 @@
       ],
       "src_gpu": 12,
       "dst_gpus": [
+        8,
         9,
         10,
-        11,
         13
       ],
       "volume": 1.0,
@@ -1466,6 +1523,7 @@
       ],
       "src_gpu": 13,
       "dst_gpus": [
+        8,
         9,
         10,
         11,

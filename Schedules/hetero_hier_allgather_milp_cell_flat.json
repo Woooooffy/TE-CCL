@@ -7,53 +7,56 @@
   "4-Collective_Finish_Time": 0.20444444444444446,
   "5-Algo_Bandwidth": 68.47826086956522,
   "7-Flows": [
-    "Chunk 0 from 12 traveled over 12->8 with volume 1 in epoch 0 via switches 16",
-    "Chunk 0 from 2 traveled over 2->1 with volume 1 in epoch 0 via switches 14",
-    "Chunk 0 from 3 traveled over 3->0 with volume 1 in epoch 0 via switches 14",
-    "Chunk 0 from 6 traveled over 6->4 with volume 1 in epoch 0 via switches 15",
-    "Chunk 0 from 10 traveled over 10->8 with volume 1 in epoch 1 via switches 16",
-    "Chunk 0 from 2 traveled over 2->0 with volume 1 in epoch 1 via switches 14",
-    "Chunk 0 from 5 traveled over 5->4 with volume 1 in epoch 1 via switches 15",
-    "Chunk 0 from 1 traveled over 1->0 with volume 1 in epoch 2 via switches 14",
-    "Chunk 0 from 9 traveled over 9->8 with volume 1 in epoch 2 via switches 16",
-    "Chunk 0 from 0 traveled over 0->1 with volume 1 in epoch 3 via switches 14",
-    "Chunk 0 from 0 traveled over 0->8 with volume 1 in epoch 3 at rate 25 via switches 17",
-    "Chunk 0 from 1 traveled over 0->4 with volume 1 in epoch 3 at rate 25 via switches 17",
+    "Chunk 0 from 0 traveled over 0->1 with volume 1 in epoch 0 via switches 14",
+    "Chunk 0 from 10 traveled over 10->11 with volume 1 in epoch 0 via switches 16",
+    "Chunk 0 from 5 traveled over 5->4 with volume 1 in epoch 0 via switches 15",
+    "Chunk 0 from 8 traveled over 8->13 with volume 1 in epoch 0 via switches 16",
+    "Chunk 0 from 3 traveled over 3->1 with volume 1 in epoch 1 via switches 14",
+    "Chunk 0 from 9 traveled over 9->11 with volume 1 in epoch 1 via switches 16",
+    "Chunk 0 from 12 traveled over 12->11 with volume 1 in epoch 2 via switches 16",
+    "Chunk 0 from 2 traveled over 2->1 with volume 1 in epoch 2 via switches 14",
+    "Chunk 0 from 0 traveled over 1->11 with volume 1 in epoch 3 at rate 25 via switches 18",
     "Chunk 0 from 1 traveled over 1->11 with volume 1 in epoch 3 at rate 25 via switches 18",
     "Chunk 0 from 1 traveled over 1->2 with volume 1 in epoch 3 via switches 14",
-    "Chunk 0 from 10 traveled over 10->11 with volume 1 in epoch 3 via switches 16",
-    "Chunk 0 from 10 traveled over 8->0 with volume 1 in epoch 3 at rate 25 via switches 17",
+    "Chunk 0 from 10 traveled over 10->8 with volume 1 in epoch 3 via switches 16",
+    "Chunk 0 from 10 traveled over 11->0 with volume 1 in epoch 3 at rate 25 via switches 18->17",
     "Chunk 0 from 11 traveled over 11->1 with volume 1 in epoch 3 at rate 25 via switches 18",
+    "Chunk 0 from 12 traveled over 11->1 with volume 1 in epoch 3 at rate 25 via switches 18",
+    "Chunk 0 from 12 traveled over 11->4 with volume 1 in epoch 3 at rate 25 via switches 18->17",
     "Chunk 0 from 12 traveled over 12->13 with volume 1 in epoch 3 via switches 16",
-    "Chunk 0 from 12 traveled over 8->0 with volume 1 in epoch 3 at rate 25 via switches 17",
     "Chunk 0 from 13 traveled over 13->1 with volume 1 in epoch 3 at rate 25 via switches 18",
-    "Chunk 0 from 13 traveled over 13->8 with volume 1 in epoch 3 via switches 16",
-    "Chunk 0 from 2 traveled over 0->4 with volume 1 in epoch 3 at rate 25 via switches 17",
+    "Chunk 0 from 13 traveled over 13->11 with volume 1 in epoch 3 via switches 16",
+    "Chunk 0 from 13 traveled over 13->4 with volume 1 in epoch 3 at rate 25 via switches 18->17",
     "Chunk 0 from 2 traveled over 1->11 with volume 1 in epoch 3 at rate 25 via switches 18",
     "Chunk 0 from 2 traveled over 2->3 with volume 1 in epoch 3 via switches 14",
-    "Chunk 0 from 3 traveled over 0->8 with volume 1 in epoch 3 at rate 25 via switches 17",
+    "Chunk 0 from 3 traveled over 1->11 with volume 1 in epoch 3 at rate 25 via switches 18",
+    "Chunk 0 from 3 traveled over 3->0 with volume 1 in epoch 3 via switches 14",
+    "Chunk 0 from 4 traveled over 4->0 with volume 1 in epoch 3 at rate 25 via switches 17",
     "Chunk 0 from 4 traveled over 4->5 with volume 1 in epoch 3 via switches 15",
-    "Chunk 0 from 5 traveled over 4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18",
+    "Chunk 0 from 4 traveled over 4->8 with volume 1 in epoch 3 at rate 25 via switches 17",
+    "Chunk 0 from 5 traveled over 4->0 with volume 1 in epoch 3 at rate 25 via switches 17",
+    "Chunk 0 from 5 traveled over 4->8 with volume 1 in epoch 3 at rate 25 via switches 17",
     "Chunk 0 from 5 traveled over 5->6 with volume 1 in epoch 3 via switches 15",
-    "Chunk 0 from 6 traveled over 4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18",
     "Chunk 0 from 6 traveled over 6->7 with volume 1 in epoch 3 via switches 15",
     "Chunk 0 from 7 traveled over 7->4 with volume 1 in epoch 3 via switches 15",
-    "Chunk 0 from 8 traveled over 8->0 with volume 1 in epoch 3 at rate 25 via switches 17",
+    "Chunk 0 from 8 traveled over 13->0 with volume 1 in epoch 3 at rate 25 via switches 18->17",
     "Chunk 0 from 8 traveled over 8->9 with volume 1 in epoch 3 via switches 16",
-    "Chunk 0 from 9 traveled over 8->0 with volume 1 in epoch 3 at rate 25 via switches 17",
+    "Chunk 0 from 9 traveled over 11->1 with volume 1 in epoch 3 at rate 25 via switches 18",
     "Chunk 0 from 9 traveled over 9->10 with volume 1 in epoch 3 via switches 16",
     "Chunk 0 from 0 traveled over 0->2 with volume 1 in epoch 4 via switches 14",
     "Chunk 0 from 1 traveled over 1->3 with volume 1 in epoch 4 via switches 14",
     "Chunk 0 from 10 traveled over 10->12 with volume 1 in epoch 4 via switches 16",
     "Chunk 0 from 11 traveled over 11->8 with volume 1 in epoch 4 via switches 16",
     "Chunk 0 from 13 traveled over 13->9 with volume 1 in epoch 4 via switches 16",
-    "Chunk 0 from 3 traveled over 3->1 with volume 1 in epoch 4 via switches 14",
+    "Chunk 0 from 2 traveled over 2->0 with volume 1 in epoch 4 via switches 14",
     "Chunk 0 from 4 traveled over 4->6 with volume 1 in epoch 4 via switches 15",
     "Chunk 0 from 5 traveled over 5->7 with volume 1 in epoch 4 via switches 15",
+    "Chunk 0 from 6 traveled over 6->4 with volume 1 in epoch 4 via switches 15",
     "Chunk 0 from 7 traveled over 7->5 with volume 1 in epoch 4 via switches 15",
     "Chunk 0 from 8 traveled over 8->10 with volume 1 in epoch 4 via switches 16",
-    "Chunk 0 from 9 traveled over 9->11 with volume 1 in epoch 4 via switches 16",
-    "Chunk 0 from 0 traveled over 1->3 with volume 1 in epoch 5 via switches 14",
+    "Chunk 0 from 8 traveled over 9->11 with volume 1 in epoch 4 via switches 16",
+    "Chunk 0 from 0 traveled over 0->3 with volume 1 in epoch 5 via switches 14",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1 in epoch 5 via switches 14",
     "Chunk 0 from 11 traveled over 11->13 with volume 1 in epoch 5 via switches 16",
     "Chunk 0 from 12 traveled over 12->9 with volume 1 in epoch 5 via switches 16",
     "Chunk 0 from 13 traveled over 13->10 with volume 1 in epoch 5 via switches 16",
@@ -62,157 +65,270 @@
     "Chunk 0 from 6 traveled over 6->5 with volume 1 in epoch 5 via switches 15",
     "Chunk 0 from 7 traveled over 7->6 with volume 1 in epoch 5 via switches 15",
     "Chunk 0 from 8 traveled over 8->12 with volume 1 in epoch 5 via switches 16",
-    "Chunk 0 from 8 traveled over 9->11 with volume 1 in epoch 5 via switches 16",
+    "Chunk 0 from 9 traveled over 9->8 with volume 1 in epoch 5 via switches 16",
     "Chunk 0 from 10 traveled over 10->13 with volume 1 in epoch 6 via switches 16",
     "Chunk 0 from 11 traveled over 11->9 with volume 1 in epoch 6 via switches 16",
     "Chunk 0 from 12 traveled over 12->10 with volume 1 in epoch 6 via switches 16",
-    "Chunk 0 from 13 traveled over 13->11 with volume 1 in epoch 6 via switches 16",
+    "Chunk 0 from 13 traveled over 13->8 with volume 1 in epoch 6 via switches 16",
     "Chunk 0 from 9 traveled over 9->12 with volume 1 in epoch 6 via switches 16",
     "Chunk 0 from 10 traveled over 10->9 with volume 1 in epoch 7 via switches 16",
     "Chunk 0 from 11 traveled over 11->10 with volume 1 in epoch 7 via switches 16",
     "Chunk 0 from 11 traveled over 9->12 with volume 1 in epoch 7 via switches 16",
-    "Chunk 0 from 12 traveled over 12->11 with volume 1 in epoch 7 via switches 16",
+    "Chunk 0 from 12 traveled over 12->8 with volume 1 in epoch 7 via switches 16",
     "Chunk 0 from 13 traveled over 13->12 with volume 1 in epoch 8 via switches 16",
     "Chunk 0 from 9 traveled over 9->13 with volume 1 in epoch 8 via switches 16",
-    "Chunk 0 from 8 traveled over 9->13 with volume 1 in epoch 9 via switches 16",
     "Chunk 0 from 0 traveled over 0->4 with volume 1 in epoch 75 at rate 25 via switches 17",
-    "Chunk 0 from 0 traveled over 8->9 with volume 1 in epoch 75 via switches 16",
-    "Chunk 0 from 1 traveled over 11->12 with volume 1 in epoch 75 via switches 16",
-    "Chunk 0 from 1 traveled over 4->5 with volume 1 in epoch 75 via switches 15",
-    "Chunk 0 from 11 traveled over 1->2 with volume 1 in epoch 75 via switches 14",
+    "Chunk 0 from 0 traveled over 11->12 with volume 1 in epoch 75 via switches 16",
+    "Chunk 0 from 12 traveled over 4->5 with volume 1 in epoch 75 via switches 15",
     "Chunk 0 from 3 traveled over 0->4 with volume 1 in epoch 75 at rate 25 via switches 17",
-    "Chunk 0 from 4 traveled over 4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18",
-    "Chunk 0 from 5 traveled over 11->0 with volume 1 in epoch 75 at rate 25 via switches 18->17",
-    "Chunk 0 from 6 traveled over 11->0 with volume 1 in epoch 75 at rate 25 via switches 18->17",
-    "Chunk 0 from 7 traveled over 4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18",
-    "Chunk 0 from 8 traveled over 0->1 with volume 1 in epoch 75 via switches 14",
-    "Chunk 0 from 0 traveled over 9->11 with volume 1 in epoch 76 via switches 16",
-    "Chunk 0 from 1 traveled over 5->7 with volume 1 in epoch 76 via switches 15",
-    "Chunk 0 from 13 traveled over 1->2 with volume 1 in epoch 76 via switches 14",
-    "Chunk 0 from 2 traveled over 11->12 with volume 1 in epoch 76 via switches 16",
-    "Chunk 0 from 2 traveled over 4->5 with volume 1 in epoch 76 via switches 15",
-    "Chunk 0 from 3 traveled over 8->9 with volume 1 in epoch 76 via switches 16",
-    "Chunk 0 from 9 traveled over 0->1 with volume 1 in epoch 76 via switches 14",
-    "Chunk 0 from 0 traveled over 8->10 with volume 1 in epoch 77 via switches 16",
-    "Chunk 0 from 1 traveled over 4->6 with volume 1 in epoch 77 via switches 15",
-    "Chunk 0 from 10 traveled over 0->1 with volume 1 in epoch 77 via switches 14",
-    "Chunk 0 from 11 traveled over 1->3 with volume 1 in epoch 77 via switches 14",
-    "Chunk 0 from 2 traveled over 5->7 with volume 1 in epoch 77 via switches 15",
-    "Chunk 0 from 3 traveled over 9->11 with volume 1 in epoch 77 via switches 16",
-    "Chunk 0 from 5 traveled over 11->12 with volume 1 in epoch 77 via switches 16",
-    "Chunk 0 from 0 traveled over 9->13 with volume 1 in epoch 78 via switches 16",
-    "Chunk 0 from 12 traveled over 0->1 with volume 1 in epoch 78 via switches 14",
-    "Chunk 0 from 13 traveled over 1->3 with volume 1 in epoch 78 via switches 14",
-    "Chunk 0 from 2 traveled over 4->6 with volume 1 in epoch 78 via switches 15",
-    "Chunk 0 from 3 traveled over 8->10 with volume 1 in epoch 78 via switches 16",
-    "Chunk 0 from 6 traveled over 11->12 with volume 1 in epoch 78 via switches 16",
-    "Chunk 0 from 0 traveled over 8->12 with volume 1 in epoch 79 via switches 16",
-    "Chunk 0 from 1 traveled over 11->8 with volume 1 in epoch 79 via switches 16",
-    "Chunk 0 from 3 traveled over 9->13 with volume 1 in epoch 79 via switches 16",
-    "Chunk 0 from 8 traveled over 0->2 with volume 1 in epoch 79 via switches 14",
-    "Chunk 0 from 8 traveled over 1->3 with volume 1 in epoch 79 via switches 14",
-    "Chunk 0 from 1 traveled over 8->10 with volume 1 in epoch 80 via switches 16",
-    "Chunk 0 from 2 traveled over 11->8 with volume 1 in epoch 80 via switches 16",
-    "Chunk 0 from 9 traveled over 0->2 with volume 1 in epoch 80 via switches 14",
-    "Chunk 0 from 9 traveled over 1->3 with volume 1 in epoch 80 via switches 14",
-    "Chunk 0 from 10 traveled over 0->2 with volume 1 in epoch 81 via switches 14",
-    "Chunk 0 from 10 traveled over 1->3 with volume 1 in epoch 81 via switches 14",
-    "Chunk 0 from 2 traveled over 8->10 with volume 1 in epoch 81 via switches 16",
-    "Chunk 0 from 5 traveled over 11->8 with volume 1 in epoch 81 via switches 16",
-    "Chunk 0 from 12 traveled over 0->2 with volume 1 in epoch 82 via switches 14",
-    "Chunk 0 from 12 traveled over 1->3 with volume 1 in epoch 82 via switches 14",
-    "Chunk 0 from 5 traveled over 8->10 with volume 1 in epoch 82 via switches 16",
-    "Chunk 0 from 6 traveled over 11->8 with volume 1 in epoch 82 via switches 16",
-    "Chunk 0 from 1 traveled over 11->9 with volume 1 in epoch 83 via switches 16",
-    "Chunk 0 from 11 traveled over 1->0 with volume 1 in epoch 83 via switches 14",
-    "Chunk 0 from 6 traveled over 8->10 with volume 1 in epoch 83 via switches 16",
-    "Chunk 0 from 13 traveled over 1->0 with volume 1 in epoch 84 via switches 14",
-    "Chunk 0 from 2 traveled over 11->9 with volume 1 in epoch 84 via switches 16",
-    "Chunk 0 from 3 traveled over 8->12 with volume 1 in epoch 84 via switches 16",
-    "Chunk 0 from 1 traveled over 8->13 with volume 1 in epoch 85 via switches 16",
-    "Chunk 0 from 5 traveled over 11->9 with volume 1 in epoch 85 via switches 16",
-    "Chunk 0 from 2 traveled over 8->13 with volume 1 in epoch 86 via switches 16",
-    "Chunk 0 from 6 traveled over 11->9 with volume 1 in epoch 86 via switches 16",
-    "Chunk 0 from 5 traveled over 8->13 with volume 1 in epoch 87 via switches 16",
-    "Chunk 0 from 6 traveled over 8->13 with volume 1 in epoch 88 via switches 16",
+    "Chunk 0 from 4 traveled over 0->1 with volume 1 in epoch 75 via switches 14",
+    "Chunk 0 from 4 traveled over 8->9 with volume 1 in epoch 75 via switches 16",
+    "Chunk 0 from 6 traveled over 4->0 with volume 1 in epoch 75 at rate 25 via switches 17",
+    "Chunk 0 from 6 traveled over 4->8 with volume 1 in epoch 75 at rate 25 via switches 17",
+    "Chunk 0 from 7 traveled over 4->0 with volume 1 in epoch 75 at rate 25 via switches 17",
+    "Chunk 0 from 7 traveled over 4->8 with volume 1 in epoch 75 at rate 25 via switches 17",
+    "Chunk 0 from 9 traveled over 1->2 with volume 1 in epoch 75 via switches 14",
+    "Chunk 0 from 1 traveled over 11->12 with volume 1 in epoch 76 via switches 16",
+    "Chunk 0 from 11 traveled over 1->2 with volume 1 in epoch 76 via switches 14",
+    "Chunk 0 from 12 traveled over 5->7 with volume 1 in epoch 76 via switches 15",
+    "Chunk 0 from 13 traveled over 4->5 with volume 1 in epoch 76 via switches 15",
+    "Chunk 0 from 4 traveled over 9->11 with volume 1 in epoch 76 via switches 16",
+    "Chunk 0 from 5 traveled over 0->1 with volume 1 in epoch 76 via switches 14",
+    "Chunk 0 from 5 traveled over 8->9 with volume 1 in epoch 76 via switches 16",
+    "Chunk 0 from 12 traveled over 1->2 with volume 1 in epoch 77 via switches 14",
+    "Chunk 0 from 12 traveled over 4->6 with volume 1 in epoch 77 via switches 15",
+    "Chunk 0 from 13 traveled over 5->7 with volume 1 in epoch 77 via switches 15",
+    "Chunk 0 from 2 traveled over 11->12 with volume 1 in epoch 77 via switches 16",
+    "Chunk 0 from 4 traveled over 8->10 with volume 1 in epoch 77 via switches 16",
+    "Chunk 0 from 5 traveled over 9->11 with volume 1 in epoch 77 via switches 16",
+    "Chunk 0 from 8 traveled over 0->1 with volume 1 in epoch 77 via switches 14",
+    "Chunk 0 from 10 traveled over 0->1 with volume 1 in epoch 78 via switches 14",
+    "Chunk 0 from 13 traveled over 1->2 with volume 1 in epoch 78 via switches 14",
+    "Chunk 0 from 13 traveled over 4->6 with volume 1 in epoch 78 via switches 15",
+    "Chunk 0 from 3 traveled over 11->12 with volume 1 in epoch 78 via switches 16",
+    "Chunk 0 from 4 traveled over 9->13 with volume 1 in epoch 78 via switches 16",
+    "Chunk 0 from 5 traveled over 8->10 with volume 1 in epoch 78 via switches 16",
+    "Chunk 0 from 0 traveled over 11->8 with volume 1 in epoch 79 via switches 16",
+    "Chunk 0 from 4 traveled over 0->2 with volume 1 in epoch 79 via switches 14",
+    "Chunk 0 from 4 traveled over 1->3 with volume 1 in epoch 79 via switches 14",
+    "Chunk 0 from 4 traveled over 8->12 with volume 1 in epoch 79 via switches 16",
+    "Chunk 0 from 5 traveled over 9->13 with volume 1 in epoch 79 via switches 16",
+    "Chunk 0 from 0 traveled over 8->10 with volume 1 in epoch 80 via switches 16",
+    "Chunk 0 from 1 traveled over 11->8 with volume 1 in epoch 80 via switches 16",
+    "Chunk 0 from 5 traveled over 0->2 with volume 1 in epoch 80 via switches 14",
+    "Chunk 0 from 5 traveled over 1->3 with volume 1 in epoch 80 via switches 14",
+    "Chunk 0 from 1 traveled over 8->10 with volume 1 in epoch 81 via switches 16",
+    "Chunk 0 from 2 traveled over 11->8 with volume 1 in epoch 81 via switches 16",
+    "Chunk 0 from 8 traveled over 0->2 with volume 1 in epoch 81 via switches 14",
+    "Chunk 0 from 8 traveled over 1->3 with volume 1 in epoch 81 via switches 14",
+    "Chunk 0 from 10 traveled over 0->2 with volume 1 in epoch 82 via switches 14",
+    "Chunk 0 from 10 traveled over 1->3 with volume 1 in epoch 82 via switches 14",
+    "Chunk 0 from 2 traveled over 8->10 with volume 1 in epoch 82 via switches 16",
+    "Chunk 0 from 3 traveled over 11->8 with volume 1 in epoch 82 via switches 16",
+    "Chunk 0 from 0 traveled over 11->9 with volume 1 in epoch 83 via switches 16",
+    "Chunk 0 from 3 traveled over 8->10 with volume 1 in epoch 83 via switches 16",
+    "Chunk 0 from 9 traveled over 1->0 with volume 1 in epoch 83 via switches 14",
+    "Chunk 0 from 1 traveled over 11->9 with volume 1 in epoch 84 via switches 16",
+    "Chunk 0 from 11 traveled over 1->0 with volume 1 in epoch 84 via switches 14",
+    "Chunk 0 from 5 traveled over 8->12 with volume 1 in epoch 84 via switches 16",
+    "Chunk 0 from 9 traveled over 0->3 with volume 1 in epoch 84 via switches 14",
+    "Chunk 0 from 0 traveled over 8->13 with volume 1 in epoch 85 via switches 16",
+    "Chunk 0 from 11 traveled over 0->3 with volume 1 in epoch 85 via switches 14",
+    "Chunk 0 from 12 traveled over 1->0 with volume 1 in epoch 85 via switches 14",
+    "Chunk 0 from 2 traveled over 11->9 with volume 1 in epoch 85 via switches 16",
+    "Chunk 0 from 1 traveled over 8->13 with volume 1 in epoch 86 via switches 16",
+    "Chunk 0 from 12 traveled over 0->3 with volume 1 in epoch 86 via switches 14",
+    "Chunk 0 from 13 traveled over 1->0 with volume 1 in epoch 86 via switches 14",
+    "Chunk 0 from 3 traveled over 11->9 with volume 1 in epoch 86 via switches 16",
+    "Chunk 0 from 13 traveled over 0->3 with volume 1 in epoch 87 via switches 14",
+    "Chunk 0 from 2 traveled over 8->13 with volume 1 in epoch 87 via switches 16",
+    "Chunk 0 from 3 traveled over 8->13 with volume 1 in epoch 88 via switches 16",
     "Chunk 0 from 0 traveled over 4->5 with volume 1 in epoch 147 via switches 15",
-    "Chunk 0 from 12 traveled over 8->4 with volume 1 in epoch 147 at rate 25 via switches 17",
-    "Chunk 0 from 4 traveled over 11->12 with volume 1 in epoch 147 via switches 16",
-    "Chunk 0 from 4 traveled over 4->0 with volume 1 in epoch 147 at rate 25 via switches 17",
-    "Chunk 0 from 5 traveled over 0->1 with volume 1 in epoch 147 via switches 14",
-    "Chunk 0 from 7 traveled over 4->0 with volume 1 in epoch 147 at rate 25 via switches 17",
+    "Chunk 0 from 10 traveled over 8->4 with volume 1 in epoch 147 at rate 25 via switches 17",
+    "Chunk 0 from 6 traveled over 0->1 with volume 1 in epoch 147 via switches 14",
+    "Chunk 0 from 6 traveled over 8->9 with volume 1 in epoch 147 via switches 16",
     "Chunk 0 from 8 traveled over 8->4 with volume 1 in epoch 147 at rate 25 via switches 17",
     "Chunk 0 from 0 traveled over 5->7 with volume 1 in epoch 148 via switches 15",
     "Chunk 0 from 3 traveled over 4->5 with volume 1 in epoch 148 via switches 15",
-    "Chunk 0 from 5 traveled over 1->3 with volume 1 in epoch 148 via switches 14",
-    "Chunk 0 from 6 traveled over 0->1 with volume 1 in epoch 148 via switches 14",
-    "Chunk 0 from 7 traveled over 11->12 with volume 1 in epoch 148 via switches 16",
+    "Chunk 0 from 6 traveled over 1->3 with volume 1 in epoch 148 via switches 14",
+    "Chunk 0 from 6 traveled over 9->11 with volume 1 in epoch 148 via switches 16",
+    "Chunk 0 from 7 traveled over 0->1 with volume 1 in epoch 148 via switches 14",
+    "Chunk 0 from 7 traveled over 8->9 with volume 1 in epoch 148 via switches 16",
     "Chunk 0 from 0 traveled over 4->6 with volume 1 in epoch 149 via switches 15",
     "Chunk 0 from 3 traveled over 5->7 with volume 1 in epoch 149 via switches 15",
-    "Chunk 0 from 4 traveled over 11->8 with volume 1 in epoch 149 via switches 16",
-    "Chunk 0 from 5 traveled over 0->2 with volume 1 in epoch 149 via switches 14",
-    "Chunk 0 from 6 traveled over 1->3 with volume 1 in epoch 149 via switches 14",
+    "Chunk 0 from 6 traveled over 0->2 with volume 1 in epoch 149 via switches 14",
+    "Chunk 0 from 6 traveled over 8->10 with volume 1 in epoch 149 via switches 16",
+    "Chunk 0 from 7 traveled over 1->3 with volume 1 in epoch 149 via switches 14",
+    "Chunk 0 from 7 traveled over 9->11 with volume 1 in epoch 149 via switches 16",
     "Chunk 0 from 3 traveled over 4->6 with volume 1 in epoch 150 via switches 15",
-    "Chunk 0 from 4 traveled over 8->10 with volume 1 in epoch 150 via switches 16",
-    "Chunk 0 from 6 traveled over 0->2 with volume 1 in epoch 150 via switches 14",
-    "Chunk 0 from 7 traveled over 11->8 with volume 1 in epoch 150 via switches 16",
-    "Chunk 0 from 4 traveled over 11->9 with volume 1 in epoch 151 via switches 16",
-    "Chunk 0 from 7 traveled over 8->10 with volume 1 in epoch 151 via switches 16",
-    "Chunk 0 from 4 traveled over 8->13 with volume 1 in epoch 152 via switches 16",
-    "Chunk 0 from 7 traveled over 11->9 with volume 1 in epoch 152 via switches 16",
-    "Chunk 0 from 7 traveled over 8->13 with volume 1 in epoch 153 via switches 16",
-    "Chunk 0 from 10 traveled over 8->4 with volume 1 in epoch 219 at rate 25 via switches 17",
-    "Chunk 0 from 4 traveled over 0->1 with volume 1 in epoch 219 via switches 14",
+    "Chunk 0 from 6 traveled over 9->13 with volume 1 in epoch 150 via switches 16",
+    "Chunk 0 from 7 traveled over 0->2 with volume 1 in epoch 150 via switches 14",
+    "Chunk 0 from 7 traveled over 8->10 with volume 1 in epoch 150 via switches 16",
+    "Chunk 0 from 6 traveled over 8->12 with volume 1 in epoch 151 via switches 16",
+    "Chunk 0 from 7 traveled over 9->13 with volume 1 in epoch 151 via switches 16",
+    "Chunk 0 from 7 traveled over 8->12 with volume 1 in epoch 152 via switches 16",
+    "Chunk 0 from 11 traveled over 8->4 with volume 1 in epoch 219 at rate 25 via switches 17",
     "Chunk 0 from 8 traveled over 4->5 with volume 1 in epoch 219 via switches 15",
     "Chunk 0 from 9 traveled over 8->4 with volume 1 in epoch 219 at rate 25 via switches 17",
-    "Chunk 0 from 12 traveled over 4->5 with volume 1 in epoch 220 via switches 15",
-    "Chunk 0 from 4 traveled over 1->3 with volume 1 in epoch 220 via switches 14",
-    "Chunk 0 from 7 traveled over 0->1 with volume 1 in epoch 220 via switches 14",
+    "Chunk 0 from 10 traveled over 4->5 with volume 1 in epoch 220 via switches 15",
     "Chunk 0 from 8 traveled over 5->7 with volume 1 in epoch 220 via switches 15",
-    "Chunk 0 from 12 traveled over 5->7 with volume 1 in epoch 221 via switches 15",
-    "Chunk 0 from 4 traveled over 0->2 with volume 1 in epoch 221 via switches 14",
-    "Chunk 0 from 7 traveled over 1->3 with volume 1 in epoch 221 via switches 14",
+    "Chunk 0 from 10 traveled over 5->7 with volume 1 in epoch 221 via switches 15",
     "Chunk 0 from 8 traveled over 4->6 with volume 1 in epoch 221 via switches 15",
-    "Chunk 0 from 12 traveled over 4->6 with volume 1 in epoch 222 via switches 15",
-    "Chunk 0 from 7 traveled over 0->2 with volume 1 in epoch 222 via switches 14",
-    "Chunk 0 from 11 traveled over 8->4 with volume 1 in epoch 291 at rate 25 via switches 17",
-    "Chunk 0 from 13 traveled over 8->4 with volume 1 in epoch 291 at rate 25 via switches 17",
+    "Chunk 0 from 10 traveled over 4->6 with volume 1 in epoch 222 via switches 15",
+    "Chunk 0 from 1 traveled over 0->4 with volume 1 in epoch 291 at rate 25 via switches 17",
+    "Chunk 0 from 2 traveled over 0->4 with volume 1 in epoch 291 at rate 25 via switches 17",
     "Chunk 0 from 9 traveled over 4->5 with volume 1 in epoch 291 via switches 15",
-    "Chunk 0 from 10 traveled over 4->5 with volume 1 in epoch 292 via switches 15",
+    "Chunk 0 from 11 traveled over 4->5 with volume 1 in epoch 292 via switches 15",
     "Chunk 0 from 9 traveled over 5->7 with volume 1 in epoch 292 via switches 15",
-    "Chunk 0 from 10 traveled over 5->7 with volume 1 in epoch 293 via switches 15",
+    "Chunk 0 from 11 traveled over 5->7 with volume 1 in epoch 293 via switches 15",
     "Chunk 0 from 9 traveled over 4->6 with volume 1 in epoch 293 via switches 15",
-    "Chunk 0 from 10 traveled over 4->6 with volume 1 in epoch 294 via switches 15",
-    "Chunk 0 from 11 traveled over 4->5 with volume 1 in epoch 363 via switches 15",
-    "Chunk 0 from 11 traveled over 5->7 with volume 1 in epoch 364 via switches 15",
-    "Chunk 0 from 13 traveled over 4->5 with volume 1 in epoch 364 via switches 15",
-    "Chunk 0 from 11 traveled over 4->6 with volume 1 in epoch 365 via switches 15",
-    "Chunk 0 from 13 traveled over 5->7 with volume 1 in epoch 365 via switches 15",
-    "Chunk 0 from 13 traveled over 4->6 with volume 1 in epoch 366 via switches 15"
+    "Chunk 0 from 11 traveled over 4->6 with volume 1 in epoch 294 via switches 15",
+    "Chunk 0 from 1 traveled over 4->5 with volume 1 in epoch 363 via switches 15",
+    "Chunk 0 from 1 traveled over 5->7 with volume 1 in epoch 364 via switches 15",
+    "Chunk 0 from 2 traveled over 4->5 with volume 1 in epoch 364 via switches 15",
+    "Chunk 0 from 1 traveled over 4->6 with volume 1 in epoch 365 via switches 15",
+    "Chunk 0 from 2 traveled over 5->7 with volume 1 in epoch 365 via switches 15",
+    "Chunk 0 from 2 traveled over 4->6 with volume 1 in epoch 366 via switches 15"
   ],
   "8-Chunk paths": {
-    "Demand at 0 for chunk 0 from 1 met by epoch 3": [
+    "Demand at 0 for chunk 0 from 1 met by epoch 6": [
       [
         [
-          2,
-          "1->0 with volume 1 in epoch 2 via switches 14"
+          5,
+          "1->0 with volume 1 in epoch 5 via switches 14"
         ]
       ]
     ],
     "Demand at 0 for chunk 0 from 10 met by epoch 75": [
       [
         [
-          1,
-          "10->8 with volume 1 in epoch 1 via switches 16"
+          0,
+          "10->11 with volume 1 in epoch 0 via switches 16"
         ],
         [
           3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "11->0 with volume 1 in epoch 3 at rate 25 via switches 18->17"
         ]
       ]
     ],
-    "Demand at 0 for chunk 0 from 11 met by epoch 84": [
+    "Demand at 0 for chunk 0 from 11 met by epoch 85": [
       [
+        [
+          3,
+          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          84,
+          "1->0 with volume 1 in epoch 84 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 12 met by epoch 86": [
+      [
+        [
+          2,
+          "12->11 with volume 1 in epoch 2 via switches 16"
+        ],
+        [
+          3,
+          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          85,
+          "1->0 with volume 1 in epoch 85 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 13 met by epoch 87": [
+      [
+        [
+          3,
+          "13->1 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          86,
+          "1->0 with volume 1 in epoch 86 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 2 met by epoch 5": [
+      [
+        [
+          4,
+          "2->0 with volume 1 in epoch 4 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 3 met by epoch 4": [
+      [
+        [
+          3,
+          "3->0 with volume 1 in epoch 3 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 4 met by epoch 75": [
+      [
+        [
+          3,
+          "4->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 5 met by epoch 75": [
+      [
+        [
+          0,
+          "5->4 with volume 1 in epoch 0 via switches 15"
+        ],
+        [
+          3,
+          "4->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 6 met by epoch 147": [
+      [
+        [
+          4,
+          "6->4 with volume 1 in epoch 4 via switches 15"
+        ],
+        [
+          75,
+          "4->0 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 7 met by epoch 147": [
+      [
+        [
+          3,
+          "7->4 with volume 1 in epoch 3 via switches 15"
+        ],
+        [
+          75,
+          "4->0 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 8 met by epoch 75": [
+      [
+        [
+          0,
+          "8->13 with volume 1 in epoch 0 via switches 16"
+        ],
+        [
+          3,
+          "13->0 with volume 1 in epoch 3 at rate 25 via switches 18->17"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 9 met by epoch 84": [
+      [
+        [
+          1,
+          "9->11 with volume 1 in epoch 1 via switches 16"
+        ],
         [
           3,
           "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
@@ -223,139 +339,27 @@
         ]
       ]
     ],
-    "Demand at 0 for chunk 0 from 12 met by epoch 75": [
+    "Demand at 1 for chunk 0 from 0 met by epoch 1": [
       [
         [
           0,
-          "12->8 with volume 1 in epoch 0 via switches 16"
-        ],
-        [
-          3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "0->1 with volume 1 in epoch 0 via switches 14"
         ]
       ]
     ],
-    "Demand at 0 for chunk 0 from 13 met by epoch 85": [
-      [
-        [
-          3,
-          "13->1 with volume 1 in epoch 3 at rate 25 via switches 18"
-        ],
-        [
-          84,
-          "1->0 with volume 1 in epoch 84 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 0 for chunk 0 from 2 met by epoch 2": [
-      [
-        [
-          1,
-          "2->0 with volume 1 in epoch 1 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 0 for chunk 0 from 3 met by epoch 1": [
+    "Demand at 1 for chunk 0 from 10 met by epoch 79": [
       [
         [
           0,
-          "3->0 with volume 1 in epoch 0 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 0 for chunk 0 from 4 met by epoch 219": [
-      [
-        [
-          147,
-          "4->0 with volume 1 in epoch 147 at rate 25 via switches 17"
-        ]
-      ]
-    ],
-    "Demand at 0 for chunk 0 from 5 met by epoch 147": [
-      [
-        [
-          1,
-          "5->4 with volume 1 in epoch 1 via switches 15"
+          "10->11 with volume 1 in epoch 0 via switches 16"
         ],
         [
           3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
+          "11->0 with volume 1 in epoch 3 at rate 25 via switches 18->17"
         ],
         [
-          75,
-          "11->0 with volume 1 in epoch 75 at rate 25 via switches 18->17"
-        ]
-      ]
-    ],
-    "Demand at 0 for chunk 0 from 6 met by epoch 147": [
-      [
-        [
-          0,
-          "6->4 with volume 1 in epoch 0 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
-        ],
-        [
-          75,
-          "11->0 with volume 1 in epoch 75 at rate 25 via switches 18->17"
-        ]
-      ]
-    ],
-    "Demand at 0 for chunk 0 from 7 met by epoch 219": [
-      [
-        [
-          3,
-          "7->4 with volume 1 in epoch 3 via switches 15"
-        ],
-        [
-          147,
-          "4->0 with volume 1 in epoch 147 at rate 25 via switches 17"
-        ]
-      ]
-    ],
-    "Demand at 0 for chunk 0 from 8 met by epoch 75": [
-      [
-        [
-          3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ]
-      ]
-    ],
-    "Demand at 0 for chunk 0 from 9 met by epoch 75": [
-      [
-        [
-          2,
-          "9->8 with volume 1 in epoch 2 via switches 16"
-        ],
-        [
-          3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ]
-      ]
-    ],
-    "Demand at 1 for chunk 0 from 0 met by epoch 4": [
-      [
-        [
-          3,
-          "0->1 with volume 1 in epoch 3 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 1 for chunk 0 from 10 met by epoch 78": [
-      [
-        [
-          1,
-          "10->8 with volume 1 in epoch 1 via switches 16"
-        ],
-        [
-          3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          77,
-          "0->1 with volume 1 in epoch 77 via switches 14"
+          78,
+          "0->1 with volume 1 in epoch 78 via switches 14"
         ]
       ]
     ],
@@ -367,19 +371,15 @@
         ]
       ]
     ],
-    "Demand at 1 for chunk 0 from 12 met by epoch 79": [
+    "Demand at 1 for chunk 0 from 12 met by epoch 75": [
       [
         [
-          0,
-          "12->8 with volume 1 in epoch 0 via switches 16"
+          2,
+          "12->11 with volume 1 in epoch 2 via switches 16"
         ],
         [
           3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          78,
-          "0->1 with volume 1 in epoch 78 via switches 14"
+          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
         ]
       ]
     ],
@@ -391,95 +391,27 @@
         ]
       ]
     ],
-    "Demand at 1 for chunk 0 from 2 met by epoch 1": [
+    "Demand at 1 for chunk 0 from 2 met by epoch 3": [
       [
         [
-          0,
-          "2->1 with volume 1 in epoch 0 via switches 14"
+          2,
+          "2->1 with volume 1 in epoch 2 via switches 14"
         ]
       ]
     ],
-    "Demand at 1 for chunk 0 from 3 met by epoch 5": [
-      [
-        [
-          4,
-          "3->1 with volume 1 in epoch 4 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 1 for chunk 0 from 4 met by epoch 220": [
-      [
-        [
-          147,
-          "4->0 with volume 1 in epoch 147 at rate 25 via switches 17"
-        ],
-        [
-          219,
-          "0->1 with volume 1 in epoch 219 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 1 for chunk 0 from 5 met by epoch 148": [
+    "Demand at 1 for chunk 0 from 3 met by epoch 2": [
       [
         [
           1,
-          "5->4 with volume 1 in epoch 1 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
-        ],
-        [
-          75,
-          "11->0 with volume 1 in epoch 75 at rate 25 via switches 18->17"
-        ],
-        [
-          147,
-          "0->1 with volume 1 in epoch 147 via switches 14"
+          "3->1 with volume 1 in epoch 1 via switches 14"
         ]
       ]
     ],
-    "Demand at 1 for chunk 0 from 6 met by epoch 149": [
-      [
-        [
-          0,
-          "6->4 with volume 1 in epoch 0 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
-        ],
-        [
-          75,
-          "11->0 with volume 1 in epoch 75 at rate 25 via switches 18->17"
-        ],
-        [
-          148,
-          "0->1 with volume 1 in epoch 148 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 1 for chunk 0 from 7 met by epoch 221": [
+    "Demand at 1 for chunk 0 from 4 met by epoch 76": [
       [
         [
           3,
-          "7->4 with volume 1 in epoch 3 via switches 15"
-        ],
-        [
-          147,
-          "4->0 with volume 1 in epoch 147 at rate 25 via switches 17"
-        ],
-        [
-          220,
-          "0->1 with volume 1 in epoch 220 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 1 for chunk 0 from 8 met by epoch 76": [
-      [
-        [
-          3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "4->0 with volume 1 in epoch 3 at rate 25 via switches 17"
         ],
         [
           75,
@@ -487,15 +419,15 @@
         ]
       ]
     ],
-    "Demand at 1 for chunk 0 from 9 met by epoch 77": [
+    "Demand at 1 for chunk 0 from 5 met by epoch 77": [
       [
         [
-          2,
-          "9->8 with volume 1 in epoch 2 via switches 16"
+          0,
+          "5->4 with volume 1 in epoch 0 via switches 15"
         ],
         [
           3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "4->0 with volume 1 in epoch 3 at rate 25 via switches 17"
         ],
         [
           76,
@@ -503,20 +435,72 @@
         ]
       ]
     ],
-    "Demand at 10 for chunk 0 from 0 met by epoch 78": [
+    "Demand at 1 for chunk 0 from 6 met by epoch 148": [
       [
         [
-          3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+          4,
+          "6->4 with volume 1 in epoch 4 via switches 15"
         ],
         [
-          77,
-          "8->10 with volume 1 in epoch 77 via switches 16"
+          75,
+          "4->0 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ],
+        [
+          147,
+          "0->1 with volume 1 in epoch 147 via switches 14"
         ]
       ]
     ],
-    "Demand at 10 for chunk 0 from 1 met by epoch 81": [
+    "Demand at 1 for chunk 0 from 7 met by epoch 149": [
       [
+        [
+          3,
+          "7->4 with volume 1 in epoch 3 via switches 15"
+        ],
+        [
+          75,
+          "4->0 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ],
+        [
+          148,
+          "0->1 with volume 1 in epoch 148 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 0 from 8 met by epoch 78": [
+      [
+        [
+          0,
+          "8->13 with volume 1 in epoch 0 via switches 16"
+        ],
+        [
+          3,
+          "13->0 with volume 1 in epoch 3 at rate 25 via switches 18->17"
+        ],
+        [
+          77,
+          "0->1 with volume 1 in epoch 77 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 0 from 9 met by epoch 75": [
+      [
+        [
+          1,
+          "9->11 with volume 1 in epoch 1 via switches 16"
+        ],
+        [
+          3,
+          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ]
+      ]
+    ],
+    "Demand at 10 for chunk 0 from 0 met by epoch 81": [
+      [
+        [
+          0,
+          "0->1 with volume 1 in epoch 0 via switches 14"
+        ],
         [
           3,
           "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
@@ -528,6 +512,22 @@
         [
           80,
           "8->10 with volume 1 in epoch 80 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 10 for chunk 0 from 1 met by epoch 82": [
+      [
+        [
+          3,
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          80,
+          "11->8 with volume 1 in epoch 80 via switches 16"
+        ],
+        [
+          81,
+          "8->10 with volume 1 in epoch 81 via switches 16"
         ]
       ]
     ],
@@ -555,67 +555,15 @@
         ]
       ]
     ],
-    "Demand at 10 for chunk 0 from 2 met by epoch 82": [
+    "Demand at 10 for chunk 0 from 2 met by epoch 83": [
       [
         [
-          0,
-          "2->1 with volume 1 in epoch 0 via switches 14"
+          2,
+          "2->1 with volume 1 in epoch 2 via switches 14"
         ],
         [
           3,
           "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
-        ],
-        [
-          80,
-          "11->8 with volume 1 in epoch 80 via switches 16"
-        ],
-        [
-          81,
-          "8->10 with volume 1 in epoch 81 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 10 for chunk 0 from 3 met by epoch 79": [
-      [
-        [
-          0,
-          "3->0 with volume 1 in epoch 0 via switches 14"
-        ],
-        [
-          3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          78,
-          "8->10 with volume 1 in epoch 78 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 10 for chunk 0 from 4 met by epoch 151": [
-      [
-        [
-          75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
-        ],
-        [
-          149,
-          "11->8 with volume 1 in epoch 149 via switches 16"
-        ],
-        [
-          150,
-          "8->10 with volume 1 in epoch 150 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 10 for chunk 0 from 5 met by epoch 83": [
-      [
-        [
-          1,
-          "5->4 with volume 1 in epoch 1 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
         ],
         [
           81,
@@ -627,15 +575,15 @@
         ]
       ]
     ],
-    "Demand at 10 for chunk 0 from 6 met by epoch 84": [
+    "Demand at 10 for chunk 0 from 3 met by epoch 84": [
       [
         [
-          0,
-          "6->4 with volume 1 in epoch 0 via switches 15"
+          1,
+          "3->1 with volume 1 in epoch 1 via switches 14"
         ],
         [
           3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
         ],
         [
           82,
@@ -647,7 +595,51 @@
         ]
       ]
     ],
-    "Demand at 10 for chunk 0 from 7 met by epoch 152": [
+    "Demand at 10 for chunk 0 from 4 met by epoch 78": [
+      [
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ],
+        [
+          77,
+          "8->10 with volume 1 in epoch 77 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 10 for chunk 0 from 5 met by epoch 79": [
+      [
+        [
+          0,
+          "5->4 with volume 1 in epoch 0 via switches 15"
+        ],
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ],
+        [
+          78,
+          "8->10 with volume 1 in epoch 78 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 10 for chunk 0 from 6 met by epoch 150": [
+      [
+        [
+          4,
+          "6->4 with volume 1 in epoch 4 via switches 15"
+        ],
+        [
+          75,
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ],
+        [
+          149,
+          "8->10 with volume 1 in epoch 149 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 10 for chunk 0 from 7 met by epoch 151": [
       [
         [
           3,
@@ -655,15 +647,11 @@
         ],
         [
           75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
         ],
         [
           150,
-          "11->8 with volume 1 in epoch 150 via switches 16"
-        ],
-        [
-          151,
-          "8->10 with volume 1 in epoch 151 via switches 16"
+          "8->10 with volume 1 in epoch 150 via switches 16"
         ]
       ]
     ],
@@ -683,19 +671,15 @@
         ]
       ]
     ],
-    "Demand at 11 for chunk 0 from 0 met by epoch 77": [
+    "Demand at 11 for chunk 0 from 0 met by epoch 75": [
       [
         [
+          0,
+          "0->1 with volume 1 in epoch 0 via switches 14"
+        ],
+        [
           3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          75,
-          "8->9 with volume 1 in epoch 75 via switches 16"
-        ],
-        [
-          76,
-          "9->11 with volume 1 in epoch 76 via switches 16"
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
         ]
       ]
     ],
@@ -707,35 +691,35 @@
         ]
       ]
     ],
-    "Demand at 11 for chunk 0 from 10 met by epoch 4": [
+    "Demand at 11 for chunk 0 from 10 met by epoch 1": [
+      [
+        [
+          0,
+          "10->11 with volume 1 in epoch 0 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 11 for chunk 0 from 12 met by epoch 3": [
+      [
+        [
+          2,
+          "12->11 with volume 1 in epoch 2 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 11 for chunk 0 from 13 met by epoch 4": [
       [
         [
           3,
-          "10->11 with volume 1 in epoch 3 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 11 for chunk 0 from 12 met by epoch 8": [
-      [
-        [
-          7,
-          "12->11 with volume 1 in epoch 7 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 11 for chunk 0 from 13 met by epoch 7": [
-      [
-        [
-          6,
-          "13->11 with volume 1 in epoch 6 via switches 16"
+          "13->11 with volume 1 in epoch 3 via switches 16"
         ]
       ]
     ],
     "Demand at 11 for chunk 0 from 2 met by epoch 75": [
       [
         [
-          0,
-          "2->1 with volume 1 in epoch 0 via switches 14"
+          2,
+          "2->1 with volume 1 in epoch 2 via switches 14"
         ],
         [
           3,
@@ -743,15 +727,43 @@
         ]
       ]
     ],
-    "Demand at 11 for chunk 0 from 3 met by epoch 78": [
+    "Demand at 11 for chunk 0 from 3 met by epoch 75": [
       [
         [
-          0,
-          "3->0 with volume 1 in epoch 0 via switches 14"
+          1,
+          "3->1 with volume 1 in epoch 1 via switches 14"
         ],
         [
           3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ]
+      ]
+    ],
+    "Demand at 11 for chunk 0 from 4 met by epoch 77": [
+      [
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ],
+        [
+          75,
+          "8->9 with volume 1 in epoch 75 via switches 16"
+        ],
+        [
+          76,
+          "9->11 with volume 1 in epoch 76 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 11 for chunk 0 from 5 met by epoch 78": [
+      [
+        [
+          0,
+          "5->4 with volume 1 in epoch 0 via switches 15"
+        ],
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
         ],
         [
           76,
@@ -763,39 +775,27 @@
         ]
       ]
     ],
-    "Demand at 11 for chunk 0 from 4 met by epoch 147": [
+    "Demand at 11 for chunk 0 from 6 met by epoch 149": [
       [
+        [
+          4,
+          "6->4 with volume 1 in epoch 4 via switches 15"
+        ],
         [
           75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
-        ]
-      ]
-    ],
-    "Demand at 11 for chunk 0 from 5 met by epoch 75": [
-      [
-        [
-          1,
-          "5->4 with volume 1 in epoch 1 via switches 15"
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
         ],
         [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
-        ]
-      ]
-    ],
-    "Demand at 11 for chunk 0 from 6 met by epoch 75": [
-      [
-        [
-          0,
-          "6->4 with volume 1 in epoch 0 via switches 15"
+          147,
+          "8->9 with volume 1 in epoch 147 via switches 16"
         ],
         [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
+          148,
+          "9->11 with volume 1 in epoch 148 via switches 16"
         ]
       ]
     ],
-    "Demand at 11 for chunk 0 from 7 met by epoch 147": [
+    "Demand at 11 for chunk 0 from 7 met by epoch 150": [
       [
         [
           3,
@@ -803,44 +803,44 @@
         ],
         [
           75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ],
+        [
+          148,
+          "8->9 with volume 1 in epoch 148 via switches 16"
+        ],
+        [
+          149,
+          "9->11 with volume 1 in epoch 149 via switches 16"
         ]
       ]
     ],
-    "Demand at 11 for chunk 0 from 8 met by epoch 6": [
+    "Demand at 11 for chunk 0 from 8 met by epoch 5": [
       [
         [
           3,
           "8->9 with volume 1 in epoch 3 via switches 16"
         ],
         [
-          5,
-          "9->11 with volume 1 in epoch 5 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 11 for chunk 0 from 9 met by epoch 5": [
-      [
-        [
           4,
           "9->11 with volume 1 in epoch 4 via switches 16"
         ]
       ]
     ],
-    "Demand at 12 for chunk 0 from 0 met by epoch 80": [
+    "Demand at 11 for chunk 0 from 9 met by epoch 2": [
       [
         [
-          3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          79,
-          "8->12 with volume 1 in epoch 79 via switches 16"
+          1,
+          "9->11 with volume 1 in epoch 1 via switches 16"
         ]
       ]
     ],
-    "Demand at 12 for chunk 0 from 1 met by epoch 76": [
+    "Demand at 12 for chunk 0 from 0 met by epoch 76": [
       [
+        [
+          0,
+          "0->1 with volume 1 in epoch 0 via switches 14"
+        ],
         [
           3,
           "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
@@ -848,6 +848,18 @@
         [
           75,
           "11->12 with volume 1 in epoch 75 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 12 for chunk 0 from 1 met by epoch 77": [
+      [
+        [
+          3,
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          76,
+          "11->12 with volume 1 in epoch 76 via switches 16"
         ]
       ]
     ],
@@ -879,59 +891,15 @@
         ]
       ]
     ],
-    "Demand at 12 for chunk 0 from 2 met by epoch 77": [
+    "Demand at 12 for chunk 0 from 2 met by epoch 78": [
       [
         [
-          0,
-          "2->1 with volume 1 in epoch 0 via switches 14"
+          2,
+          "2->1 with volume 1 in epoch 2 via switches 14"
         ],
         [
           3,
           "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
-        ],
-        [
-          76,
-          "11->12 with volume 1 in epoch 76 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 12 for chunk 0 from 3 met by epoch 85": [
-      [
-        [
-          0,
-          "3->0 with volume 1 in epoch 0 via switches 14"
-        ],
-        [
-          3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          84,
-          "8->12 with volume 1 in epoch 84 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 12 for chunk 0 from 4 met by epoch 148": [
-      [
-        [
-          75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
-        ],
-        [
-          147,
-          "11->12 with volume 1 in epoch 147 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 12 for chunk 0 from 5 met by epoch 78": [
-      [
-        [
-          1,
-          "5->4 with volume 1 in epoch 1 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
         ],
         [
           77,
@@ -939,15 +907,15 @@
         ]
       ]
     ],
-    "Demand at 12 for chunk 0 from 6 met by epoch 79": [
+    "Demand at 12 for chunk 0 from 3 met by epoch 79": [
       [
         [
-          0,
-          "6->4 with volume 1 in epoch 0 via switches 15"
+          1,
+          "3->1 with volume 1 in epoch 1 via switches 14"
         ],
         [
           3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
         ],
         [
           78,
@@ -955,7 +923,51 @@
         ]
       ]
     ],
-    "Demand at 12 for chunk 0 from 7 met by epoch 149": [
+    "Demand at 12 for chunk 0 from 4 met by epoch 80": [
+      [
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ],
+        [
+          79,
+          "8->12 with volume 1 in epoch 79 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 12 for chunk 0 from 5 met by epoch 85": [
+      [
+        [
+          0,
+          "5->4 with volume 1 in epoch 0 via switches 15"
+        ],
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ],
+        [
+          84,
+          "8->12 with volume 1 in epoch 84 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 12 for chunk 0 from 6 met by epoch 152": [
+      [
+        [
+          4,
+          "6->4 with volume 1 in epoch 4 via switches 15"
+        ],
+        [
+          75,
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ],
+        [
+          151,
+          "8->12 with volume 1 in epoch 151 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 12 for chunk 0 from 7 met by epoch 153": [
       [
         [
           3,
@@ -963,11 +975,11 @@
         ],
         [
           75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
         ],
         [
-          148,
-          "11->12 with volume 1 in epoch 148 via switches 16"
+          152,
+          "8->12 with volume 1 in epoch 152 via switches 16"
         ]
       ]
     ],
@@ -987,24 +999,12 @@
         ]
       ]
     ],
-    "Demand at 13 for chunk 0 from 0 met by epoch 79": [
+    "Demand at 13 for chunk 0 from 0 met by epoch 86": [
       [
         [
-          3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+          0,
+          "0->1 with volume 1 in epoch 0 via switches 14"
         ],
-        [
-          75,
-          "8->9 with volume 1 in epoch 75 via switches 16"
-        ],
-        [
-          78,
-          "9->13 with volume 1 in epoch 78 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 13 for chunk 0 from 1 met by epoch 86": [
-      [
         [
           3,
           "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
@@ -1016,6 +1016,22 @@
         [
           85,
           "8->13 with volume 1 in epoch 85 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 13 for chunk 0 from 1 met by epoch 87": [
+      [
+        [
+          3,
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          80,
+          "11->8 with volume 1 in epoch 80 via switches 16"
+        ],
+        [
+          86,
+          "8->13 with volume 1 in epoch 86 via switches 16"
         ]
       ]
     ],
@@ -1043,71 +1059,15 @@
         ]
       ]
     ],
-    "Demand at 13 for chunk 0 from 2 met by epoch 87": [
+    "Demand at 13 for chunk 0 from 2 met by epoch 88": [
       [
         [
-          0,
-          "2->1 with volume 1 in epoch 0 via switches 14"
+          2,
+          "2->1 with volume 1 in epoch 2 via switches 14"
         ],
         [
           3,
           "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
-        ],
-        [
-          80,
-          "11->8 with volume 1 in epoch 80 via switches 16"
-        ],
-        [
-          86,
-          "8->13 with volume 1 in epoch 86 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 13 for chunk 0 from 3 met by epoch 80": [
-      [
-        [
-          0,
-          "3->0 with volume 1 in epoch 0 via switches 14"
-        ],
-        [
-          3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          76,
-          "8->9 with volume 1 in epoch 76 via switches 16"
-        ],
-        [
-          79,
-          "9->13 with volume 1 in epoch 79 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 13 for chunk 0 from 4 met by epoch 153": [
-      [
-        [
-          75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
-        ],
-        [
-          149,
-          "11->8 with volume 1 in epoch 149 via switches 16"
-        ],
-        [
-          152,
-          "8->13 with volume 1 in epoch 152 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 13 for chunk 0 from 5 met by epoch 88": [
-      [
-        [
-          1,
-          "5->4 with volume 1 in epoch 1 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
         ],
         [
           81,
@@ -1119,15 +1079,15 @@
         ]
       ]
     ],
-    "Demand at 13 for chunk 0 from 6 met by epoch 89": [
+    "Demand at 13 for chunk 0 from 3 met by epoch 89": [
       [
         [
-          0,
-          "6->4 with volume 1 in epoch 0 via switches 15"
+          1,
+          "3->1 with volume 1 in epoch 1 via switches 14"
         ],
         [
           3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
         ],
         [
           82,
@@ -1139,7 +1099,63 @@
         ]
       ]
     ],
-    "Demand at 13 for chunk 0 from 7 met by epoch 154": [
+    "Demand at 13 for chunk 0 from 4 met by epoch 79": [
+      [
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ],
+        [
+          75,
+          "8->9 with volume 1 in epoch 75 via switches 16"
+        ],
+        [
+          78,
+          "9->13 with volume 1 in epoch 78 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 13 for chunk 0 from 5 met by epoch 80": [
+      [
+        [
+          0,
+          "5->4 with volume 1 in epoch 0 via switches 15"
+        ],
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ],
+        [
+          76,
+          "8->9 with volume 1 in epoch 76 via switches 16"
+        ],
+        [
+          79,
+          "9->13 with volume 1 in epoch 79 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 13 for chunk 0 from 6 met by epoch 151": [
+      [
+        [
+          4,
+          "6->4 with volume 1 in epoch 4 via switches 15"
+        ],
+        [
+          75,
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ],
+        [
+          147,
+          "8->9 with volume 1 in epoch 147 via switches 16"
+        ],
+        [
+          150,
+          "9->13 with volume 1 in epoch 150 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 13 for chunk 0 from 7 met by epoch 152": [
       [
         [
           3,
@@ -1147,27 +1163,23 @@
         ],
         [
           75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
         ],
         [
-          150,
-          "11->8 with volume 1 in epoch 150 via switches 16"
+          148,
+          "8->9 with volume 1 in epoch 148 via switches 16"
         ],
         [
-          153,
-          "8->13 with volume 1 in epoch 153 via switches 16"
+          151,
+          "9->13 with volume 1 in epoch 151 via switches 16"
         ]
       ]
     ],
-    "Demand at 13 for chunk 0 from 8 met by epoch 10": [
+    "Demand at 13 for chunk 0 from 8 met by epoch 1": [
       [
         [
-          3,
-          "8->9 with volume 1 in epoch 3 via switches 16"
-        ],
-        [
-          9,
-          "9->13 with volume 1 in epoch 9 via switches 16"
+          0,
+          "8->13 with volume 1 in epoch 0 via switches 16"
         ]
       ]
     ],
@@ -1195,43 +1207,15 @@
         ]
       ]
     ],
-    "Demand at 2 for chunk 0 from 10 met by epoch 82": [
-      [
-        [
-          1,
-          "10->8 with volume 1 in epoch 1 via switches 16"
-        ],
-        [
-          3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          81,
-          "0->2 with volume 1 in epoch 81 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 2 for chunk 0 from 11 met by epoch 76": [
-      [
-        [
-          3,
-          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
-        ],
-        [
-          75,
-          "1->2 with volume 1 in epoch 75 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 2 for chunk 0 from 12 met by epoch 83": [
+    "Demand at 2 for chunk 0 from 10 met by epoch 83": [
       [
         [
           0,
-          "12->8 with volume 1 in epoch 0 via switches 16"
+          "10->11 with volume 1 in epoch 0 via switches 16"
         ],
         [
           3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "11->0 with volume 1 in epoch 3 at rate 25 via switches 18->17"
         ],
         [
           82,
@@ -1239,15 +1223,43 @@
         ]
       ]
     ],
-    "Demand at 2 for chunk 0 from 13 met by epoch 77": [
+    "Demand at 2 for chunk 0 from 11 met by epoch 77": [
+      [
+        [
+          3,
+          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          76,
+          "1->2 with volume 1 in epoch 76 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 12 met by epoch 78": [
+      [
+        [
+          2,
+          "12->11 with volume 1 in epoch 2 via switches 16"
+        ],
+        [
+          3,
+          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          77,
+          "1->2 with volume 1 in epoch 77 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 13 met by epoch 79": [
       [
         [
           3,
           "13->1 with volume 1 in epoch 3 at rate 25 via switches 18"
         ],
         [
-          76,
-          "1->2 with volume 1 in epoch 76 via switches 14"
+          78,
+          "1->2 with volume 1 in epoch 78 via switches 14"
         ]
       ]
     ],
@@ -1259,79 +1271,11 @@
         ]
       ]
     ],
-    "Demand at 2 for chunk 0 from 4 met by epoch 222": [
-      [
-        [
-          147,
-          "4->0 with volume 1 in epoch 147 at rate 25 via switches 17"
-        ],
-        [
-          221,
-          "0->2 with volume 1 in epoch 221 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 2 for chunk 0 from 5 met by epoch 150": [
-      [
-        [
-          1,
-          "5->4 with volume 1 in epoch 1 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
-        ],
-        [
-          75,
-          "11->0 with volume 1 in epoch 75 at rate 25 via switches 18->17"
-        ],
-        [
-          149,
-          "0->2 with volume 1 in epoch 149 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 2 for chunk 0 from 6 met by epoch 151": [
-      [
-        [
-          0,
-          "6->4 with volume 1 in epoch 0 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
-        ],
-        [
-          75,
-          "11->0 with volume 1 in epoch 75 at rate 25 via switches 18->17"
-        ],
-        [
-          150,
-          "0->2 with volume 1 in epoch 150 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 2 for chunk 0 from 7 met by epoch 223": [
+    "Demand at 2 for chunk 0 from 4 met by epoch 80": [
       [
         [
           3,
-          "7->4 with volume 1 in epoch 3 via switches 15"
-        ],
-        [
-          147,
-          "4->0 with volume 1 in epoch 147 at rate 25 via switches 17"
-        ],
-        [
-          222,
-          "0->2 with volume 1 in epoch 222 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 2 for chunk 0 from 8 met by epoch 80": [
-      [
-        [
-          3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "4->0 with volume 1 in epoch 3 at rate 25 via switches 17"
         ],
         [
           79,
@@ -1339,15 +1283,15 @@
         ]
       ]
     ],
-    "Demand at 2 for chunk 0 from 9 met by epoch 81": [
+    "Demand at 2 for chunk 0 from 5 met by epoch 81": [
       [
         [
-          2,
-          "9->8 with volume 1 in epoch 2 via switches 16"
+          0,
+          "5->4 with volume 1 in epoch 0 via switches 15"
         ],
         [
           3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "4->0 with volume 1 in epoch 3 at rate 25 via switches 17"
         ],
         [
           80,
@@ -1355,15 +1299,75 @@
         ]
       ]
     ],
-    "Demand at 3 for chunk 0 from 0 met by epoch 6": [
+    "Demand at 2 for chunk 0 from 6 met by epoch 150": [
+      [
+        [
+          4,
+          "6->4 with volume 1 in epoch 4 via switches 15"
+        ],
+        [
+          75,
+          "4->0 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ],
+        [
+          149,
+          "0->2 with volume 1 in epoch 149 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 7 met by epoch 151": [
       [
         [
           3,
-          "0->1 with volume 1 in epoch 3 via switches 14"
+          "7->4 with volume 1 in epoch 3 via switches 15"
         ],
         [
+          75,
+          "4->0 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ],
+        [
+          150,
+          "0->2 with volume 1 in epoch 150 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 8 met by epoch 82": [
+      [
+        [
+          0,
+          "8->13 with volume 1 in epoch 0 via switches 16"
+        ],
+        [
+          3,
+          "13->0 with volume 1 in epoch 3 at rate 25 via switches 18->17"
+        ],
+        [
+          81,
+          "0->2 with volume 1 in epoch 81 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 9 met by epoch 76": [
+      [
+        [
+          1,
+          "9->11 with volume 1 in epoch 1 via switches 16"
+        ],
+        [
+          3,
+          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          75,
+          "1->2 with volume 1 in epoch 75 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 0 met by epoch 6": [
+      [
+        [
           5,
-          "1->3 with volume 1 in epoch 5 via switches 14"
+          "0->3 with volume 1 in epoch 5 via switches 14"
         ]
       ]
     ],
@@ -1375,47 +1379,15 @@
         ]
       ]
     ],
-    "Demand at 3 for chunk 0 from 10 met by epoch 82": [
-      [
-        [
-          1,
-          "10->8 with volume 1 in epoch 1 via switches 16"
-        ],
-        [
-          3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          77,
-          "0->1 with volume 1 in epoch 77 via switches 14"
-        ],
-        [
-          81,
-          "1->3 with volume 1 in epoch 81 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 3 for chunk 0 from 11 met by epoch 78": [
-      [
-        [
-          3,
-          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
-        ],
-        [
-          77,
-          "1->3 with volume 1 in epoch 77 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 3 for chunk 0 from 12 met by epoch 83": [
+    "Demand at 3 for chunk 0 from 10 met by epoch 83": [
       [
         [
           0,
-          "12->8 with volume 1 in epoch 0 via switches 16"
+          "10->11 with volume 1 in epoch 0 via switches 16"
         ],
         [
           3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "11->0 with volume 1 in epoch 3 at rate 25 via switches 18->17"
         ],
         [
           78,
@@ -1427,15 +1399,55 @@
         ]
       ]
     ],
-    "Demand at 3 for chunk 0 from 13 met by epoch 79": [
+    "Demand at 3 for chunk 0 from 11 met by epoch 86": [
+      [
+        [
+          3,
+          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          84,
+          "1->0 with volume 1 in epoch 84 via switches 14"
+        ],
+        [
+          85,
+          "0->3 with volume 1 in epoch 85 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 12 met by epoch 87": [
+      [
+        [
+          2,
+          "12->11 with volume 1 in epoch 2 via switches 16"
+        ],
+        [
+          3,
+          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          85,
+          "1->0 with volume 1 in epoch 85 via switches 14"
+        ],
+        [
+          86,
+          "0->3 with volume 1 in epoch 86 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 13 met by epoch 88": [
       [
         [
           3,
           "13->1 with volume 1 in epoch 3 at rate 25 via switches 18"
         ],
         [
-          78,
-          "1->3 with volume 1 in epoch 78 via switches 14"
+          86,
+          "1->0 with volume 1 in epoch 86 via switches 14"
+        ],
+        [
+          87,
+          "0->3 with volume 1 in epoch 87 via switches 14"
         ]
       ]
     ],
@@ -1447,95 +1459,11 @@
         ]
       ]
     ],
-    "Demand at 3 for chunk 0 from 4 met by epoch 221": [
-      [
-        [
-          147,
-          "4->0 with volume 1 in epoch 147 at rate 25 via switches 17"
-        ],
-        [
-          219,
-          "0->1 with volume 1 in epoch 219 via switches 14"
-        ],
-        [
-          220,
-          "1->3 with volume 1 in epoch 220 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 3 for chunk 0 from 5 met by epoch 149": [
-      [
-        [
-          1,
-          "5->4 with volume 1 in epoch 1 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
-        ],
-        [
-          75,
-          "11->0 with volume 1 in epoch 75 at rate 25 via switches 18->17"
-        ],
-        [
-          147,
-          "0->1 with volume 1 in epoch 147 via switches 14"
-        ],
-        [
-          148,
-          "1->3 with volume 1 in epoch 148 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 3 for chunk 0 from 6 met by epoch 150": [
-      [
-        [
-          0,
-          "6->4 with volume 1 in epoch 0 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
-        ],
-        [
-          75,
-          "11->0 with volume 1 in epoch 75 at rate 25 via switches 18->17"
-        ],
-        [
-          148,
-          "0->1 with volume 1 in epoch 148 via switches 14"
-        ],
-        [
-          149,
-          "1->3 with volume 1 in epoch 149 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 3 for chunk 0 from 7 met by epoch 222": [
+    "Demand at 3 for chunk 0 from 4 met by epoch 80": [
       [
         [
           3,
-          "7->4 with volume 1 in epoch 3 via switches 15"
-        ],
-        [
-          147,
-          "4->0 with volume 1 in epoch 147 at rate 25 via switches 17"
-        ],
-        [
-          220,
-          "0->1 with volume 1 in epoch 220 via switches 14"
-        ],
-        [
-          221,
-          "1->3 with volume 1 in epoch 221 via switches 14"
-        ]
-      ]
-    ],
-    "Demand at 3 for chunk 0 from 8 met by epoch 80": [
-      [
-        [
-          3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "4->0 with volume 1 in epoch 3 at rate 25 via switches 17"
         ],
         [
           75,
@@ -1547,15 +1475,15 @@
         ]
       ]
     ],
-    "Demand at 3 for chunk 0 from 9 met by epoch 81": [
+    "Demand at 3 for chunk 0 from 5 met by epoch 81": [
       [
         [
-          2,
-          "9->8 with volume 1 in epoch 2 via switches 16"
+          0,
+          "5->4 with volume 1 in epoch 0 via switches 15"
         ],
         [
           3,
-          "8->0 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "4->0 with volume 1 in epoch 3 at rate 25 via switches 17"
         ],
         [
           76,
@@ -1567,6 +1495,86 @@
         ]
       ]
     ],
+    "Demand at 3 for chunk 0 from 6 met by epoch 149": [
+      [
+        [
+          4,
+          "6->4 with volume 1 in epoch 4 via switches 15"
+        ],
+        [
+          75,
+          "4->0 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ],
+        [
+          147,
+          "0->1 with volume 1 in epoch 147 via switches 14"
+        ],
+        [
+          148,
+          "1->3 with volume 1 in epoch 148 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 7 met by epoch 150": [
+      [
+        [
+          3,
+          "7->4 with volume 1 in epoch 3 via switches 15"
+        ],
+        [
+          75,
+          "4->0 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ],
+        [
+          148,
+          "0->1 with volume 1 in epoch 148 via switches 14"
+        ],
+        [
+          149,
+          "1->3 with volume 1 in epoch 149 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 8 met by epoch 82": [
+      [
+        [
+          0,
+          "8->13 with volume 1 in epoch 0 via switches 16"
+        ],
+        [
+          3,
+          "13->0 with volume 1 in epoch 3 at rate 25 via switches 18->17"
+        ],
+        [
+          77,
+          "0->1 with volume 1 in epoch 77 via switches 14"
+        ],
+        [
+          81,
+          "1->3 with volume 1 in epoch 81 via switches 14"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 9 met by epoch 85": [
+      [
+        [
+          1,
+          "9->11 with volume 1 in epoch 1 via switches 16"
+        ],
+        [
+          3,
+          "11->1 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          83,
+          "1->0 with volume 1 in epoch 83 via switches 14"
+        ],
+        [
+          84,
+          "0->3 with volume 1 in epoch 84 via switches 14"
+        ]
+      ]
+    ],
     "Demand at 4 for chunk 0 from 0 met by epoch 147": [
       [
         [
@@ -1575,47 +1583,23 @@
         ]
       ]
     ],
-    "Demand at 4 for chunk 0 from 1 met by epoch 75": [
+    "Demand at 4 for chunk 0 from 1 met by epoch 363": [
       [
         [
-          2,
-          "1->0 with volume 1 in epoch 2 via switches 14"
-        ],
-        [
-          3,
-          "0->4 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ]
-      ]
-    ],
-    "Demand at 4 for chunk 0 from 10 met by epoch 291": [
-      [
-        [
-          1,
-          "10->8 with volume 1 in epoch 1 via switches 16"
-        ],
-        [
-          219,
-          "8->4 with volume 1 in epoch 219 at rate 25 via switches 17"
-        ]
-      ]
-    ],
-    "Demand at 4 for chunk 0 from 11 met by epoch 363": [
-      [
-        [
-          4,
-          "11->8 with volume 1 in epoch 4 via switches 16"
+          5,
+          "1->0 with volume 1 in epoch 5 via switches 14"
         ],
         [
           291,
-          "8->4 with volume 1 in epoch 291 at rate 25 via switches 17"
+          "0->4 with volume 1 in epoch 291 at rate 25 via switches 17"
         ]
       ]
     ],
-    "Demand at 4 for chunk 0 from 12 met by epoch 219": [
+    "Demand at 4 for chunk 0 from 10 met by epoch 219": [
       [
         [
-          0,
-          "12->8 with volume 1 in epoch 0 via switches 16"
+          3,
+          "10->8 with volume 1 in epoch 3 via switches 16"
         ],
         [
           147,
@@ -1623,35 +1607,55 @@
         ]
       ]
     ],
-    "Demand at 4 for chunk 0 from 13 met by epoch 363": [
+    "Demand at 4 for chunk 0 from 11 met by epoch 291": [
       [
         [
-          3,
-          "13->8 with volume 1 in epoch 3 via switches 16"
+          4,
+          "11->8 with volume 1 in epoch 4 via switches 16"
         ],
         [
-          291,
-          "8->4 with volume 1 in epoch 291 at rate 25 via switches 17"
+          219,
+          "8->4 with volume 1 in epoch 219 at rate 25 via switches 17"
         ]
       ]
     ],
-    "Demand at 4 for chunk 0 from 2 met by epoch 75": [
+    "Demand at 4 for chunk 0 from 12 met by epoch 75": [
       [
         [
-          1,
-          "2->0 with volume 1 in epoch 1 via switches 14"
+          2,
+          "12->11 with volume 1 in epoch 2 via switches 16"
         ],
         [
           3,
-          "0->4 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "11->4 with volume 1 in epoch 3 at rate 25 via switches 18->17"
+        ]
+      ]
+    ],
+    "Demand at 4 for chunk 0 from 13 met by epoch 75": [
+      [
+        [
+          3,
+          "13->4 with volume 1 in epoch 3 at rate 25 via switches 18->17"
+        ]
+      ]
+    ],
+    "Demand at 4 for chunk 0 from 2 met by epoch 363": [
+      [
+        [
+          4,
+          "2->0 with volume 1 in epoch 4 via switches 14"
+        ],
+        [
+          291,
+          "0->4 with volume 1 in epoch 291 at rate 25 via switches 17"
         ]
       ]
     ],
     "Demand at 4 for chunk 0 from 3 met by epoch 147": [
       [
         [
-          0,
-          "3->0 with volume 1 in epoch 0 via switches 14"
+          3,
+          "3->0 with volume 1 in epoch 3 via switches 14"
         ],
         [
           75,
@@ -1659,19 +1663,19 @@
         ]
       ]
     ],
-    "Demand at 4 for chunk 0 from 5 met by epoch 2": [
-      [
-        [
-          1,
-          "5->4 with volume 1 in epoch 1 via switches 15"
-        ]
-      ]
-    ],
-    "Demand at 4 for chunk 0 from 6 met by epoch 1": [
+    "Demand at 4 for chunk 0 from 5 met by epoch 1": [
       [
         [
           0,
-          "6->4 with volume 1 in epoch 0 via switches 15"
+          "5->4 with volume 1 in epoch 0 via switches 15"
+        ]
+      ]
+    ],
+    "Demand at 4 for chunk 0 from 6 met by epoch 5": [
+      [
+        [
+          4,
+          "6->4 with volume 1 in epoch 4 via switches 15"
         ]
       ]
     ],
@@ -1694,8 +1698,8 @@
     "Demand at 4 for chunk 0 from 9 met by epoch 291": [
       [
         [
-          2,
-          "9->8 with volume 1 in epoch 2 via switches 16"
+          5,
+          "9->8 with volume 1 in epoch 5 via switches 16"
         ],
         [
           219,
@@ -1715,47 +1719,15 @@
         ]
       ]
     ],
-    "Demand at 5 for chunk 0 from 1 met by epoch 76": [
+    "Demand at 5 for chunk 0 from 1 met by epoch 364": [
       [
         [
-          2,
-          "1->0 with volume 1 in epoch 2 via switches 14"
-        ],
-        [
-          3,
-          "0->4 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          75,
-          "4->5 with volume 1 in epoch 75 via switches 15"
-        ]
-      ]
-    ],
-    "Demand at 5 for chunk 0 from 10 met by epoch 293": [
-      [
-        [
-          1,
-          "10->8 with volume 1 in epoch 1 via switches 16"
-        ],
-        [
-          219,
-          "8->4 with volume 1 in epoch 219 at rate 25 via switches 17"
-        ],
-        [
-          292,
-          "4->5 with volume 1 in epoch 292 via switches 15"
-        ]
-      ]
-    ],
-    "Demand at 5 for chunk 0 from 11 met by epoch 364": [
-      [
-        [
-          4,
-          "11->8 with volume 1 in epoch 4 via switches 16"
+          5,
+          "1->0 with volume 1 in epoch 5 via switches 14"
         ],
         [
           291,
-          "8->4 with volume 1 in epoch 291 at rate 25 via switches 17"
+          "0->4 with volume 1 in epoch 291 at rate 25 via switches 17"
         ],
         [
           363,
@@ -1763,11 +1735,11 @@
         ]
       ]
     ],
-    "Demand at 5 for chunk 0 from 12 met by epoch 221": [
+    "Demand at 5 for chunk 0 from 10 met by epoch 221": [
       [
         [
-          0,
-          "12->8 with volume 1 in epoch 0 via switches 16"
+          3,
+          "10->8 with volume 1 in epoch 3 via switches 16"
         ],
         [
           147,
@@ -1779,31 +1751,43 @@
         ]
       ]
     ],
-    "Demand at 5 for chunk 0 from 13 met by epoch 365": [
+    "Demand at 5 for chunk 0 from 11 met by epoch 293": [
       [
         [
-          3,
-          "13->8 with volume 1 in epoch 3 via switches 16"
+          4,
+          "11->8 with volume 1 in epoch 4 via switches 16"
         ],
         [
-          291,
-          "8->4 with volume 1 in epoch 291 at rate 25 via switches 17"
+          219,
+          "8->4 with volume 1 in epoch 219 at rate 25 via switches 17"
         ],
         [
-          364,
-          "4->5 with volume 1 in epoch 364 via switches 15"
+          292,
+          "4->5 with volume 1 in epoch 292 via switches 15"
         ]
       ]
     ],
-    "Demand at 5 for chunk 0 from 2 met by epoch 77": [
+    "Demand at 5 for chunk 0 from 12 met by epoch 76": [
       [
         [
-          1,
-          "2->0 with volume 1 in epoch 1 via switches 14"
+          2,
+          "12->11 with volume 1 in epoch 2 via switches 16"
         ],
         [
           3,
-          "0->4 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "11->4 with volume 1 in epoch 3 at rate 25 via switches 18->17"
+        ],
+        [
+          75,
+          "4->5 with volume 1 in epoch 75 via switches 15"
+        ]
+      ]
+    ],
+    "Demand at 5 for chunk 0 from 13 met by epoch 77": [
+      [
+        [
+          3,
+          "13->4 with volume 1 in epoch 3 at rate 25 via switches 18->17"
         ],
         [
           76,
@@ -1811,11 +1795,27 @@
         ]
       ]
     ],
+    "Demand at 5 for chunk 0 from 2 met by epoch 365": [
+      [
+        [
+          4,
+          "2->0 with volume 1 in epoch 4 via switches 14"
+        ],
+        [
+          291,
+          "0->4 with volume 1 in epoch 291 at rate 25 via switches 17"
+        ],
+        [
+          364,
+          "4->5 with volume 1 in epoch 364 via switches 15"
+        ]
+      ]
+    ],
     "Demand at 5 for chunk 0 from 3 met by epoch 149": [
       [
         [
-          0,
-          "3->0 with volume 1 in epoch 0 via switches 14"
+          3,
+          "3->0 with volume 1 in epoch 3 via switches 14"
         ],
         [
           75,
@@ -1866,8 +1866,8 @@
     "Demand at 5 for chunk 0 from 9 met by epoch 292": [
       [
         [
-          2,
-          "9->8 with volume 1 in epoch 2 via switches 16"
+          5,
+          "9->8 with volume 1 in epoch 5 via switches 16"
         ],
         [
           219,
@@ -1891,47 +1891,15 @@
         ]
       ]
     ],
-    "Demand at 6 for chunk 0 from 1 met by epoch 78": [
+    "Demand at 6 for chunk 0 from 1 met by epoch 366": [
       [
         [
-          2,
-          "1->0 with volume 1 in epoch 2 via switches 14"
-        ],
-        [
-          3,
-          "0->4 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          77,
-          "4->6 with volume 1 in epoch 77 via switches 15"
-        ]
-      ]
-    ],
-    "Demand at 6 for chunk 0 from 10 met by epoch 295": [
-      [
-        [
-          1,
-          "10->8 with volume 1 in epoch 1 via switches 16"
-        ],
-        [
-          219,
-          "8->4 with volume 1 in epoch 219 at rate 25 via switches 17"
-        ],
-        [
-          294,
-          "4->6 with volume 1 in epoch 294 via switches 15"
-        ]
-      ]
-    ],
-    "Demand at 6 for chunk 0 from 11 met by epoch 366": [
-      [
-        [
-          4,
-          "11->8 with volume 1 in epoch 4 via switches 16"
+          5,
+          "1->0 with volume 1 in epoch 5 via switches 14"
         ],
         [
           291,
-          "8->4 with volume 1 in epoch 291 at rate 25 via switches 17"
+          "0->4 with volume 1 in epoch 291 at rate 25 via switches 17"
         ],
         [
           365,
@@ -1939,11 +1907,11 @@
         ]
       ]
     ],
-    "Demand at 6 for chunk 0 from 12 met by epoch 223": [
+    "Demand at 6 for chunk 0 from 10 met by epoch 223": [
       [
         [
-          0,
-          "12->8 with volume 1 in epoch 0 via switches 16"
+          3,
+          "10->8 with volume 1 in epoch 3 via switches 16"
         ],
         [
           147,
@@ -1955,31 +1923,43 @@
         ]
       ]
     ],
-    "Demand at 6 for chunk 0 from 13 met by epoch 367": [
+    "Demand at 6 for chunk 0 from 11 met by epoch 295": [
       [
         [
-          3,
-          "13->8 with volume 1 in epoch 3 via switches 16"
+          4,
+          "11->8 with volume 1 in epoch 4 via switches 16"
         ],
         [
-          291,
-          "8->4 with volume 1 in epoch 291 at rate 25 via switches 17"
+          219,
+          "8->4 with volume 1 in epoch 219 at rate 25 via switches 17"
         ],
         [
-          366,
-          "4->6 with volume 1 in epoch 366 via switches 15"
+          294,
+          "4->6 with volume 1 in epoch 294 via switches 15"
         ]
       ]
     ],
-    "Demand at 6 for chunk 0 from 2 met by epoch 79": [
+    "Demand at 6 for chunk 0 from 12 met by epoch 78": [
       [
         [
-          1,
-          "2->0 with volume 1 in epoch 1 via switches 14"
+          2,
+          "12->11 with volume 1 in epoch 2 via switches 16"
         ],
         [
           3,
-          "0->4 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "11->4 with volume 1 in epoch 3 at rate 25 via switches 18->17"
+        ],
+        [
+          77,
+          "4->6 with volume 1 in epoch 77 via switches 15"
+        ]
+      ]
+    ],
+    "Demand at 6 for chunk 0 from 13 met by epoch 79": [
+      [
+        [
+          3,
+          "13->4 with volume 1 in epoch 3 at rate 25 via switches 18->17"
         ],
         [
           78,
@@ -1987,11 +1967,27 @@
         ]
       ]
     ],
+    "Demand at 6 for chunk 0 from 2 met by epoch 367": [
+      [
+        [
+          4,
+          "2->0 with volume 1 in epoch 4 via switches 14"
+        ],
+        [
+          291,
+          "0->4 with volume 1 in epoch 291 at rate 25 via switches 17"
+        ],
+        [
+          366,
+          "4->6 with volume 1 in epoch 366 via switches 15"
+        ]
+      ]
+    ],
     "Demand at 6 for chunk 0 from 3 met by epoch 151": [
       [
         [
-          0,
-          "3->0 with volume 1 in epoch 0 via switches 14"
+          3,
+          "3->0 with volume 1 in epoch 3 via switches 14"
         ],
         [
           75,
@@ -2042,8 +2038,8 @@
     "Demand at 6 for chunk 0 from 9 met by epoch 294": [
       [
         [
-          2,
-          "9->8 with volume 1 in epoch 2 via switches 16"
+          5,
+          "9->8 with volume 1 in epoch 5 via switches 16"
         ],
         [
           219,
@@ -2071,55 +2067,15 @@
         ]
       ]
     ],
-    "Demand at 7 for chunk 0 from 1 met by epoch 77": [
+    "Demand at 7 for chunk 0 from 1 met by epoch 365": [
       [
         [
-          2,
-          "1->0 with volume 1 in epoch 2 via switches 14"
-        ],
-        [
-          3,
-          "0->4 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          75,
-          "4->5 with volume 1 in epoch 75 via switches 15"
-        ],
-        [
-          76,
-          "5->7 with volume 1 in epoch 76 via switches 15"
-        ]
-      ]
-    ],
-    "Demand at 7 for chunk 0 from 10 met by epoch 294": [
-      [
-        [
-          1,
-          "10->8 with volume 1 in epoch 1 via switches 16"
-        ],
-        [
-          219,
-          "8->4 with volume 1 in epoch 219 at rate 25 via switches 17"
-        ],
-        [
-          292,
-          "4->5 with volume 1 in epoch 292 via switches 15"
-        ],
-        [
-          293,
-          "5->7 with volume 1 in epoch 293 via switches 15"
-        ]
-      ]
-    ],
-    "Demand at 7 for chunk 0 from 11 met by epoch 365": [
-      [
-        [
-          4,
-          "11->8 with volume 1 in epoch 4 via switches 16"
+          5,
+          "1->0 with volume 1 in epoch 5 via switches 14"
         ],
         [
           291,
-          "8->4 with volume 1 in epoch 291 at rate 25 via switches 17"
+          "0->4 with volume 1 in epoch 291 at rate 25 via switches 17"
         ],
         [
           363,
@@ -2131,11 +2087,11 @@
         ]
       ]
     ],
-    "Demand at 7 for chunk 0 from 12 met by epoch 222": [
+    "Demand at 7 for chunk 0 from 10 met by epoch 222": [
       [
         [
-          0,
-          "12->8 with volume 1 in epoch 0 via switches 16"
+          3,
+          "10->8 with volume 1 in epoch 3 via switches 16"
         ],
         [
           147,
@@ -2151,35 +2107,51 @@
         ]
       ]
     ],
-    "Demand at 7 for chunk 0 from 13 met by epoch 366": [
+    "Demand at 7 for chunk 0 from 11 met by epoch 294": [
       [
         [
-          3,
-          "13->8 with volume 1 in epoch 3 via switches 16"
+          4,
+          "11->8 with volume 1 in epoch 4 via switches 16"
         ],
         [
-          291,
-          "8->4 with volume 1 in epoch 291 at rate 25 via switches 17"
+          219,
+          "8->4 with volume 1 in epoch 219 at rate 25 via switches 17"
         ],
         [
-          364,
-          "4->5 with volume 1 in epoch 364 via switches 15"
+          292,
+          "4->5 with volume 1 in epoch 292 via switches 15"
         ],
         [
-          365,
-          "5->7 with volume 1 in epoch 365 via switches 15"
+          293,
+          "5->7 with volume 1 in epoch 293 via switches 15"
         ]
       ]
     ],
-    "Demand at 7 for chunk 0 from 2 met by epoch 78": [
+    "Demand at 7 for chunk 0 from 12 met by epoch 77": [
       [
         [
-          1,
-          "2->0 with volume 1 in epoch 1 via switches 14"
+          2,
+          "12->11 with volume 1 in epoch 2 via switches 16"
         ],
         [
           3,
-          "0->4 with volume 1 in epoch 3 at rate 25 via switches 17"
+          "11->4 with volume 1 in epoch 3 at rate 25 via switches 18->17"
+        ],
+        [
+          75,
+          "4->5 with volume 1 in epoch 75 via switches 15"
+        ],
+        [
+          76,
+          "5->7 with volume 1 in epoch 76 via switches 15"
+        ]
+      ]
+    ],
+    "Demand at 7 for chunk 0 from 13 met by epoch 78": [
+      [
+        [
+          3,
+          "13->4 with volume 1 in epoch 3 at rate 25 via switches 18->17"
         ],
         [
           76,
@@ -2191,11 +2163,31 @@
         ]
       ]
     ],
+    "Demand at 7 for chunk 0 from 2 met by epoch 366": [
+      [
+        [
+          4,
+          "2->0 with volume 1 in epoch 4 via switches 14"
+        ],
+        [
+          291,
+          "0->4 with volume 1 in epoch 291 at rate 25 via switches 17"
+        ],
+        [
+          364,
+          "4->5 with volume 1 in epoch 364 via switches 15"
+        ],
+        [
+          365,
+          "5->7 with volume 1 in epoch 365 via switches 15"
+        ]
+      ]
+    ],
     "Demand at 7 for chunk 0 from 3 met by epoch 150": [
       [
         [
-          0,
-          "3->0 with volume 1 in epoch 0 via switches 14"
+          3,
+          "3->0 with volume 1 in epoch 3 via switches 14"
         ],
         [
           75,
@@ -2258,8 +2250,8 @@
     "Demand at 7 for chunk 0 from 9 met by epoch 293": [
       [
         [
-          2,
-          "9->8 with volume 1 in epoch 2 via switches 16"
+          5,
+          "9->8 with volume 1 in epoch 5 via switches 16"
         ],
         [
           219,
@@ -2275,16 +2267,12 @@
         ]
       ]
     ],
-    "Demand at 8 for chunk 0 from 0 met by epoch 75": [
+    "Demand at 8 for chunk 0 from 0 met by epoch 80": [
       [
         [
-          3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ]
-      ]
-    ],
-    "Demand at 8 for chunk 0 from 1 met by epoch 80": [
-      [
+          0,
+          "0->1 with volume 1 in epoch 0 via switches 14"
+        ],
         [
           3,
           "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
@@ -2295,11 +2283,23 @@
         ]
       ]
     ],
-    "Demand at 8 for chunk 0 from 10 met by epoch 2": [
+    "Demand at 8 for chunk 0 from 1 met by epoch 81": [
       [
         [
-          1,
-          "10->8 with volume 1 in epoch 1 via switches 16"
+          3,
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          80,
+          "11->8 with volume 1 in epoch 80 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 8 for chunk 0 from 10 met by epoch 4": [
+      [
+        [
+          3,
+          "10->8 with volume 1 in epoch 3 via switches 16"
         ]
       ]
     ],
@@ -2311,71 +2311,31 @@
         ]
       ]
     ],
-    "Demand at 8 for chunk 0 from 12 met by epoch 1": [
+    "Demand at 8 for chunk 0 from 12 met by epoch 8": [
       [
         [
-          0,
-          "12->8 with volume 1 in epoch 0 via switches 16"
+          7,
+          "12->8 with volume 1 in epoch 7 via switches 16"
         ]
       ]
     ],
-    "Demand at 8 for chunk 0 from 13 met by epoch 4": [
+    "Demand at 8 for chunk 0 from 13 met by epoch 7": [
       [
         [
-          3,
-          "13->8 with volume 1 in epoch 3 via switches 16"
+          6,
+          "13->8 with volume 1 in epoch 6 via switches 16"
         ]
       ]
     ],
-    "Demand at 8 for chunk 0 from 2 met by epoch 81": [
+    "Demand at 8 for chunk 0 from 2 met by epoch 82": [
       [
         [
-          0,
-          "2->1 with volume 1 in epoch 0 via switches 14"
+          2,
+          "2->1 with volume 1 in epoch 2 via switches 14"
         ],
         [
           3,
           "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
-        ],
-        [
-          80,
-          "11->8 with volume 1 in epoch 80 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 8 for chunk 0 from 3 met by epoch 75": [
-      [
-        [
-          0,
-          "3->0 with volume 1 in epoch 0 via switches 14"
-        ],
-        [
-          3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ]
-      ]
-    ],
-    "Demand at 8 for chunk 0 from 4 met by epoch 150": [
-      [
-        [
-          75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
-        ],
-        [
-          149,
-          "11->8 with volume 1 in epoch 149 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 8 for chunk 0 from 5 met by epoch 82": [
-      [
-        [
-          1,
-          "5->4 with volume 1 in epoch 1 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
         ],
         [
           81,
@@ -2383,15 +2343,15 @@
         ]
       ]
     ],
-    "Demand at 8 for chunk 0 from 6 met by epoch 83": [
+    "Demand at 8 for chunk 0 from 3 met by epoch 83": [
       [
         [
-          0,
-          "6->4 with volume 1 in epoch 0 via switches 15"
+          1,
+          "3->1 with volume 1 in epoch 1 via switches 14"
         ],
         [
           3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
         ],
         [
           82,
@@ -2399,7 +2359,39 @@
         ]
       ]
     ],
-    "Demand at 8 for chunk 0 from 7 met by epoch 151": [
+    "Demand at 8 for chunk 0 from 4 met by epoch 75": [
+      [
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ]
+      ]
+    ],
+    "Demand at 8 for chunk 0 from 5 met by epoch 75": [
+      [
+        [
+          0,
+          "5->4 with volume 1 in epoch 0 via switches 15"
+        ],
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ]
+      ]
+    ],
+    "Demand at 8 for chunk 0 from 6 met by epoch 147": [
+      [
+        [
+          4,
+          "6->4 with volume 1 in epoch 4 via switches 15"
+        ],
+        [
+          75,
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ]
+      ]
+    ],
+    "Demand at 8 for chunk 0 from 7 met by epoch 147": [
       [
         [
           3,
@@ -2407,36 +2399,24 @@
         ],
         [
           75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ]
+      ]
+    ],
+    "Demand at 8 for chunk 0 from 9 met by epoch 6": [
+      [
+        [
+          5,
+          "9->8 with volume 1 in epoch 5 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 9 for chunk 0 from 0 met by epoch 84": [
+      [
+        [
+          0,
+          "0->1 with volume 1 in epoch 0 via switches 14"
         ],
-        [
-          150,
-          "11->8 with volume 1 in epoch 150 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 8 for chunk 0 from 9 met by epoch 3": [
-      [
-        [
-          2,
-          "9->8 with volume 1 in epoch 2 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 9 for chunk 0 from 0 met by epoch 76": [
-      [
-        [
-          3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          75,
-          "8->9 with volume 1 in epoch 75 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 9 for chunk 0 from 1 met by epoch 84": [
-      [
         [
           3,
           "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
@@ -2444,6 +2424,18 @@
         [
           83,
           "11->9 with volume 1 in epoch 83 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 9 for chunk 0 from 1 met by epoch 85": [
+      [
+        [
+          3,
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
+        ],
+        [
+          84,
+          "11->9 with volume 1 in epoch 84 via switches 16"
         ]
       ]
     ],
@@ -2479,59 +2471,15 @@
         ]
       ]
     ],
-    "Demand at 9 for chunk 0 from 2 met by epoch 85": [
+    "Demand at 9 for chunk 0 from 2 met by epoch 86": [
       [
         [
-          0,
-          "2->1 with volume 1 in epoch 0 via switches 14"
+          2,
+          "2->1 with volume 1 in epoch 2 via switches 14"
         ],
         [
           3,
           "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
-        ],
-        [
-          84,
-          "11->9 with volume 1 in epoch 84 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 9 for chunk 0 from 3 met by epoch 77": [
-      [
-        [
-          0,
-          "3->0 with volume 1 in epoch 0 via switches 14"
-        ],
-        [
-          3,
-          "0->8 with volume 1 in epoch 3 at rate 25 via switches 17"
-        ],
-        [
-          76,
-          "8->9 with volume 1 in epoch 76 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 9 for chunk 0 from 4 met by epoch 152": [
-      [
-        [
-          75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
-        ],
-        [
-          151,
-          "11->9 with volume 1 in epoch 151 via switches 16"
-        ]
-      ]
-    ],
-    "Demand at 9 for chunk 0 from 5 met by epoch 86": [
-      [
-        [
-          1,
-          "5->4 with volume 1 in epoch 1 via switches 15"
-        ],
-        [
-          3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
         ],
         [
           85,
@@ -2539,15 +2487,15 @@
         ]
       ]
     ],
-    "Demand at 9 for chunk 0 from 6 met by epoch 87": [
+    "Demand at 9 for chunk 0 from 3 met by epoch 87": [
       [
         [
-          0,
-          "6->4 with volume 1 in epoch 0 via switches 15"
+          1,
+          "3->1 with volume 1 in epoch 1 via switches 14"
         ],
         [
           3,
-          "4->11 with volume 1 in epoch 3 at rate 25 via switches 17->18"
+          "1->11 with volume 1 in epoch 3 at rate 25 via switches 18"
         ],
         [
           86,
@@ -2555,7 +2503,51 @@
         ]
       ]
     ],
-    "Demand at 9 for chunk 0 from 7 met by epoch 153": [
+    "Demand at 9 for chunk 0 from 4 met by epoch 76": [
+      [
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ],
+        [
+          75,
+          "8->9 with volume 1 in epoch 75 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 9 for chunk 0 from 5 met by epoch 77": [
+      [
+        [
+          0,
+          "5->4 with volume 1 in epoch 0 via switches 15"
+        ],
+        [
+          3,
+          "4->8 with volume 1 in epoch 3 at rate 25 via switches 17"
+        ],
+        [
+          76,
+          "8->9 with volume 1 in epoch 76 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 9 for chunk 0 from 6 met by epoch 148": [
+      [
+        [
+          4,
+          "6->4 with volume 1 in epoch 4 via switches 15"
+        ],
+        [
+          75,
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
+        ],
+        [
+          147,
+          "8->9 with volume 1 in epoch 147 via switches 16"
+        ]
+      ]
+    ],
+    "Demand at 9 for chunk 0 from 7 met by epoch 149": [
       [
         [
           3,
@@ -2563,11 +2555,11 @@
         ],
         [
           75,
-          "4->11 with volume 1 in epoch 75 at rate 25 via switches 17->18"
+          "4->8 with volume 1 in epoch 75 at rate 25 via switches 17"
         ],
         [
-          152,
-          "11->9 with volume 1 in epoch 152 via switches 16"
+          148,
+          "8->9 with volume 1 in epoch 148 via switches 16"
         ]
       ]
     ],
@@ -2581,5 +2573,5 @@
     ]
   },
   "9-Chunk_Size": 1,
-  "Solver_Time": 0.9988598823547363
+  "Solver_Time": 1.6028692722320557
 }

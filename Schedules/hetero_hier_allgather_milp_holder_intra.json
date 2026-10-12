@@ -2,33 +2,11 @@
   {
     "cell": 0,
     "identity": [
-      3,
-      0
-    ],
-    "sender": 3,
-    "receiver": 0,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": -1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        3,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 0,
-    "identity": [
       2,
       0
     ],
     "sender": 2,
-    "receiver": 1,
+    "receiver": 0,
     "via_switch": 14,
     "volume": 1.0,
     "band": -1,
@@ -53,6 +31,28 @@
     "receiver": 1,
     "via_switch": 14,
     "volume": 1.0,
+    "band": -1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 0,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 3,
+    "receiver": 0,
+    "via_switch": 14,
+    "volume": 1.0,
     "band": 0,
     "local_round": 0,
     "span": 1,
@@ -68,11 +68,11 @@
   {
     "cell": 0,
     "identity": [
-      2,
+      0,
       0
     ],
-    "sender": 2,
-    "receiver": 0,
+    "sender": 0,
+    "receiver": 1,
     "via_switch": 14,
     "volume": 1.0,
     "band": 0,
@@ -80,12 +80,12 @@
     "span": 1,
     "identities": [
       [
-        2,
+        0,
         0
       ]
     ],
-    "kind": "egress_stage",
-    "hard": true
+    "kind": "self_distribution",
+    "hard": false
   },
   {
     "cell": 0,
@@ -112,24 +112,24 @@
   {
     "cell": 0,
     "identity": [
-      1,
+      2,
       0
     ],
-    "sender": 1,
-    "receiver": 0,
+    "sender": 2,
+    "receiver": 3,
     "via_switch": 14,
     "volume": 1.0,
     "band": 0,
-    "local_round": 1,
+    "local_round": 0,
     "span": 1,
     "identities": [
       [
-        1,
+        2,
         0
       ]
     ],
-    "kind": "egress_stage",
-    "hard": true
+    "kind": "self_distribution",
+    "hard": false
   },
   {
     "cell": 0,
@@ -138,7 +138,29 @@
       0
     ],
     "sender": 0,
-    "receiver": 1,
+    "receiver": 2,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 1,
+    "receiver": 3,
     "via_switch": 14,
     "volume": 1.0,
     "band": 0,
@@ -160,7 +182,7 @@
       0
     ],
     "sender": 2,
-    "receiver": 3,
+    "receiver": 1,
     "via_switch": 14,
     "volume": 1.0,
     "band": 0,
@@ -178,6 +200,28 @@
   {
     "cell": 0,
     "identity": [
+      1,
+      0
+    ],
+    "sender": 1,
+    "receiver": 0,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
       3,
       0
     ],
@@ -186,7 +230,7 @@
     "via_switch": 14,
     "volume": 1.0,
     "band": 0,
-    "local_round": 1,
+    "local_round": 2,
     "span": 1,
     "identities": [
       [
@@ -200,54 +244,10 @@
   {
     "cell": 0,
     "identity": [
-      0,
-      0
-    ],
-    "sender": 0,
-    "receiver": 2,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        0,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      0,
-      0
-    ],
-    "sender": 1,
-    "receiver": 3,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        0,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
       1,
       0
     ],
-    "sender": 1,
+    "sender": 0,
     "receiver": 3,
     "via_switch": 14,
     "volume": 1.0,
@@ -266,81 +266,15 @@
   {
     "cell": 0,
     "identity": [
-      13,
-      0
-    ],
-    "sender": 1,
-    "receiver": 0,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        13,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 0,
-    "identity": [
-      10,
-      0
-    ],
-    "sender": 0,
-    "receiver": 1,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        10,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      11,
-      0
-    ],
-    "sender": 0,
-    "receiver": 1,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        11,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
       8,
       0
     ],
-    "sender": 1,
-    "receiver": 2,
+    "sender": 0,
+    "receiver": 1,
     "via_switch": 14,
     "volume": 1.0,
     "band": 1,
-    "local_round": 1,
+    "local_round": 0,
     "span": 1,
     "identities": [
       [
@@ -354,6 +288,50 @@
   {
     "cell": 0,
     "identity": [
+      11,
+      0
+    ],
+    "sender": 1,
+    "receiver": 2,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 0,
+    "receiver": 1,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
       13,
       0
     ],
@@ -362,7 +340,7 @@
     "via_switch": 14,
     "volume": 1.0,
     "band": 1,
-    "local_round": 2,
+    "local_round": 1,
     "span": 1,
     "identities": [
       [
@@ -376,7 +354,51 @@
   {
     "cell": 0,
     "identity": [
-      10,
+      8,
+      0
+    ],
+    "sender": 0,
+    "receiver": 2,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 1,
+    "receiver": 3,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      12,
       0
     ],
     "sender": 0,
@@ -388,7 +410,7 @@
     "span": 1,
     "identities": [
       [
-        10,
+        12,
         0
       ]
     ],
@@ -398,7 +420,7 @@
   {
     "cell": 0,
     "identity": [
-      10,
+      12,
       0
     ],
     "sender": 1,
@@ -410,7 +432,7 @@
     "span": 1,
     "identities": [
       [
-        10,
+        12,
         0
       ]
     ],
@@ -423,8 +445,8 @@
       11,
       0
     ],
-    "sender": 0,
-    "receiver": 2,
+    "sender": 1,
+    "receiver": 0,
     "via_switch": 14,
     "volume": 1.0,
     "band": 1,
@@ -445,12 +467,12 @@
       11,
       0
     ],
-    "sender": 1,
+    "sender": 0,
     "receiver": 3,
     "via_switch": 14,
     "volume": 1.0,
     "band": 1,
-    "local_round": 4,
+    "local_round": 5,
     "span": 1,
     "identities": [
       [
@@ -468,7 +490,7 @@
       0
     ],
     "sender": 1,
-    "receiver": 3,
+    "receiver": 0,
     "via_switch": 14,
     "volume": 1.0,
     "band": 1,
@@ -486,15 +508,1027 @@
   {
     "cell": 0,
     "identity": [
-      8,
+      13,
+      0
+    ],
+    "sender": 0,
+    "receiver": 3,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 0,
+    "receiver": 1,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 1,
+    "receiver": 2,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 0,
+    "receiver": 1,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 1,
+    "receiver": 2,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 0,
+    "receiver": 2,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 1,
+    "receiver": 3,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 0,
+    "receiver": 2,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 1,
+    "receiver": 3,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      7,
       0
     ],
     "sender": 1,
     "receiver": 0,
     "via_switch": 14,
     "volume": 1.0,
-    "band": 1,
+    "band": 2,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 0,
+    "receiver": 3,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 1,
+    "receiver": 0,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 0,
+    "receiver": 3,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 2,
     "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 0,
+    "receiver": 1,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 0,
+    "receiver": 2,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 1,
+    "receiver": 3,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 0,
+    "receiver": 1,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 0,
+    "receiver": 2,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 1,
+    "receiver": 3,
+    "via_switch": 14,
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 7,
+    "receiver": 4,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 1,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 5,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 6,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 5,
+    "receiver": 4,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 1,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 4,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 7,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 6,
+    "receiver": 4,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 1,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 7,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 6,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 4,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 4,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 4,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 4,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 5,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 4,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 5,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 5,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 6,
+    "local_round": 0,
     "span": 1,
     "identities": [
       [
@@ -506,16 +1540,962 @@
     "hard": false
   },
   {
-    "cell": 0,
+    "cell": 1,
     "identity": [
       8,
       0
     ],
-    "sender": 0,
-    "receiver": 3,
-    "via_switch": 14,
+    "sender": 4,
+    "receiver": 6,
+    "via_switch": 15,
     "volume": 1.0,
-    "band": 1,
+    "band": 6,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 6,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 7,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 4,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 7,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 7,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 8,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 4,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 8,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 8,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 9,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 4,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 9,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 9,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 4,
+    "receiver": 5,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 10,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 4,
+    "receiver": 6,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 10,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 5,
+    "receiver": 7,
+    "via_switch": 15,
+    "volume": 1.0,
+    "band": 10,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 12,
+    "receiver": 8,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": -1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 10,
+    "receiver": 11,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 11,
+    "receiver": 8,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 8,
+    "receiver": 9,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 9,
+    "receiver": 10,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 12,
+    "receiver": 13,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 13,
+    "receiver": 12,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 9,
+    "receiver": 11,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 13,
+    "receiver": 8,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 8,
+    "receiver": 10,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 10,
+    "receiver": 12,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 11,
+    "receiver": 13,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 12,
+    "receiver": 9,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 9,
+    "receiver": 8,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 13,
+    "receiver": 9,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 10,
+    "receiver": 13,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 8,
+    "receiver": 12,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 12,
+    "receiver": 10,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 10,
+    "receiver": 8,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 9,
+    "receiver": 11,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 13,
+    "receiver": 10,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 11,
+    "receiver": 9,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 9,
+    "receiver": 12,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 13,
+    "receiver": 11,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 10,
+    "receiver": 9,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 11,
+    "receiver": 10,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 9,
+    "receiver": 12,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 12,
+    "receiver": 11,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 9,
+    "receiver": 13,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 9,
+    "receiver": 13,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 0,
     "local_round": 7,
     "span": 1,
     "identities": [
@@ -524,1208 +2504,20 @@
         0
       ]
     ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      6,
-      0
-    ],
-    "sender": 0,
-    "receiver": 1,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        6,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      9,
-      0
-    ],
-    "sender": 1,
-    "receiver": 2,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        9,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      12,
-      0
-    ],
-    "sender": 1,
-    "receiver": 2,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        12,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      6,
-      0
-    ],
-    "sender": 0,
-    "receiver": 2,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        6,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      6,
-      0
-    ],
-    "sender": 1,
-    "receiver": 3,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        6,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      9,
-      0
-    ],
-    "sender": 1,
-    "receiver": 0,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 3,
-    "span": 1,
-    "identities": [
-      [
-        9,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      9,
-      0
-    ],
-    "sender": 0,
-    "receiver": 3,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 4,
-    "span": 1,
-    "identities": [
-      [
-        9,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      12,
-      0
-    ],
-    "sender": 1,
-    "receiver": 0,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 4,
-    "span": 1,
-    "identities": [
-      [
-        12,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      12,
-      0
-    ],
-    "sender": 0,
-    "receiver": 3,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 5,
-    "span": 1,
-    "identities": [
-      [
-        12,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      5,
-      0
-    ],
-    "sender": 0,
-    "receiver": 1,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 3,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        5,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      7,
-      0
-    ],
-    "sender": 0,
-    "receiver": 1,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 3,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        7,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      5,
-      0
-    ],
-    "sender": 1,
-    "receiver": 3,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 3,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        5,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      5,
-      0
-    ],
-    "sender": 0,
-    "receiver": 2,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 3,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        5,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      7,
-      0
-    ],
-    "sender": 1,
-    "receiver": 3,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 3,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        7,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      7,
-      0
-    ],
-    "sender": 0,
-    "receiver": 2,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 3,
-    "local_round": 3,
-    "span": 1,
-    "identities": [
-      [
-        7,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      4,
-      0
-    ],
-    "sender": 1,
-    "receiver": 2,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 4,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        4,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      4,
-      0
-    ],
-    "sender": 1,
-    "receiver": 0,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 4,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        4,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 0,
-    "identity": [
-      4,
-      0
-    ],
-    "sender": 0,
-    "receiver": 3,
-    "via_switch": 14,
-    "volume": 1.0,
-    "band": 4,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        4,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      6,
-      0
-    ],
-    "sender": 6,
-    "receiver": 4,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": -1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        6,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 1,
-    "identity": [
-      7,
-      0
-    ],
-    "sender": 7,
-    "receiver": 4,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        7,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 1,
-    "identity": [
-      4,
-      0
-    ],
-    "sender": 4,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        4,
-        0
-      ]
-    ],
     "kind": "self_distribution",
     "hard": false
   },
   {
-    "cell": 1,
-    "identity": [
-      5,
-      0
-    ],
-    "sender": 5,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        5,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      6,
-      0
-    ],
-    "sender": 6,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        6,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      5,
-      0
-    ],
-    "sender": 5,
-    "receiver": 4,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        5,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 1,
-    "identity": [
-      4,
-      0
-    ],
-    "sender": 4,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        4,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      7,
-      0
-    ],
-    "sender": 7,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        7,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      5,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        5,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      6,
-      0
-    ],
-    "sender": 6,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        6,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      7,
-      0
-    ],
-    "sender": 7,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        7,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      4,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 3,
-    "span": 1,
-    "identities": [
-      [
-        4,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      9,
-      0
-    ],
-    "sender": 4,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        9,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      9,
-      0
-    ],
-    "sender": 4,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        9,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      9,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        9,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      11,
-      0
-    ],
-    "sender": 4,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        11,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      11,
-      0
-    ],
-    "sender": 4,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        11,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      11,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 2,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        11,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      12,
-      0
-    ],
-    "sender": 4,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 3,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        12,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      12,
-      0
-    ],
-    "sender": 4,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 3,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        12,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      12,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 3,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        12,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      8,
-      0
-    ],
-    "sender": 4,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 4,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        8,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      8,
-      0
-    ],
-    "sender": 4,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 4,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        8,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      8,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 4,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        8,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      10,
-      0
-    ],
-    "sender": 4,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 5,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        10,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      10,
-      0
-    ],
-    "sender": 4,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 5,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        10,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      10,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 5,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        10,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      3,
-      0
-    ],
-    "sender": 4,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 6,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        3,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      3,
-      0
-    ],
-    "sender": 4,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 6,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        3,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      3,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 6,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        3,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      2,
-      0
-    ],
-    "sender": 4,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 7,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        2,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      2,
-      0
-    ],
-    "sender": 4,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 7,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        2,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      2,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 7,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        2,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      0,
-      0
-    ],
-    "sender": 4,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 8,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        0,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      0,
-      0
-    ],
-    "sender": 4,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 8,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        0,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      0,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 8,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        0,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
+    "cell": 2,
     "identity": [
       1,
       0
     ],
-    "sender": 4,
-    "receiver": 5,
-    "via_switch": 15,
+    "sender": 8,
+    "receiver": 9,
+    "via_switch": 16,
     "volume": 1.0,
-    "band": 9,
+    "band": 1,
     "local_round": 0,
     "span": 1,
     "identities": [
@@ -1738,798 +2530,6 @@
     "hard": false
   },
   {
-    "cell": 1,
-    "identity": [
-      1,
-      0
-    ],
-    "sender": 4,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 9,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        1,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      1,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 9,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        1,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      13,
-      0
-    ],
-    "sender": 4,
-    "receiver": 5,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 10,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        13,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      13,
-      0
-    ],
-    "sender": 4,
-    "receiver": 6,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 10,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        13,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 1,
-    "identity": [
-      13,
-      0
-    ],
-    "sender": 5,
-    "receiver": 7,
-    "via_switch": 15,
-    "volume": 1.0,
-    "band": 10,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        13,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      10,
-      0
-    ],
-    "sender": 10,
-    "receiver": 11,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": -1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        10,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 2,
-    "identity": [
-      9,
-      0
-    ],
-    "sender": 9,
-    "receiver": 8,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": -1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        9,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 2,
-    "identity": [
-      9,
-      0
-    ],
-    "sender": 9,
-    "receiver": 11,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        9,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 2,
-    "identity": [
-      11,
-      0
-    ],
-    "sender": 11,
-    "receiver": 8,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        11,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 2,
-    "identity": [
-      8,
-      0
-    ],
-    "sender": 8,
-    "receiver": 9,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        8,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      12,
-      0
-    ],
-    "sender": 12,
-    "receiver": 13,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        12,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      10,
-      0
-    ],
-    "sender": 10,
-    "receiver": 12,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        10,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      13,
-      0
-    ],
-    "sender": 13,
-    "receiver": 10,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        13,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      12,
-      0
-    ],
-    "sender": 12,
-    "receiver": 11,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        12,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 2,
-    "identity": [
-      10,
-      0
-    ],
-    "sender": 10,
-    "receiver": 8,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        10,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 2,
-    "identity": [
-      9,
-      0
-    ],
-    "sender": 9,
-    "receiver": 10,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        9,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      11,
-      0
-    ],
-    "sender": 11,
-    "receiver": 13,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        11,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      13,
-      0
-    ],
-    "sender": 13,
-    "receiver": 9,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        13,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      8,
-      0
-    ],
-    "sender": 8,
-    "receiver": 12,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        8,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      12,
-      0
-    ],
-    "sender": 12,
-    "receiver": 8,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        12,
-        0
-      ]
-    ],
-    "kind": "egress_stage",
-    "hard": true
-  },
-  {
-    "cell": 2,
-    "identity": [
-      8,
-      0
-    ],
-    "sender": 8,
-    "receiver": 10,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        8,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      8,
-      0
-    ],
-    "sender": 9,
-    "receiver": 11,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        8,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      10,
-      0
-    ],
-    "sender": 10,
-    "receiver": 13,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        10,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      11,
-      0
-    ],
-    "sender": 11,
-    "receiver": 9,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        11,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      13,
-      0
-    ],
-    "sender": 13,
-    "receiver": 12,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        13,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      13,
-      0
-    ],
-    "sender": 13,
-    "receiver": 8,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 3,
-    "span": 1,
-    "identities": [
-      [
-        13,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      9,
-      0
-    ],
-    "sender": 9,
-    "receiver": 12,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 3,
-    "span": 1,
-    "identities": [
-      [
-        9,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      12,
-      0
-    ],
-    "sender": 12,
-    "receiver": 9,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 3,
-    "span": 1,
-    "identities": [
-      [
-        12,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      11,
-      0
-    ],
-    "sender": 11,
-    "receiver": 10,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 3,
-    "span": 1,
-    "identities": [
-      [
-        11,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      11,
-      0
-    ],
-    "sender": 9,
-    "receiver": 12,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 4,
-    "span": 1,
-    "identities": [
-      [
-        11,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      12,
-      0
-    ],
-    "sender": 12,
-    "receiver": 10,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 4,
-    "span": 1,
-    "identities": [
-      [
-        12,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      13,
-      0
-    ],
-    "sender": 13,
-    "receiver": 11,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 4,
-    "span": 1,
-    "identities": [
-      [
-        13,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      10,
-      0
-    ],
-    "sender": 10,
-    "receiver": 9,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 4,
-    "span": 1,
-    "identities": [
-      [
-        10,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      9,
-      0
-    ],
-    "sender": 9,
-    "receiver": 13,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 5,
-    "span": 1,
-    "identities": [
-      [
-        9,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      8,
-      0
-    ],
-    "sender": 9,
-    "receiver": 13,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 0,
-    "local_round": 6,
-    "span": 1,
-    "identities": [
-      [
-        8,
-        0
-      ]
-    ],
-    "kind": "self_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      3,
-      0
-    ],
-    "sender": 8,
-    "receiver": 9,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 0,
-    "span": 1,
-    "identities": [
-      [
-        3,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
     "cell": 2,
     "identity": [
       0,
@@ -2554,7 +2554,7 @@
   {
     "cell": 2,
     "identity": [
-      2,
+      3,
       0
     ],
     "sender": 13,
@@ -2563,6 +2563,50 @@
     "volume": 1.0,
     "band": 1,
     "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 8,
+    "receiver": 9,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 11,
+    "receiver": 12,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
     "span": 1,
     "identities": [
       [
@@ -2576,33 +2620,11 @@
   {
     "cell": 2,
     "identity": [
-      6,
-      0
-    ],
-    "sender": 8,
-    "receiver": 9,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 1,
-    "span": 1,
-    "identities": [
-      [
-        6,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
       1,
       0
     ],
-    "sender": 11,
-    "receiver": 12,
+    "sender": 9,
+    "receiver": 11,
     "via_switch": 16,
     "volume": 1.0,
     "band": 1,
@@ -2623,8 +2645,8 @@
       3,
       0
     ],
-    "sender": 9,
-    "receiver": 11,
+    "sender": 13,
+    "receiver": 10,
     "via_switch": 16,
     "volume": 1.0,
     "band": 1,
@@ -2642,19 +2664,41 @@
   {
     "cell": 2,
     "identity": [
-      2,
+      1,
       0
     ],
-    "sender": 13,
+    "sender": 8,
     "receiver": 10,
     "via_switch": 16,
     "volume": 1.0,
     "band": 1,
-    "local_round": 1,
+    "local_round": 2,
     "span": 1,
     "identities": [
       [
-        2,
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 9,
+    "receiver": 11,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        4,
         0
       ]
     ],
@@ -2667,50 +2711,6 @@
       3,
       0
     ],
-    "sender": 8,
-    "receiver": 10,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        3,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      6,
-      0
-    ],
-    "sender": 9,
-    "receiver": 11,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 2,
-    "span": 1,
-    "identities": [
-      [
-        6,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      2,
-      0
-    ],
     "sender": 13,
     "receiver": 9,
     "via_switch": 16,
@@ -2720,7 +2720,7 @@
     "span": 1,
     "identities": [
       [
-        2,
+        3,
         0
       ]
     ],
@@ -2774,55 +2774,11 @@
   {
     "cell": 2,
     "identity": [
-      1,
+      2,
       0
     ],
     "sender": 11,
     "receiver": 8,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 3,
-    "span": 1,
-    "identities": [
-      [
-        1,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      3,
-      0
-    ],
-    "sender": 9,
-    "receiver": 13,
-    "via_switch": 16,
-    "volume": 1.0,
-    "band": 1,
-    "local_round": 3,
-    "span": 1,
-    "identities": [
-      [
-        3,
-        0
-      ]
-    ],
-    "kind": "ingress_distribution",
-    "hard": false
-  },
-  {
-    "cell": 2,
-    "identity": [
-      2,
-      0
-    ],
-    "sender": 13,
-    "receiver": 11,
     "via_switch": 16,
     "volume": 1.0,
     "band": 1,
@@ -2843,12 +2799,12 @@
       1,
       0
     ],
-    "sender": 8,
-    "receiver": 10,
+    "sender": 9,
+    "receiver": 13,
     "via_switch": 16,
     "volume": 1.0,
     "band": 1,
-    "local_round": 4,
+    "local_round": 3,
     "span": 1,
     "identities": [
       [
@@ -2862,7 +2818,51 @@
   {
     "cell": 2,
     "identity": [
-      6,
+      3,
+      0
+    ],
+    "sender": 13,
+    "receiver": 11,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 8,
+    "receiver": 10,
+    "via_switch": 16,
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
       0
     ],
     "sender": 9,
@@ -2874,7 +2874,7 @@
     "span": 1,
     "identities": [
       [
-        6,
+        4,
         0
       ]
     ],
@@ -2906,7 +2906,7 @@
   {
     "cell": 2,
     "identity": [
-      2,
+      3,
       0
     ],
     "sender": 13,
@@ -2918,7 +2918,7 @@
     "span": 1,
     "identities": [
       [
-        2,
+        3,
         0
       ]
     ],
@@ -2928,7 +2928,7 @@
   {
     "cell": 2,
     "identity": [
-      6,
+      4,
       0
     ],
     "sender": 8,
@@ -2940,7 +2940,7 @@
     "span": 1,
     "identities": [
       [
-        6,
+        4,
         0
       ]
     ],
@@ -2950,7 +2950,7 @@
   {
     "cell": 2,
     "identity": [
-      1,
+      2,
       0
     ],
     "sender": 11,
@@ -2962,7 +2962,7 @@
     "span": 1,
     "identities": [
       [
-        1,
+        2,
         0
       ]
     ],
@@ -2972,7 +2972,7 @@
   {
     "cell": 2,
     "identity": [
-      3,
+      1,
       0
     ],
     "sender": 8,
@@ -2984,7 +2984,7 @@
     "span": 1,
     "identities": [
       [
-        3,
+        1,
         0
       ]
     ],
@@ -2994,7 +2994,7 @@
   {
     "cell": 2,
     "identity": [
-      6,
+      4,
       0
     ],
     "sender": 8,
@@ -3006,7 +3006,7 @@
     "span": 1,
     "identities": [
       [
-        6,
+        4,
         0
       ]
     ],
@@ -3038,7 +3038,7 @@
   {
     "cell": 2,
     "identity": [
-      1,
+      2,
       0
     ],
     "sender": 8,
@@ -3050,7 +3050,7 @@
     "span": 1,
     "identities": [
       [
-        1,
+        2,
         0
       ]
     ],
@@ -3177,7 +3177,7 @@
     "receiver": 9,
     "via_switch": 16,
     "volume": 1.0,
-    "band": 4,
+    "band": 3,
     "local_round": 0,
     "span": 1,
     "identities": [
@@ -3199,7 +3199,7 @@
     "receiver": 10,
     "via_switch": 16,
     "volume": 1.0,
-    "band": 4,
+    "band": 3,
     "local_round": 1,
     "span": 1,
     "identities": [
@@ -3221,7 +3221,7 @@
     "receiver": 11,
     "via_switch": 16,
     "volume": 1.0,
-    "band": 4,
+    "band": 3,
     "local_round": 1,
     "span": 1,
     "identities": [
@@ -3243,7 +3243,7 @@
     "receiver": 12,
     "via_switch": 16,
     "volume": 1.0,
-    "band": 4,
+    "band": 3,
     "local_round": 2,
     "span": 1,
     "identities": [
@@ -3265,7 +3265,7 @@
     "receiver": 13,
     "via_switch": 16,
     "volume": 1.0,
-    "band": 4,
+    "band": 3,
     "local_round": 2,
     "span": 1,
     "identities": [
@@ -3280,19 +3280,19 @@
   {
     "cell": 2,
     "identity": [
-      4,
+      6,
       0
     ],
     "sender": 8,
     "receiver": 9,
     "via_switch": 16,
     "volume": 1.0,
-    "band": 5,
+    "band": 4,
     "local_round": 0,
     "span": 1,
     "identities": [
       [
-        4,
+        6,
         0
       ]
     ],
@@ -3302,19 +3302,19 @@
   {
     "cell": 2,
     "identity": [
-      4,
+      6,
       0
     ],
     "sender": 8,
     "receiver": 10,
     "via_switch": 16,
     "volume": 1.0,
-    "band": 5,
+    "band": 4,
     "local_round": 1,
     "span": 1,
     "identities": [
       [
-        4,
+        6,
         0
       ]
     ],
@@ -3324,19 +3324,19 @@
   {
     "cell": 2,
     "identity": [
-      4,
+      6,
       0
     ],
     "sender": 9,
     "receiver": 11,
     "via_switch": 16,
     "volume": 1.0,
-    "band": 5,
+    "band": 4,
     "local_round": 1,
     "span": 1,
     "identities": [
       [
-        4,
+        6,
         0
       ]
     ],
@@ -3346,19 +3346,19 @@
   {
     "cell": 2,
     "identity": [
-      4,
+      6,
       0
     ],
     "sender": 8,
     "receiver": 12,
     "via_switch": 16,
     "volume": 1.0,
-    "band": 5,
+    "band": 4,
     "local_round": 2,
     "span": 1,
     "identities": [
       [
-        4,
+        6,
         0
       ]
     ],
@@ -3368,19 +3368,19 @@
   {
     "cell": 2,
     "identity": [
-      4,
+      6,
       0
     ],
     "sender": 9,
     "receiver": 13,
     "via_switch": 16,
     "volume": 1.0,
-    "band": 5,
+    "band": 4,
     "local_round": 2,
     "span": 1,
     "identities": [
       [
-        4,
+        6,
         0
       ]
     ],
