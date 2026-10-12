@@ -221,8 +221,11 @@ def remote_derivation_tests():
     stalled = {(0, 0, 5, None): (0, 1),     # gpu0's stale send, freed the uplink at 1
                (2, 9, 5, None): (2, 3),     # delivery into gpu5 (the destination), lands at 3
                (3, 0, 5, None): (3, 4)}     # the send to pin
+    # The stale local netdep rides along: it does not pin, but it is what still holds the send
+    # back on a runtime that ignores remotedep.
     rcheck("p4: an arrival at the DESTINATION pins a send no local clock can",
-           stalled, [((3, 0, 5, None), (2, 5, 9, None), 'remote')])
+           stalled, [((3, 0, 5, None), (2, 5, 9, None), 'remote'),
+                     ((3, 0, 5, None), (0, 0, 5, None), 'send')])
 
     # Same fixture with the pool disabled: the derivation falls back to the stale local netdep,
     # which is best-effort only (finishes at 1, the send is due at 3) -- i.e. the residual.
@@ -238,12 +241,15 @@ def remote_derivation_tests():
            [((3, 0, 5, None), (0, 0, 5, None), 'send')])
 
     # A remote arrival that lands EARLY does not pin either, and a gate that does not pin is not
-    # worth a notification: fall back to the local best-effort edge.
+    # worth a notification: fall back to the local best-effort edge. (gpu9's own send, due at 1
+    # with no local clock at all, is pinned by the other-GPU fallback on gpu0's delivery into
+    # gpu4 landing at 1.)
     rcheck("p4: a stale remote arrival is not worth a notification",
            {(0, 0, 4, None): (0, 1),   # gpu0's stale send, to a peer other than the one below
             (1, 9, 5, None): (1, 2),   # into gpu5, but lands at 2 while the send is due at 3
             (3, 0, 5, None): (3, 4)},
-           [((3, 0, 5, None), (0, 0, 4, None), 'send')])
+           [((3, 0, 5, None), (0, 0, 4, None), 'send'),
+            ((1, 9, 5, None), (0, 4, 0, None), 'remote')])
 
     # Two arrivals land at the destination at the same time over DIFFERENT ingress links. The
     # tie goes to the one sharing the gated send's own ingress link (last switch 9), which is
@@ -265,6 +271,41 @@ def remote_derivation_tests():
             (2, 9, 5, (7, 8)): (2, 3),
             (3, 0, 5, (7, 9)): (3, 4)},
            [((3, 0, 5, (7, 9)), (2, 5, 8, (7, 9)), 'remote')])
+
+    # Nothing lands at the destination at 3, but gpu1's send to gpu4 does -- out through the
+    # same host NIC (switch 8) and leaf (12) gpu0's send is about to use. An arrival at ANY GPU
+    # due the prior epoch pins, so gate on that one (notifier gpu4) instead of going unpinned.
+    shared_nic = {(0, 0, 5, (8, 12, 13)): (0, 1),   # gpu0's stale send
+                  (2, 1, 4, (8, 12, 11)): (2, 3),   # into gpu4, lands at 3 over 8->12
+                  (3, 0, 5, (8, 12, 13)): (3, 4)}   # the send to pin
+    rcheck("p4: falls back to an arrival at another GPU when the destination has none",
+           shared_nic, [((3, 0, 5, (8, 12, 13)), (2, 4, 1, (8, 12, 11)), 'remote'),
+                        ((3, 0, 5, (8, 12, 13)), (0, 0, 5, (8, 12, 13)), 'send')])
+
+    # Among other-GPU arrivals, the one sharing the most links with the send's route wins.
+    rcheck("p4: other-GPU fallback prefers the transfer sharing the most links",
+           {(0, 0, 5, (8, 12, 13)): (0, 1),
+            (2, 2, 6, (9, 14, 10)): (2, 3),         # lands at 3, shares nothing
+            (2, 1, 4, (8, 12, 11)): (2, 3),         # lands at 3, shares 8->12
+            (3, 0, 5, (8, 12, 13)): (3, 4)},
+           [((3, 0, 5, (8, 12, 13)), (2, 4, 1, (8, 12, 11)), 'remote'),
+            ((3, 0, 5, (8, 12, 13)), (0, 0, 5, (8, 12, 13)), 'send')])
+
+    # The destination still outranks a better-overlapping arrival elsewhere, so a schedule P4
+    # already pinned keeps exactly the edges it had.
+    rcheck("p4: an arrival at the destination outranks one elsewhere",
+           {(0, 0, 5, (8, 12, 13)): (0, 1),
+            (2, 1, 4, (8, 12, 13)): (2, 3),         # elsewhere, shares 8->12->13
+            (2, 9, 5, (7,)): (2, 3),                # at the destination, shares nothing
+            (3, 0, 5, (8, 12, 13)): (3, 4)},
+           [((3, 0, 5, (8, 12, 13)), (2, 5, 9, (7,)), 'remote'),
+            ((3, 0, 5, (8, 12, 13)), (0, 0, 5, (8, 12, 13)), 'send')])
+
+    # The report agrees: the fallback edge pins gpu0's send at 3. (gpu1's send at 2 is the
+    # fixture's own residual -- nothing lands anywhere at 2.)
+    got = unpinned_sends(shared_nic, gates(shared_nic, remote_gates=True))
+    assert got == [(1, 2)], f"p4 fallback edge should pin gpu0's send, report says {got}"
+    print("  [OK] p4: the unpinned report counts an other-GPU arrival as a pin")
 
 
 def remote_realization_tests():
@@ -304,6 +345,16 @@ def remote_realization_tests():
     assert r5.remote_notify == [0], f"notifier did not record the waiter: {r5.remote_notify}"
     assert s0.net_dep is None and s0.depends == [], "remote gate leaked onto a local carrier"
     print("  [OK] remote: gate lands on remote_dep/remote_notify, not a local carrier")
+
+    # A remote gate plus the stale local netdep on ONE send: both carriers are set, so a runtime
+    # that ignores remotedep still has the netdep to hold the send back.
+    r5, p0, s0 = recv(5, 9, 2), send(0, 5, 0), send(0, 5, 3)
+    gpus = build({5: [(0, [r5])], 0: [(0, [p0]), (1, [s0])]})
+    T._realize_pacing_gates(gpus, [((3, 0, 5, None), (2, 5, 9, None), 'remote'),
+                                   ((3, 0, 5, None), (0, 0, 5, None), 'send')])
+    assert s0.remote_dep == (r5, 1) and s0.net_dep is p0, \
+        f"both gates should land: remote_dep={s0.remote_dep}, net_dep={s0.net_dep}"
+    print("  [OK] remote: a remote gate and a local fallback netdep coexist on one send")
 
     # Ordinals count within the ordered PAIR, in the notifier's step order: gpu5's two recvs
     # notify gpu0 as #1 and #2 even though a third recv (to gpu7) sits between them. gpu7's

@@ -148,6 +148,35 @@ def allgather(num_nodes):
 def alltoall(num_nodes):
     return build_collective(f'Alltoall(n={num_nodes})', num_nodes, num_nodes * num_nodes, _scattered(num_nodes), _transpose(num_nodes))
 
+# Partial-participation variants: `num_nodes` ranks EXIST (so any of them may relay, and rank
+# ids keep their original topology GPU indices), but only `participants` contribute and receive
+# collective data. A rank outside `participants` satisfies neither condition, so build_collective
+# gives it empty pre/postcondition sets -- it owns nothing, which is exactly what a relay-only
+# GPU is. With participants == range(num_nodes) these reduce EXACTLY to alltoall/allgather above
+# (_scattered(N) is `rank == chunk % N` and _transpose(N) is `rank == chunk // N`).
+def _slots(participants):
+    return {rank: index for index, rank in enumerate(participants)}
+
+def alltoall_subset(num_nodes, participants):
+    slot = _slots(participants)
+    P = len(participants)
+    def precondition(rank, chunk):
+        return rank in slot and slot[rank] == chunk % P
+    def postcondition(rank, chunk):
+        return rank in slot and slot[rank] == chunk // P
+    return build_collective(f'Alltoall(n={num_nodes},p={P})', num_nodes, P * P,
+                            precondition, postcondition)
+
+def allgather_subset(num_nodes, participants):
+    slot = _slots(participants)
+    P = len(participants)
+    def precondition(rank, chunk):
+        return rank in slot and slot[rank] == chunk
+    def postcondition(rank, chunk):
+        return rank in slot
+    return build_collective(f'Allgather(n={num_nodes},p={P})', num_nodes, P,
+                            precondition, postcondition)
+
 # Combining collectives
 
 # Represents a single buffer to reduce
