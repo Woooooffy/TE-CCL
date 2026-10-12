@@ -28,7 +28,9 @@ def make_handle_solve(cmd_parsers):
                 elif k == 'collective':
                     user_input.instance.__setattr__(k, Collective(v))
                 elif k == 'formulation':
-                    user_input.instance.__setattr__(k, Formulation(v))
+                    # May be a per-level list in a hierarchical solve (input_data.resolve_formulation).
+                    user_input.instance.__setattr__(
+                        k, [Formulation(x) for x in v] if isinstance(v, list) else Formulation(v))
                 elif k == 'epoch_type':
                     # May be a per-level list (see input_data.resolve_epoch_policy); coerce each
                     # entry so the list carries EpochType, not raw ints.

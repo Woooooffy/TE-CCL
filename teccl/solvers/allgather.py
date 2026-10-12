@@ -140,6 +140,64 @@ class AllGatherFormulation(BaseFormulation):
         logging.debug(
             f'Finished adding destination constraints in {time.time() - start}')
 
+    def hop_timing(self, j: int, i: int) -> Tuple[int, int]:
+        """
+            (landing offset, occupancy) of one send on link (j, i), for consumers that read the
+            schedule back (the hierarchical solver's tree extraction).
+
+            landing offset: a send in epoch k is in non-switch node i's buffer from epoch k + offset
+                -- the inverse of _arrival_flow, so the two cannot disagree. The epoch during which
+                the bytes LAND is therefore k + offset - 1.
+            occupancy: how many epochs the send holds the link, beta + 1 (get_beta_num_back).
+        """
+        alpha_num_back = self.get_alpha_num_back(j, i)
+        beta_num_back = self.get_beta_num_back(j, i)
+        if self.get_link_type(j, i) != self.LinkType.SWITCH_GPU or not self.user_input.instance.switch_pipeline:
+            return alpha_num_back + 1 + beta_num_back, beta_num_back + 1
+        return alpha_num_back, beta_num_back + 1
+
+    def _arrival_flow(self, s: int, j: int, i: int, c: int, k: int):
+        """
+            The flow on link (j, i) that lands chunk (s, c) in non-switch node i's buffer at the
+            BEGINNING of epoch k, or None if no send on that link can land by then. This is the
+            per-in-link arrival term of the buffer recurrence
+                buffer[k] = buffer[k-1] + sum_j arrival(j -> i, k)
+            factored out so forward_dwell_constraints reads the identical term.
+        """
+        alpha_num_back = self.get_alpha_num_back(j, i)
+        link_type = self.get_link_type(j, i)
+        if link_type != self.LinkType.SWITCH_GPU or not self.user_input.instance.switch_pipeline:
+            beta_num_back = self.get_beta_num_back(j, i)
+            if k - alpha_num_back - 1 - beta_num_back >= 0:
+                # -1 is required as Buffer[i] stands for buffer at the "beginning" of epoch i
+                return self.flow[s][j][i][c][k - alpha_num_back - 1 - beta_num_back]
+            return None
+                # switch second link is ignored to remove double accounting of transmission delay
+                #
+                # KNOWN LIMITATION (non-uniform link bandwidths + sub-chunk epoch). Dropping
+                # beta_num_back here, and in the SWITCH_SWITCH branch of the switch send rule
+                # below, charges the whole cut-through traversal the cost of its FIRST
+                # GPU->switch hop: the credited delivery time is 1 + beta(first hop), whereas
+                # the physical cut-through time is ceil(chunk / min bandwidth ALONG THE PATH)
+                # = 1 + max(beta over the legs used). The two agree whenever every link
+                # carries at least one whole chunk per epoch (beta == 0 everywhere), which is
+                # what epoch_type SLOWEST_LINK gives you and what uniform-bandwidth
+                # topologies give you for free. They diverge when a fast ingress port feeds
+                # narrower fabric links AND the epoch is shorter than a chunk on those links:
+                # the solve then reports a makespan SHORTER than any single link on its own
+                # chosen path can deliver -- optimistic, not infeasible. Measured on
+                # mini_1gpu_1nic at a 0.08 s epoch with 1 GB chunks (100Gbps NICs, 50Gbps
+                # uplinks): 0.08 s reported, 0.16 s physical, 0.48 s for the same run with
+                # switch_pipeline=False. Charging the max needs the path identity, which this
+                # per-link flow formulation does not carry; charging the SUM (keep
+                # beta_num_back in both pipelined branches) would be sound but conservative.
+                # ACCEPTED as-is: the routing is unaffected, and the affected inputs
+                # (teccl/examples/sample_inputs/mini_*_partial_*.json) say in their
+                # _known_limitation that their MILP timings are not to be quoted.
+        if k - alpha_num_back >= 0:
+            return self.flow[s][j][i][c][k - alpha_num_back]
+        return None
+
     def node_constraint_helper(self, i: int, s: int, c: int, k: int, previous_round_buffers: List[List[int]]) -> None:
         """
             Adds contraints to model how the buffer changes with each epoch.
@@ -168,40 +226,9 @@ class AllGatherFormulation(BaseFormulation):
             buffer_constr.add(self.buffer[s][i][c][k - 1])
             for j in self.nodes:
                 if self.topology.capacity[j][i] > 0:
-                    alpha_num_back = self.get_alpha_num_back(j, i)
-                    beta_num_back = self.get_beta_num_back(j, i)
-                    link_type = self.get_link_type(j, i)
-                    if link_type != self.LinkType.SWITCH_GPU or not self.user_input.instance.switch_pipeline:
-                        if k - alpha_num_back - 1 - beta_num_back >= 0:
-                            # -1 is required as Buffer[i] stands for buffer at the "beginning" of epoch i
-                            buffer_constr.add(
-                                self.flow[s][j][i][c][k - alpha_num_back - 1 - beta_num_back])
-                    else:
-                        # switch second link is ignored to remove double accounting of transmission delay
-                        #
-                        # KNOWN LIMITATION (non-uniform link bandwidths + sub-chunk epoch). Dropping
-                        # beta_num_back here, and in the SWITCH_SWITCH branch of the switch send rule
-                        # below, charges the whole cut-through traversal the cost of its FIRST
-                        # GPU->switch hop: the credited delivery time is 1 + beta(first hop), whereas
-                        # the physical cut-through time is ceil(chunk / min bandwidth ALONG THE PATH)
-                        # = 1 + max(beta over the legs used). The two agree whenever every link
-                        # carries at least one whole chunk per epoch (beta == 0 everywhere), which is
-                        # what epoch_type SLOWEST_LINK gives you and what uniform-bandwidth
-                        # topologies give you for free. They diverge when a fast ingress port feeds
-                        # narrower fabric links AND the epoch is shorter than a chunk on those links:
-                        # the solve then reports a makespan SHORTER than any single link on its own
-                        # chosen path can deliver -- optimistic, not infeasible. Measured on
-                        # mini_1gpu_1nic at a 0.08 s epoch with 1 GB chunks (100Gbps NICs, 50Gbps
-                        # uplinks): 0.08 s reported, 0.16 s physical, 0.48 s for the same run with
-                        # switch_pipeline=False. Charging the max needs the path identity, which this
-                        # per-link flow formulation does not carry; charging the SUM (keep
-                        # beta_num_back in both pipelined branches) would be sound but conservative.
-                        # ACCEPTED as-is: the routing is unaffected, and the affected inputs
-                        # (teccl/examples/sample_inputs/mini_*_partial_*.json) say in their
-                        # _known_limitation that their MILP timings are not to be quoted.
-                        if k - alpha_num_back >= 0:
-                            buffer_constr.add(
-                                self.flow[s][j][i][c][k - alpha_num_back])
+                    arrival = self._arrival_flow(s, j, i, c, k)
+                    if arrival is not None:
+                        buffer_constr.add(arrival)
             if previous_round_buffers and k < len(previous_round_buffers[s][i][c]):
                 if previous_round_buffers[s][i][c][k - 1] == 0 and previous_round_buffers[s][i][c][k] == 1:
                     # The chunk sent in the previous round arrived by the beginning of epoch k
@@ -297,6 +324,59 @@ class AllGatherFormulation(BaseFormulation):
             self.node_constraint_helper(i, s, c, k, previous_buffers)
         logging.debug(
             f'Finished adding node buffer and flow constraints in {time.time() - start}')
+
+    def forward_dwell_constraints(self) -> None:
+        """
+            Forwarding dwell at a collapsed CELL node (hierarchical levels only).
+
+            A coarse cell is many GPUs folded into one node, and the node's store-and-forward buffer
+            charges one epoch between arrival and re-send. That is exact when the GPU the chunk lands
+            on also owns the outgoing link (co-located). When it does not, the bytes must first cross
+            the cell's internal fabric to the gateway, and since a send is paced across its whole
+            epoch, that relay needs an epoch of its own. So for a non-source cell i and out-link
+            i -> j:
+
+                flow[s][i][j][c][k] <= buffer[s][i][c][k-1] + sum_{h in B(i,j)} arrival(h -> i, k)
+
+            B(i,j) = the in-neighbours h whose link into i shares an owning GPU with i -> j
+            (topology.forward_bridges, built by hierarchy.abstract). Forwarding is therefore allowed
+            in the arrival epoch only over a bridged pair, and otherwise only after the chunk has
+            sat in the cell for a full epoch. Consumption is untouched: total_demand_sat still
+            reads buffer[k+1], so a cell that WANTS the chunk is never delayed by this.
+
+            Exact per pair, not a per-cell 1-or-2 dwell, because the buffer is binary and its
+            recurrence admits at most one arrival -- "the in-link the chunk came on" is well defined.
+            A pair whose B(i,j) is every in-neighbour is skipped: there the row is implied by the
+            buffer recurrence itself. Topologies without `forward_bridges` (every flat run) get none.
+        """
+        bridges = getattr(self.topology, "forward_bridges", None)
+        if not bridges:
+            return
+        start = time.time()
+        added = 0
+        for (i, j), bridged in sorted(bridges.items()):
+            if self.topology.capacity[i][j] <= 0:
+                continue
+            in_nbrs = {h for h in self.nodes if self.topology.capacity[h][i] > 0}
+            if in_nbrs <= set(bridged):
+                continue
+            for s, c, k in product(self.sources, self.chunks, self.epochs):
+                if s == i or k == 0:
+                    # the source's own data is native (nothing is forwarded), and at k = 0 a
+                    # non-source buffer is empty, so the node constraint already forbids the send.
+                    continue
+                out = self.flow[s][i][j][c][k]
+                if not isinstance(out, gp.Var):
+                    continue
+                rhs = gp.LinExpr(self.buffer[s][i][c][k - 1])
+                for h in sorted(bridged & in_nbrs):
+                    arrival = self._arrival_flow(s, h, i, c, k)
+                    if arrival is not None:
+                        rhs.add(arrival)
+                self.model.addConstr(
+                    out <= rhs, name="fwd_dwell_s_%d_i_%d_j_%d_c_%d_k_%d" % (s, i, j, c, k))
+                added += 1
+        logging.debug(f'Added {added} forward-dwell constraints in {time.time() - start}')
 
     def capacity_constraints(self) -> None:
         logging.debug(f'Adding capacity constraints')
@@ -537,6 +617,7 @@ class AllGatherFormulation(BaseFormulation):
         self.initialize_variables()
         self.destination_constraints()
         self.node_constraints(previous_buffers)
+        self.forward_dwell_constraints()
         self.capacity_constraints()
         if use_one_less_epoch:
             self.use_one_less_epoch()
@@ -646,9 +727,9 @@ class AllGatherFormulation(BaseFormulation):
             the earliest-arriving predecessor first (mirrors the old greedy min-epoch pick).
 
             Memoized on (s, d, c, k): the result is a pure function of `flows` and the query,
-            independent of any back-trace path, so caching is sound. NOTE: the no-copy switch
-            path in dfs_remove_unnecessary_flows mutates `flows` (removes a switch's single
-            copy once committed); it must clear pred_memo when it does so.
+            independent of any back-trace path, so caching is sound. The no-copy switch rule
+            is applied AFTER this lookup (as `claims` in _dfs_trace_to_source), never by
+            mutating `flows`, so the memo never goes stale.
         """
         key = (s, d, c, k)
         cached = pred_memo.get(key)
@@ -676,7 +757,8 @@ class AllGatherFormulation(BaseFormulation):
         return viable_flows
 
     def _dfs_trace_to_source(self, flows: Set[Tuple[int, int, int, int, int]], s: int, node: int, c: int, k: int,
-                             visited: frozenset, pred_memo: Dict, buffers: Dict, budget: List[int]
+                             visited: frozenset, pred_memo: Dict, buffers: Dict, budget: List[int],
+                             claims: Dict = None, out_flow: Tuple[int, int, int, int, int] = None
                              ) -> List[Tuple[int, int, int, int, int]]:
         """
             Trace how `node` received chunk (s, c) by epoch k back to the source, returning
@@ -695,6 +777,13 @@ class AllGatherFormulation(BaseFormulation):
             bounds recursion: every step consumes a distinct (node, epoch), so depth is at
             most num_nodes * num_epochs; `budget` caps total node expansions to keep a
             pathological (exponential) search from running away.
+
+            `claims` (no-copy switches only) maps a flow INTO a switch to the one flow OUT of the
+            switch it already feeds on a committed path; `out_flow` is the switch-outgoing flow
+            this call is tracing for, set when `node` is a switch. An incoming flow claimed by a
+            DIFFERENT outgoing flow is unavailable -- a no-copy switch cannot fan one copy out
+            twice -- but one claimed by the SAME outgoing flow is a shared path prefix and is
+            reused freely (e.g. A -> T0 -> B committed for B, then reused by C's path through B).
         """
         if budget[0] <= 0:
             return None
@@ -703,6 +792,9 @@ class AllGatherFormulation(BaseFormulation):
             pred = f[1]
             if (pred, f[4]) in visited:
                 # picking f would revisit a same-epoch vertex -> a zero-time cycle; skip it.
+                continue
+            if claims is not None and out_flow is not None and claims.get(f, out_flow) != out_flow:
+                # this switch's incoming copy already feeds a different outgoing hop.
                 continue
             if pred == s:
                 # reached the chunk source node.
@@ -718,7 +810,9 @@ class AllGatherFormulation(BaseFormulation):
                 # get_viable_predecessors resolves the exact offset per incoming link type.
                 nk = f[4] - 1
             sub = self._dfs_trace_to_source(
-                flows, s, pred, c, nk, visited | {(pred, f[4])}, pred_memo, buffers, budget)
+                flows, s, pred, c, nk, visited | {(pred, f[4])}, pred_memo, buffers, budget,
+                claims=claims,
+                out_flow=f if pred in self.topology.switch_indices else None)
             if sub is not None:
                 return [f] + sub
         return None
@@ -787,6 +881,16 @@ class AllGatherFormulation(BaseFormulation):
         # (s, d, c, k) -> [(s, i, d, c, k'), ...]. Memoizes the viable incoming flows that
         # could have delivered chunk (s, c) to d by epoch k (a pure function of `flows`).
         pred_memo = {}
+        # No-copy switches: flow into a switch -> the one flow out of it that it feeds on a
+        # committed path (see _dfs_trace_to_source). None under switch_copy, where a switch may
+        # fan a copy out to any number of receivers.
+        claims = None if self.user_input.instance.switch_copy else {}
+        # The traced paths as flow tuples, keyed like the demand, and the demands no acyclic path
+        # was found for. Both are for consumers that need more than the strings below -- the
+        # hierarchical solver reads the routing off the paths, and must treat an untraced demand
+        # as a missing delivery rather than a warning.
+        self.per_demand_paths = {}
+        self.untraced_demands = []
         for s, d, c in product(self.nodes, self.nodes, self.chunks):
             if not self.demand[s][d][c]:
                 # If the node d did not request the chunk s c, then we can skip it.
@@ -812,7 +916,8 @@ class AllGatherFormulation(BaseFormulation):
             # reverse edge form one 2-cycle, so removing the cycle would delete the legit edge.
             budget = [50 * len(self.nodes) * (self.num_epochs + 1)]
             my_path = self._dfs_trace_to_source(
-                flows, s, d, c, demand_met_k, frozenset(), pred_memo, buffers, budget)
+                flows, s, d, c, demand_met_k, frozenset(), pred_memo, buffers, budget,
+                claims=claims)
             if my_path is None:
                 # No acyclic route to source: the solver delivers this demand only via a
                 # same-epoch circulation (a phantom cut-through switch cycle -- a formulation
@@ -821,21 +926,22 @@ class AllGatherFormulation(BaseFormulation):
                 logging.warning(
                     f"Could not trace demand s_{s} d_{d} c_{c} back to source "
                     f"(no acyclic path -- likely a same-epoch switch circulation); skipping.")
+                self.untraced_demands.append((s, d, c))
                 continue
             for f in my_path:
                 required_flows.add(f)
-            # No-copy: a switch relays a single copy, so once a committed path consumes a flow
-            # INTO a switch, remove it so another demand's trace can't reuse that same copy;
-            # mutating `flows` invalidates the predecessor memo. (Under switch_copy this is a
-            # no-op -- switches may fan the chunk out to many receivers.)
-            if not self.user_input.instance.switch_copy:
-                removed_any = False
-                for f in my_path:
-                    if f[2] in self.topology.switch_indices and f in flows:
-                        flows.discard(f)
-                        removed_any = True
-                if removed_any:
-                    pred_memo.clear()
+            self.per_demand_paths[(s, d, c)] = list(my_path)
+            # No-copy: a switch relays a single copy, so a committed path CLAIMS each flow into a
+            # switch for the one outgoing flow it fed. Later traces may reuse the same in -> out
+            # pair (a shared prefix, e.g. through a relay GPU that also wants the chunk) but not
+            # branch the copy elsewhere. This used to delete the incoming flow outright, which
+            # also forbade the shared prefix and silently dropped every demand routed through a
+            # relay that had already been served. Claims do not change `flows`, so pred_memo
+            # stays valid.
+            if claims is not None:
+                for out_f, in_f in zip(my_path, my_path[1:]):
+                    if in_f[2] in self.topology.switch_indices:
+                        claims.setdefault(in_f, out_f)
             chunk_str_path = self.chunk_flow_path_to_string(my_path)
             chunk_paths[f"Demand at {d} for chunk {c} from {s} met by epoch {demand_met_k}"] = [
                 x[1] for x in chunk_str_path]

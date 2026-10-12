@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 
 @dataclass
@@ -152,6 +152,46 @@ def resolve_epoch_policy(instance: "InstanceParams", depth: int = 0) -> Tuple["E
         epoch_type = EpochType(epoch_type)
     return epoch_type, float(epoch_duration)
 
+def _at_depth(value, depth: int, name: str):
+    """A scalar, or the entry of a per-level list for hierarchy `depth` (the last entry for every
+    deeper level). The list convention resolve_epoch_policy documents, shared by every per-level
+    InstanceParams field."""
+    if not isinstance(value, (list, tuple)):
+        return value
+    if not value:
+        raise ValueError(f"InstanceParams.{name} is an empty list; give a scalar or at least "
+                         f"one entry")
+    return value[min(depth, len(value) - 1)]
+
+
+def resolve_formulation(instance: "InstanceParams", depth: int = 0) -> Optional["Formulation"]:
+    """The formulation at hierarchy level `depth` (scalar or per-level list), or None when unset.
+
+    None is NOT resolved to a default here, because the default depends on the mode: a flat solve
+    uses the per-collective default (TECCLSolver._resolve_formulation: ALLGATHER -> MILP), while a
+    hierarchical level uses LP (hierarchy.solve.level_formulation). Keeping that choice with the
+    caller is what stops a hierarchical allgather that never named a formulation from silently
+    landing on the MILP.
+    """
+    f = _at_depth(instance.formulation, depth, "formulation")
+    if f is None or isinstance(f, Formulation):
+        return f
+    return Formulation(f)
+
+
+MILP_CHUNKING_POLICIES = ("fine", "holder", "cell")
+
+
+def resolve_milp_chunking(instance: "InstanceParams", depth: int = 0) -> Union[str, int]:
+    """The MILP chunking policy at hierarchy level `depth` (scalar or per-level list): one of
+    MILP_CHUNKING_POLICIES, or a positive int bundle size. See InstanceParams.milp_chunking."""
+    v = _at_depth(instance.milp_chunking, depth, "milp_chunking")
+    if isinstance(v, bool) or not (v in MILP_CHUNKING_POLICIES or (isinstance(v, int) and v > 0)):
+        raise ValueError(f"InstanceParams.milp_chunking must be one of {MILP_CHUNKING_POLICIES} or "
+                         f"a positive int bundle size, got {v!r}")
+    return v
+
+
 class SolutionMethod(Enum):
     """
         1 - One shot - The optimization is run till the time limit is reached or it finds a solution within the specified mip gap
@@ -163,7 +203,10 @@ class SolutionMethod(Enum):
 @dataclass
 class InstanceParams:
     collective: Collective = Collective.ALLGATHER
-    formulation: Formulation = None # Solver formulation (None = per-collective default: ALLGATHER->MILP, everything else->LP)
+    # Solver formulation. None = the default: per collective for a flat solve (ALLGATHER->MILP,
+    # everything else->LP), LP at every level of a hierarchical one. Scalar or a per-level LIST in a
+    # hierarchical solve, like epoch_type (see resolve_formulation).
+    formulation: Union[Formulation, List[Formulation]] = None
     root: int = 0 # Root GPU index for rooted collectives (GATHER destination / BROADCAST source); ignored otherwise
     num_chunks: int = 1 # Number of chunks to be transferred from each node to each other node
     # Scalar (one policy for the whole solve) or a LIST indexed by hierarchy level depth, so each
@@ -246,6 +289,16 @@ class InstanceParams:
     # 5^3=125, past the default 64. Per-instance rather than global because most inputs run at the
     # default feasibility_tol=1e-4, which a global raise would break outright (not just make thin).
     max_denom: int = None
+    # How a hierarchy level solved by the MILP groups fine identities into its chunks (scalar or a
+    # per-level list). One MILP chunk is a BUNDLE of b identities that rides one path:
+    #   "fine"    b = 1, one chunk per identity. No rescale; the largest model.
+    #   "holder"  one holder GPU's identities for one destination-cell set (b = that size; their
+    #             gcd when sizes differ). Keeps multipath across a cell's uplinks.
+    #   "cell"    one cell's identities for one destination-cell set. Smallest model, but voids
+    #             multipath on any cell with more than one uplink -- rarely the right choice.
+    #   int       b identities of one holder GPU; must divide every holder's class size.
+    # See teccl/hierarchy/milp_design.md §2.1 and hierarchy.milp_routing.
+    milp_chunking: Union[str, int, List] = "holder"
     
 @dataclass
 class UserInputParams:

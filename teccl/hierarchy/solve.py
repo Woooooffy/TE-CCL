@@ -46,7 +46,8 @@ from collections import defaultdict
 from typing import Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from teccl.hierarchy import crossbar_solve, ring_solve
-from teccl.hierarchy.abstract import (abstract, coarsify_demand, lift_demand, set_level_chunk)
+from teccl.hierarchy.abstract import (abstract, coarsify_demand, lift_demand, rescale_level,
+                                      set_level_chunk)
 from teccl.hierarchy.bands import assign_bands
 from teccl.hierarchy.crossbar_solve import IntraFlow
 from teccl.hierarchy.problem import CoarseSolution, LevelDemand, LevelSolution, Subproblem
@@ -167,6 +168,14 @@ _MEMOIZED_ROWS: Tuple[_MemoRow, ...] = (
 )
 
 
+def _uses_milp(ctx: LevelContext, depth: int, coarse) -> bool:
+    """Whether this level's coarse graph goes to the MILP: the user asked for it at this depth and
+    no closed-form row claims the graph first (a memoized row needs no solver at all)."""
+    from teccl.input_data import Formulation
+    return (_memoized_row(coarse) is None
+            and level_formulation(ctx, depth) == Formulation.MILP)
+
+
 def _memoized_row(topology, cell_fabric: bool = False) -> Optional[_MemoRow]:
     """Which closed-form row serves this graph, or None if it needs a real solver.
 
@@ -240,7 +249,7 @@ def solve_flat(problem: Subproblem, ctx: LevelContext,
     if _memoized_row(topo) is not None:
         return CoarseSolution(per_chunk_flow_paths=None, topology=topo,
                               epoch_duration=level_epoch_duration(topo, ctx, problem.depth),
-                              preserves_identity=True)
+                              step_a="closed_form")
     if ctx.solve_flat_hook is not None:
         return ctx.solve_flat_hook(problem, ctx, mapping, demand_tensor)
     raise NotImplementedError(
@@ -250,6 +259,25 @@ def solve_flat(problem: Subproblem, ctx: LevelContext,
         f"declare the level's structure with Cell.subcells so it decomposes instead.")
 
 
+def level_formulation(ctx: LevelContext, depth: int):
+    """The formulation a level at `depth` is solved with: the user's (scalar or per-level list),
+    else LP. LP, not the flat per-collective default, because a hierarchical level is a different
+    problem from a flat solve -- the MILP needs its own demand (milp_routing) and is opt-in."""
+    from teccl.input_data import Formulation, resolve_formulation
+
+    instance = getattr(getattr(ctx, "user_input", None), "instance", None)
+    f = resolve_formulation(instance, depth) if instance is not None else None
+    return f or Formulation.LP
+
+
+def level_milp_chunking(ctx: LevelContext, depth: int):
+    """The MILP chunking policy at `depth` (InstanceParams.milp_chunking), "holder" without input."""
+    from teccl.input_data import resolve_milp_chunking
+
+    instance = getattr(getattr(ctx, "user_input", None), "instance", None)
+    return resolve_milp_chunking(instance, depth) if instance is not None else "holder"
+
+
 def gurobi_level_solver(problem: Subproblem, ctx: LevelContext, mapping, demand_tensor
                         ) -> CoarseSolution:
     """The true base case: hand this level to a real formulation via TECCLSolver.
@@ -257,6 +285,7 @@ def gurobi_level_solver(problem: Subproblem, ctx: LevelContext, mapping, demand_
     Imported lazily and used only when the shape needs it, so every Gurobi-free path -- which is all
     of them below the root on today's topologies -- stays Gurobi-free and locally testable.
     """
+    from teccl.input_data import Formulation
     from teccl.scheduler import solve_on_topology
 
     if ctx.user_input is None:
@@ -264,9 +293,29 @@ def gurobi_level_solver(problem: Subproblem, ctx: LevelContext, mapping, demand_
             "gurobi_level_solver needs a UserInputParams template (LevelContext(user_input=...)) to "
             "know the formulation, collective and objective this level should be solved under")
     topo = problem.topology
+    formulation = level_formulation(ctx, problem.depth)
+    milp_demand = None
+    if formulation == Formulation.MILP:
+        from teccl.hierarchy.milp_routing import PreservingDemand
+        assert isinstance(demand_tensor, PreservingDemand), (
+            "a MILP level needs the identity-preserving count demand "
+            "(milp_routing.coarsify_demand_preserving), not the LP's weighted slot")
+        milp_demand, demand_tensor = demand_tensor, demand_tensor.tensor
     if demand_tensor is not None:
         topo.demand_override = demand_tensor
     ui = copy.deepcopy(ctx.user_input)
+    # Always a scalar, always explicit: a level must not fall through to the FLAT per-collective
+    # default (TECCLSolver._resolve_formulation: ALLGATHER -> MILP), which is how a hierarchical
+    # allgather that never named a formulation used to land on the MILP's weighted-demand failure.
+    ui.instance.formulation = formulation
+    if formulation == Formulation.MILP and ui.instance.switch_copy:
+        # The stitch emits merged per-(sender, receiver) records, so a switch fanning one uplink
+        # send out to several cells would be charged to the uplink once per receiver -- and real
+        # NCCL has no switch multicast. Copy at a CELL (the MILP's max_ over a node's out-links)
+        # is unaffected and is the copy that matters here.
+        logger.warning("level depth=%d: switch_copy forced off for the MILP (switch fan-out "
+                       "cannot be lowered); copy at cells is kept", problem.depth)
+        ui.instance.switch_copy = False
     # num_chunks is irrelevant with a demand_override in place -- BaseFormulation reads the injected
     # tensor and sets num_chunks from it -- but a level below the root must not inherit the root's
     # output path, or each one would overwrite the last.
@@ -281,12 +330,19 @@ def gurobi_level_solver(problem: Subproblem, ctx: LevelContext, mapping, demand_
     best = getattr(solver, "best_solver", None)
     if best is None:
         raise RuntimeError(f"level depth={problem.depth} produced no solved formulation")
+    if milp_demand is not None:
+        from teccl.hierarchy.milp_routing import extract_trees
+        best.get_schedule()
+        return CoarseSolution(per_chunk_flow_paths=None, topology=best.topology,
+                              epoch_duration=best.epoch_duration, step_a="integral",
+                              trees=extract_trees(best, mapping, milp_demand),
+                              milp_demand=milp_demand)
     # Carry the solver's own numeric tolerance forward: it is what the lowering half sizes its
     # rational snap against (reconstruct.snap_tolerance). Read it off `ui` rather than a default so
     # a level solved under a tightened feasibility_tol gets a correspondingly tighter grid check.
     # max_denom rides the same path, for the same reason -- see InstanceParams.max_denom.
     return CoarseSolution(per_chunk_flow_paths=best.per_chunk_flow_paths, topology=best.topology,
-                          epoch_duration=best.epoch_duration, preserves_identity=False,
+                          epoch_duration=best.epoch_duration, step_a="free",
                           feasibility_tol=ui.gurobi.feasibility_tol,
                           max_denom=ui.instance.max_denom)
 
@@ -376,12 +432,23 @@ def _solve_recursive(problem: Subproblem, ctx: LevelContext) -> LevelSolution:
     assert fine_tensor is not None, (
         f"level depth={problem.depth} has neither a root tensor nor demands to build one from")
 
-    coarse_demand = coarsify_demand(fine_tensor, mapping)
-    # `level_chunk` is only ever forced at the root, by a driver reproducing pre-coarsening
-    # behaviour; below it the GCD of the level's own demands is the right answer by construction.
-    coarse_demand, g, _level_scale = set_level_chunk(
-        coarse, coarse_demand, scale=problem.scale,
-        g=ctx.root_level_chunk if problem.depth == 0 else None)
+    if _uses_milp(ctx, problem.depth, coarse):
+        # The MILP's demand is a count tensor of b-identity bundles (milp_routing), so the level is
+        # put in its b-identity chunk WITHOUT dividing the demand -- it was built in that unit.
+        from teccl.hierarchy.milp_routing import coarsify_demand_preserving
+        coarse_demand = coarsify_demand_preserving(
+            fine_tensor, mapping, level_milp_chunking(ctx, problem.depth),
+            relabel=level_demand.relabel if level_demand is not None else None)
+        g = coarse_demand.b
+        rescale_level(coarse, g, scale=problem.scale)
+    else:
+        coarse_demand = coarsify_demand(fine_tensor, mapping)
+        # `level_chunk` is only ever forced at the root, by a driver reproducing pre-coarsening
+        # behaviour; below it the GCD of the level's own demands is the right answer by
+        # construction.
+        coarse_demand, g, _level_scale = set_level_chunk(
+            coarse, coarse_demand, scale=problem.scale,
+            g=ctx.root_level_chunk if problem.depth == 0 else None)
     if problem.depth == 0:
         ctx.root_g = g
 
@@ -391,11 +458,11 @@ def _solve_recursive(problem: Subproblem, ctx: LevelContext) -> LevelSolution:
                           ctx, mapping=mapping, demand_tensor=coarse_demand)
 
     res = _lower(solution, problem, coarse, mapping, fine_tensor, g, level_demand)
-    if solution.preserves_identity and res.subdivision != 1:
+    if solution.integral and res.subdivision != 1:
         raise AssertionError(
-            f"an identity-preserving level refined by Q={res.subdivision}; it should spend nothing "
-            f"from the refinement budget. Its assignments carried fractional volumes, which means "
-            f"the routing step split a chunk -- see reconstruct.assign_identities_preserving.")
+            f"an integral level ({solution.step_a}) refined by Q={res.subdivision}; it should "
+            f"spend nothing from the refinement budget. Its assignments carried fractional "
+            f"volumes, which means the routing step split a chunk.")
 
     # THIS LEVEL's grid. `m` does two jobs, for two different audiences: here it is the BOUND every
     # band folded into this level must respect, and on the returned LevelSolution it is the STRIDE
@@ -453,7 +520,7 @@ def _lower(solution: CoarseSolution, problem: Subproblem, coarse, mapping, fine_
     """Steps A and B for this level: recover identity, then build the child problems.
 
     Which step-A variant runs is the ONLY thing that depends on which solver produced the routing,
-    and it is decided by `preserves_identity` rather than by the solver's type -- so a new level
+    and it is decided by `solution.step_a` rather than by the solver's type -- so a new level
     solver plugs in by answering that one question and nothing else here changes.
 
     `level_demand` is None at the ROOT and carries the two translations every level below needs:
@@ -464,7 +531,14 @@ def _lower(solution: CoarseSolution, problem: Subproblem, coarse, mapping, fine_
     """
     relabel = level_demand.relabel if level_demand is not None else None
     holder = level_demand.holders if level_demand is not None else None
-    if not solution.preserves_identity:
+    if solution.step_a == "integral":
+        from teccl.hierarchy.milp_routing import assign_identities_integral
+        assignments, targets, epoch = assign_identities_integral(
+            solution.trees, solution.milp_demand, mapping, fine_tensor, problem.topology,
+            solution.epoch_duration, relabel=relabel, holder_of=holder)
+        return build_child_problems(assignments, targets, mapping, fine_tensor, problem.topology,
+                                    epoch, scale=problem.scale, relabel=relabel, copy_aware=True)
+    if solution.step_a == "free":
         assignments, targets, epoch = assign_identities_free(
             solution, mapping, fine_tensor, problem.topology, level_chunk=g,
             relabel=relabel, holder_of=holder)
@@ -475,8 +549,8 @@ def _lower(solution: CoarseSolution, problem: Subproblem, coarse, mapping, fine_
         # the identical graph.
         row = _memoized_row(coarse)
         assert row is not None, (
-            "a solution claiming preserves_identity came from a graph that matches no closed-form "
-            "row; only a memoized row sets that flag")
+            "a closed_form solution came from a graph that matches no closed-form row; only a "
+            "memoized row sets that step A")
         id_sets, targets = identity_sets(fine_tensor, mapping, relabel=relabel)
         carried = row.routing(coarse, mapping, id_sets)
         assignments = assign_identities_preserving(

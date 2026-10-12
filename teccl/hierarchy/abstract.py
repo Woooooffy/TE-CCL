@@ -156,6 +156,11 @@ def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
     capacity = [[0.0] * num_coarse for _ in range(num_coarse)]
     alpha = [[-1.0] * num_coarse for _ in range(num_coarse)]
     boundary_gpu: Dict[Tuple[int, int], List[int]] = defaultdict(list)
+    # Who owns each END of an inter-cell link, kept apart: boundary_gpu records the sender side
+    # only (and reads it as ingress too, assuming symmetric cabling). Forwarding dwell must not
+    # assume that -- see forward_bridges below.
+    ingress_owner: Dict[Tuple[int, int], set] = defaultdict(set)   # (cell, from) -> landing gpus
+    egress_owner: Dict[Tuple[int, int], set] = defaultdict(set)    # (cell, to)   -> sending gpus
 
     cell_gpus = {cid: set(cell.gpus) for cid, cell in coarse_cells.items()}
 
@@ -179,6 +184,9 @@ def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
             if cu in cell_gpus and u in cell_gpus[cu]:
                 if u not in boundary_gpu[(cu, cv)]:
                     boundary_gpu[(cu, cv)].append(u)
+                egress_owner[(cu, cv)].add(u)
+            if cv in cell_gpus and v in cell_gpus[cv]:
+                ingress_owner[(cv, cu)].add(v)
 
     # --- switches, symmetry, passives on the coarse graph ------------------
     coarse_switch_indices = [
@@ -264,6 +272,18 @@ def abstract(topology: Topology) -> Tuple[CoarseTopology, HierarchyMapping]:
         node_per_chassis=coarse_node_per_chassis,
     )
 
+    # Forwarding bridges, per (cell, out-neighbour): the in-neighbours whose landing GPU also owns
+    # the out-link. A cell forwarding over a bridged pair re-sends from the GPU the bytes landed
+    # on; any other pair needs an intra-cell relay first, which the MILP charges an extra epoch
+    # for (AllGatherFormulation.forward_dwell_constraints). Only cells get entries -- a
+    # passthrough switch forwards by construction and has no internal fabric.
+    forward_bridges: Dict[Tuple[int, int], frozenset] = {}
+    for (cell, out_nb), senders in egress_owner.items():
+        forward_bridges[(cell, out_nb)] = frozenset(
+            in_nb for (c2, in_nb), landers in ingress_owner.items()
+            if c2 == cell and landers & senders)
+    coarse.forward_bridges = forward_bridges
+
     mapping = HierarchyMapping(
         fine_to_coarse=fine_to_coarse,
         coarse_cells=coarse_cells,
@@ -304,22 +324,49 @@ def coarsify_demand(fine_demand, mapping: HierarchyMapping) -> List[List[List[in
     weighted chunk-slot is exact for the copy-free LP, which sums demand over the chunk axis
     into a per-(source, dest) volume.
     """
-    f2c = mapping.fine_to_coarse
     num_coarse = mapping.num_coarse
-    n_fine = len(fine_demand)
     coarse = [[[0] for _ in range(num_coarse)] for _ in range(num_coarse)]
+    for _identity, _holder, cs, wanters in classify_identities(fine_demand, mapping):
+        for cv in wanters:
+            if cv != cs:
+                coarse[cs][cv][0] += 1
+    return coarse
+
+
+def classify_identities(fine_demand, mapping: HierarchyMapping, relabel=None
+                        ) -> List[Tuple[Tuple[int, int], int, int, Dict[int, List[int]]]]:
+    """Every data identity of a fine demand tensor, with where it lives and who wants it.
+
+    Returns `(identity, holder node, holder cell, {wanting cell: [wanting fine GPUs, ascending]})`
+    for every tensor coordinate `(s, ci)`, in `(s, ci)` order, wanting cells in order of their
+    first wanting GPU. The holder node is the tensor's axis-0 index `s`: the node that physically
+    has the data in THIS level's index space (the identity's source only at the root). The holder's
+    own cell is included when it has wanters (intra-cell demand): each consumer
+    decides for itself whether that counts.
+
+    This is THE per-identity walk of the lowering half, and every consumer is a fold over it:
+    `coarsify_demand` (the LP's weighted coarse demand), `reconstruct.identity_sets` (the per-pair
+    identity sets the assignment works on) and `coarsify_demand_preserving` (the MILP's count
+    tensor). They used to be separate copies of the same loop, which is the one place a coarse
+    demand and the identities it stands for could quietly disagree; sharing it is what keeps their
+    shared anchor (`sum |ID(U,V)| == sum coarse[U][V]`) true by construction.
+
+    `relabel` maps a tensor coordinate to the identity it stands for; below the root axis 0 is a
+    HOLDER, not a source (see reconstruct.identity_sets). None means the coordinate is the identity.
+    """
+    f2c = mapping.fine_to_coarse
+    n_fine = len(fine_demand)
+    out = []
     for s in range(n_fine):
         cs = f2c[s]
         chunks = len(fine_demand[s][s]) if n_fine else 0
         for ci in range(chunks):
-            dest_cells = set()
+            wanters: Dict[int, List[int]] = defaultdict(list)
             for t in range(n_fine):
                 if fine_demand[s][t][ci] > 0:
-                    dest_cells.add(f2c[t])
-            for cv in dest_cells:
-                if cv != cs:
-                    coarse[cs][cv][0] += 1
-    return coarse
+                    wanters[f2c[t]].append(t)
+            out.append(((relabel((s, ci)) if relabel else (s, ci)), s, cs, dict(wanters)))
+    return out
 
 
 def level_chunk_units(coarse_demand) -> int:
@@ -401,11 +448,26 @@ def set_level_chunk(coarse: CoarseTopology, coarse_demand, scale: Optional[Chunk
     """
     if g is None:
         g = level_chunk_units(coarse_demand)
+    level = rescale_level(coarse, g, scale)
+    return rescale_demand(coarse_demand, g), g, level
+
+
+def rescale_level(coarse: CoarseTopology, g: int, scale: Optional[ChunkScale] = None
+                  ) -> ChunkScale:
+    """The topology + scale half of `set_level_chunk`: re-express this level in a `g`-times larger
+    chunk and return the level's ChunkScale. No demand is touched.
+
+    Split out for a level whose demand is BUILT in the coarse unit rather than divided into it --
+    the MILP's count tensor (`coarsify_demand_preserving`), where one column already is one bundle
+    of `g` identities, so `rescale_demand`'s divide would be a unit error. `set_level_chunk` is this
+    plus that divide, and stays the only entry point for a weighted demand. g == 1 is an exact
+    no-op on the topology.
+    """
     root = scale or ChunkScale(bytes_per_chunk=coarse.chunk_size, num_chunks=1)
     level = root.coarsen(g)
     root.assert_conserves(level)
     coarse.rescale_to_chunk(g)
-    return rescale_demand(coarse_demand, g), g, level
+    return level
 
 
 def lift_demand(mapping: HierarchyMapping, num_sub_chunks: int = None) -> None:

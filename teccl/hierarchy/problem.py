@@ -240,9 +240,12 @@ class CoarseSolution:
     """
 
     def __init__(self, per_chunk_flow_paths, topology, epoch_duration: float,
-                 preserves_identity: bool = False,
+                 step_a: str = "free",
                  feasibility_tol: Optional[float] = None,
-                 max_denom: Optional[int] = None) -> None:
+                 max_denom: Optional[int] = None,
+                 trees=None, milp_demand=None) -> None:
+        if step_a not in self.STEP_A:
+            raise ValueError(f"step_a must be one of {self.STEP_A}, got {step_a!r}")
         self.per_chunk_flow_paths = per_chunk_flow_paths
         self.topology = topology
         self.epoch_duration = epoch_duration
@@ -255,7 +258,26 @@ class CoarseSolution:
         # (flattened out of `ui`, not a nested `.user_input` lookup) so reconstruct.resolve_max_denom
         # finds it without needing the raw solver object. None = the module default.
         self.max_denom = max_denom
-        # Which step-A variant this solver's output needs. False = the solution is identity-free and
-        # `assign_identities_free` must recover identity from it; True = the solver kept identity and
-        # the assignment is read off directly (which is also what keeps Q == 1 at that level).
-        self.preserves_identity = preserves_identity
+        # Which step-A variant this solver's output needs (see STEP_A). It used to be one flag,
+        # `preserves_identity`, which conflated two questions a MILP level answers differently:
+        # is identity READ OFF the routing (only a closed-form row), and does the level stay
+        # INTEGRAL (Q == 1: the closed-form rows and the MILP).
+        self.step_a = step_a
+        # The MILP level's read-back (milp_routing.extract_trees) and the count demand its columns
+        # stand for (milp_routing.PreservingDemand). None for every other step A.
+        self.trees = trees
+        self.milp_demand = milp_demand
+
+    # free         identity-free routing (the LP): assign_identities_free recovers identity, and
+    #              the lowering may refine (Q > 1).
+    # closed_form  a memoized row routed each identity itself: assign_identities_preserving reads
+    #              the assignment off directly.
+    # integral     the MILP: whole identities ride whole trees, but WHICH identity rides which
+    #              tree is still decided (milp_routing.assign_identities_integral). Q == 1.
+    STEP_A = ("free", "closed_form", "integral")
+
+    @property
+    def integral(self) -> bool:
+        """Whether the lowering must find Q == 1 -- the level spends nothing from the refinement
+        budget. True for every step A that moves whole identities."""
+        return self.step_a != "free"

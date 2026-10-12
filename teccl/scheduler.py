@@ -133,7 +133,9 @@ class TECCLSolver(object):
             the MILP also implements ALLTOALL, and picking it there is how you ask for a
             single-path (integral, no per-pair multipath) schedule.
         """
-        f = user_input.instance.formulation
+        # A per-level list resolves at this instance's level (0 for a flat solve); a hierarchical
+        # level is handed a scalar anyway (hierarchy.solve.gurobi_level_solver).
+        f = resolve_formulation(user_input.instance, user_input.instance.level_depth)
         if f is not None:
             return f
         return Formulation.MILP if user_input.instance.collective == Collective.ALLGATHER else Formulation.LP

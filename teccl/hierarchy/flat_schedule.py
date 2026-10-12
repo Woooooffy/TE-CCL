@@ -100,22 +100,23 @@ class DeliveryRecord:
 # S0. Grid and preconditions
 # ----------------------------------------------------------------------------------------------
 def assert_native_ownership(res: IdentityResolution) -> None:
-    """Every staged identity must be staged BY ITS OWN SOURCE.
+    """Every staged identity must be staged BY ITS OWN SOURCE -- unless it is a modelled transit.
 
-    This is the host-transit guard. A coarse path that store-and-forwards through an intermediate
-    CELL would need a chained ingress->egress relay whose deadline is a downstream send, which
-    identity resolution does not model (it files each leg by physical endpoints, and the transit
-    cell does not want the data, so the identity has no piece there). It fails loud upstream; this
-    keeps it failing loud here rather than silently emitting a staging relay from a GPU that never
-    receives the data.
+    This is the host-transit guard. A staging relay from a GPU other than the identity's source is
+    legitimate in exactly one case: a cell FORWARDING an identity it received, which _emit_refined
+    emits as an egress_stage from the landing GPU WITH an explicit `release_band` (the epoch after
+    the inbound leg lands). That is reachable only when the coarse solve budgeted the relay's
+    epoch (the MILP's forward-dwell constraint), and back_trace below independently checks its
+    causality. Anything else -- a non-source staging relay with no release -- is a GPU being asked
+    to send data nothing ever delivered to it, so it still fails loud here.
     """
     bad = [(d.cell, d.identity, d.src_gpu) for d in res.intra_demands
-           if d.kind == "egress_stage" and d.src_gpu != d.identity[0]]
+           if d.kind == "egress_stage" and d.src_gpu != d.identity[0] and d.release_band is None]
     if bad:
         raise AssertionError(
             f"{len(bad)} egress_stage demands are staged by a GPU that is not the identity's "
-            f"source {bad[:5]} -- that is host transit (a coarse path relayed through an "
-            f"intermediate cell), which is unmodelled.")
+            f"source {bad[:5]} and carry no release -- host transit (a coarse path relayed "
+            f"through an intermediate cell) that no coarse solve budgeted, which is unmodelled.")
 
 
 # ----------------------------------------------------------------------------------------------
