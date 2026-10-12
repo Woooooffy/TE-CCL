@@ -41,18 +41,18 @@
     }
   },
   "7-Flows": [
-    "Chunk 1 from 0 traveled over 0->2 in epoch 0 via switches 3",
-    "Chunk 0 from 0 traveled over 0->1 in epoch 0 via switches 3",
-    "Chunk 0 from 0 traveled over 0->2 in epoch 0 via switches 4",
-    "Chunk 1 from 1 traveled over 1->2 in epoch 0 via switches 3 -> 4",
     "Chunk 0 from 2 traveled over 2->0 in epoch 0 via switches 4",
-    "Chunk 2 from 2 traveled over 2->0 in epoch 0 via switches 3",
     "Chunk 1 from 2 traveled over 2->0 in epoch 0 via switches 3",
+    "Chunk 1 from 0 traveled over 0->2 in epoch 0 via switches 3",
+    "Chunk 0 from 0 traveled over 0->2 in epoch 0 via switches 4",
+    "Chunk 0 from 0 traveled over 0->1 in epoch 0 via switches 3",
+    "Chunk 2 from 2 traveled over 2->0 in epoch 0 via switches 3",
+    "Chunk 1 from 1 traveled over 1->2 in epoch 0 via switches 3 -> 4",
     "Chunk 1 from 0 traveled over 0->1 in epoch 1 via switches 3",
-    "Chunk 1 from 1 traveled over 2->0 in epoch 1 via switches 4 -> 3",
     "Chunk 0 from 1 traveled over 1->2 in epoch 1 via switches 3 -> 4",
-    "Chunk 2 from 2 traveled over 2->1 in epoch 2 via switches 3",
+    "Chunk 1 from 1 traveled over 2->0 in epoch 1 via switches 4 -> 3",
     "Chunk 0 from 1 traveled over 1->0 in epoch 2 via switches 3",
+    "Chunk 2 from 2 traveled over 2->1 in epoch 2 via switches 3",
     "Chunk 1 from 2 traveled over 2->1 in epoch 3 via switches 3",
     "Chunk 0 from 2 traveled over 2->1 in epoch 4 via switches 3"
   ],
@@ -102,5 +102,5 @@
     ]
   },
   "9-Chunk_Size": 2,
-  "Solver_Time": 0.18825292587280273
+  "Solver_Time": 0.14936184883117676
 }
