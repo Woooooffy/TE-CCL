@@ -1,0 +1,40 @@
+{
+    "_comment": "Hierarchical MILP AllGather on rail_dual_plane. 256-GPU rail-optimized dual-plane fabric. Every GPU has a port into both planes, so every host transit is co-located (forward dwell 1). milp_chunking='holder': one MILP chunk = one holder GPU's chunks for one destination-cell set (b = num_chunks for allgather). Keeps multipath across a host's uplinks. SLOWEST_LINK keeps every coarse link at >= 1 chunk/epoch (occupancy 1: no multi-epoch legs, no cut-through optimism). switch_copy is forced off at MILP levels anyway (copy happens at hosts). Outputs: Schedules/<prefix>_flat.json (+ _coarse/_identities/_intra side outputs). See teccl/hierarchy/milp_design.md.",
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/rail_optimized_256gpu_dual_plane.topo",
+        "name": "RailOptimizedDualPlane",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 4,
+        "output_flag": 1,
+        "log_to_console": 0,
+        "log_file": "_rail_dual_plane_hier_allgather_milp_holder",
+        "mip_gap": 0.0001,
+        "mip_focus": 1,
+        "feasibility_tol": 0.0001,
+        "intfeas_tol": 0.0001,
+        "optimality_tol": 0.0001
+    },
+    "InstanceParams": {
+        "collective": 1,
+        "formulation": 1,
+        "num_chunks": 1,
+        "epoch_type": 2,
+        "epoch_multiplier": 1,
+        "epoch_duration": -1,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_copy": false,
+        "switch_pipeline": true,
+        "symmetry": false,
+        "objective_type": 3,
+        "solution_method": 1,
+        "hierarchical": true,
+        "hierarchy_prefix": "rail_dual_plane_hier_allgather_milp_holder",
+        "hierarchy_side_outputs": true,
+        "schedule_output_file": "Schedules/rail_dual_plane_hier_allgather_milp_holder_flat.json",
+        "milp_chunking": "holder"
+    }
+}

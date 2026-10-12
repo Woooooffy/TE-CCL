@@ -1,0 +1,38 @@
+{
+    "_comment": "Hierarchical LP AllGather on hetero. 3 heterogeneous hosts (4/4/6 GPUs, tapered uplinks, single-homed host B) -> 5-node asymmetric coarse graph. Uplinks < GPUs everywhere, so egress staging is forced; hosts A and C have no GPU owning both T0 and T1, so any transit through them is RELAYED and exercises the forward-dwell constraint. LP-hierarchical twin of the MILP inputs for A/B: identical except formulation=2 and the LP's milp_chunking is unused. SLOWEST_LINK keeps every coarse link at >= 1 chunk/epoch (occupancy 1: no multi-epoch legs, no cut-through optimism). switch_copy is forced off at MILP levels anyway (copy happens at hosts). Outputs: Schedules/<prefix>_flat.json (+ _coarse/_identities/_intra side outputs). See teccl/hierarchy/milp_design.md.",
+    "TopologyParams": {
+        "name": "HeteroTaperedCluster",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 2,
+        "output_flag": 1,
+        "log_to_console": 0,
+        "log_file": "_hetero_hier_allgather_lp",
+        "mip_gap": 0.0001,
+        "mip_focus": 1,
+        "feasibility_tol": 0.0001,
+        "intfeas_tol": 0.0001,
+        "optimality_tol": 0.0001
+    },
+    "InstanceParams": {
+        "collective": 1,
+        "formulation": 2,
+        "num_chunks": 1,
+        "epoch_type": 2,
+        "epoch_multiplier": 1,
+        "epoch_duration": -1,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_copy": false,
+        "switch_pipeline": true,
+        "symmetry": false,
+        "objective_type": 3,
+        "solution_method": 1,
+        "hierarchical": true,
+        "hierarchy_prefix": "hetero_hier_allgather_lp",
+        "hierarchy_side_outputs": true,
+        "schedule_output_file": "Schedules/hetero_hier_allgather_lp_flat.json"
+    }
+}
