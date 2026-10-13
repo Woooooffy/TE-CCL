@@ -26,6 +26,154 @@ class AllGatherFormulation(BaseFormulation):
         self.solver_name = f"{user_input.instance.collective.name.title()}_MILP"
         self.required_flows = []
         self.flows_str_info = {}
+        # Re-derived in initialize_variables; set here too so a model-less instance (a replayed
+        # solution, as in milp_trace_test) can still answer _paced / flow_class.
+        self.pace = defaultdict(lambda: defaultdict(lambda: defaultdict(
+            lambda: defaultdict(dict))))
+        self._flow_ub = {}
+        self._init_pace_levels()
+
+    # ------------------------------------------------------------------------------------------
+    # Pipelined (cut-through) switch timing: PACE CLASSES
+    #
+    # With switch_pipeline on, a chunk a GPU sends into the switch fabric streams through every
+    # switch to the next GPU without being stored -- one TRAVERSAL. Physically the whole traversal
+    # runs at its BOTTLENECK rate: a switch has no room to absorb a chunk-sized speed mismatch, so
+    # backpressure paces every link of it, fast ones included, to the slowest link's rate, and the
+    # chunk lands when the slowest link has carried it. In epochs that is: every link of the
+    # traversal busy from the sender's epoch k (plus propagation) for b + 1 epochs, and the chunk
+    # in the receiver's buffer from k + alpha + 1 + b, where b = max beta over the traversal.
+    #
+    # The flow formulation is per link, so it does not know a traversal's links. Instead every
+    # flow on a link with a switch at either end carries a pace class b (pace[s][i][j][c][k] maps
+    # b -> its var, the copies sent in that class (max_copies); flow[...] is their sum), allowed
+    # only for b >= beta(i, j), and switches
+    # conserve flow PER CLASS. A traversal therefore keeps one class end to end, that class is at
+    # least the beta of every link it crosses, and the solver picks the smallest one there is no
+    # reason to exceed: the bottleneck. A class-b flow occupies 1/(b+1) chunk per epoch on its link
+    # for b + 1 epochs (capacity_constraints), and lands b + 1 epochs after it starts
+    # (_paced_landing). A link whose own beta is b carrying class b is charged exactly the old
+    # beta window, so uniform-bandwidth fabrics and SLOWEST_LINK epochs (beta 0 everywhere) keep a
+    # single class and the old model, re-timed (see below).
+    #
+    # This replaces the old rule, which made the first GPU->switch hop store-and-forward (the
+    # switch sent from k + alpha + 1 + beta(first hop)) and every later hop free. That credited a
+    # traversal with its FIRST link's beta instead of its slowest link's, so a slow link after a
+    # fast one was crossed in less time than it physically takes, and the fast link was freed
+    # while the slow one was still draining the same chunk. On uniform links the two models are
+    # the same schedule shifted in time: the old one indexed a switch's out-links 1 + beta epochs
+    # after the head, this one indexes them at the head. The old one therefore could not use the
+    # horizon's last epoch for a switch traversal (use_one_less_epoch existed to compensate).
+    # ------------------------------------------------------------------------------------------
+    def _paced(self, i: int, j: int) -> bool:
+        """Whether link (i, j) is part of a cut-through traversal, i.e. carries pace classes."""
+        return self.user_input.instance.switch_pipeline and (
+            i in self._switches or j in self._switches)
+
+    def pace_classes(self, i: int, j: int) -> List[int]:
+        """The pace classes link (i, j) may carry: every bottleneck class at least its own beta."""
+        beta = self.get_beta_num_back(i, j)
+        return [b for b in self.pace_levels if b >= beta]
+
+    def _pace(self, s: int, i: int, j: int, c: int, k: int) -> Dict[int, gp.Var]:
+        """class -> var for the send of chunk (s, c) on paced link (i, j) in epoch k ({} if none)."""
+        if k < 0:
+            return {}
+        return self.pace[s][i][j][c].get(k, {})
+
+    def _paced_landing(self, s: int, j: int, i: int, c: int, e: int) -> gp.LinExpr:
+        """The sends on paced link (j, i) into non-switch node i whose traversal has finished
+        landing chunk (s, c) by the END of epoch e: a class-b send started in epoch e - alpha - b."""
+        alpha = self.get_alpha_num_back(j, i)
+        landing = gp.LinExpr(0.0)
+        for b in self.pace_classes(j, i):
+            var = self._pace(s, j, i, c, e - alpha - b).get(b)
+            if var is not None:
+                landing.add(var)
+        return landing
+
+    def flow_classes(self, s: int, i: int, j: int, c: int, k: int) -> Dict[int, int]:
+        """class -> copies of a solved send (s, i, j, c, k). A send may carry several copies
+        (max_copies), possibly of different classes; an unpaced link carries its own beta."""
+        classes = self._pace(s, i, j, c, k) if self._paced(i, j) else {}
+        if not classes:
+            return {self.get_beta_num_back(i, j): 1}
+        if len(classes) == 1:
+            return {next(iter(classes)): 1}
+        return {b: int(round(var.X)) for b, var in classes.items() if var.X > 0.5}
+
+    def flow_class(self, s: int, i: int, j: int, c: int, k: int) -> int:
+        """The pace class of a solved send that carries one class (every send of a chunk with a
+        single destination, and every send under SLOWEST_LINK epochs)."""
+        classes = self.flow_classes(s, i, j, c, k)
+        if len(classes) != 1:
+            raise ValueError(f"send {(s, i, j, c, k)} carries classes {classes}; "
+                             f"read the traced class from per_demand_classes instead")
+        return next(iter(classes))
+
+    def _init_pace_levels(self) -> None:
+        self._switches = set(self.topology.switch_indices)
+        self.pace_levels = sorted({
+            self.get_beta_num_back(i, j) for i, j in product(self.nodes, self.nodes)
+            if self.topology.capacity[i][j] > 0 and self._paced(i, j)})
+
+    def max_copies(self, s: int, c: int) -> int:
+        """How many copies of chunk (s, c) one paced send may carry at once: one per node that
+        demands it.
+
+        A paced send is a stream, not a slot: a fast link can carry two class-1 streams of the same
+        chunk side by side, each at half rate. That is how a chunk reaches two receivers through a
+        switch that cannot copy (switch_copy off) -- e.g. a GPU sending its own data to a far leaf
+        and to its leaf neighbour at once over one NIC -- and with a slow class it is the only way
+        to use the half of the link the first stream leaves free. Capping a send at 1 would forbid
+        it and cost epochs no hardware pays. A chunk wanted by one node (every alltoall chunk) is
+        capped at 1, so those models are unchanged."""
+        return max(1, int(sum(1 for d in self.nodes if self.demand[s][d][c])))
+
+    def class_copies(self, s: int, c: int) -> int:
+        """Copies of chunk (s, c) one paced send may carry in ONE pace class. With switch copy it
+        is 1: a same-class copy downstream of a copying switch is that switch's job, and a GPU
+        needs a chunk once, so a second same-class copy on one link only spends its capacity.
+        Concurrent copies then exist only across classes. Without switch copy, max_copies."""
+        return 1 if self.user_input.instance.switch_copy else self.max_copies(s, c)
+
+    def send_bound(self, s: int, i: int, j: int, c: int, k: int) -> int:
+        """Upper bound of flow[s][i][j][c][k]: how many copies that send may carry (1 if none)."""
+        return self._flow_ub.get((s, i, j, c, k), 1)
+
+    def flow_copies(self, s: int, i: int, j: int, c: int, k: int) -> int:
+        """How many copies a solved send carries (1 for a model-less, replayed solution)."""
+        flow = self.flow[s][i][j][c][k] if hasattr(self, "flow") else None
+        return int(round(flow.X)) if isinstance(flow, gp.Var) else 1
+
+    def _add_paced_link_vars(self, i: int, j: int) -> None:
+        """flow (and, when there is a choice, per-class pace) vars for paced link (i, j)."""
+        alpha = self.get_alpha_num_back(i, j)
+        classes = self.pace_classes(i, j)
+        for s, c, k in product(self.sources, self.chunks, self.epochs):
+            if s == j:
+                continue
+            # A class-b traversal through this link lands no earlier than the end of epoch
+            # k + alpha + b; one that cannot land inside the horizon is never useful.
+            live = [b for b in classes if k + alpha + b <= self.num_epochs - 1]
+            if not live:
+                continue
+            per_class = self.class_copies(s, c)
+            copies = min(self.max_copies(s, c), per_class * len(live))
+            flow = self.model.addVar(
+                0, copies, vtype=GRB.INTEGER, name='flow_%d_%d_%d_%d_%d' % (s, i, j, c, k))
+            self.flow[s][i][j][c][k] = flow
+            if copies > 1:
+                self._flow_ub[(s, i, j, c, k)] = copies
+            if len(live) == 1:
+                self.pace[s][i][j][c][k] = {live[0]: flow}
+                continue
+            pace = {b: self.model.addVar(0, per_class, vtype=GRB.INTEGER,
+                                         name='pace_%d_%d_%d_%d_%d_%d' % (s, i, j, c, k, b))
+                    for b in live}
+            self.model.addConstr(flow == gp.quicksum(pace.values()),
+                                 name='pace_sum_%d_%d_%d_%d_%d' % (s, i, j, c, k))
+            self.pace[s][i][j][c][k] = pace
 
     def initialize_variables(self) -> None:
         """
@@ -56,17 +204,22 @@ class AllGatherFormulation(BaseFormulation):
         # skipped entries) is unchanged, while only the created entries are stored.
         self.flow = defaultdict(lambda: defaultdict(lambda: defaultdict(
             lambda: defaultdict(lambda: defaultdict(float)))))
+        # pace[s][i][j][c][k] -> {class: var}, paced links only (see the pace-class note above).
+        self.pace = defaultdict(lambda: defaultdict(lambda: defaultdict(
+            lambda: defaultdict(dict))))
+        self._flow_ub = {}
+        self._init_pace_levels()
 
         for i, j, in product(self.nodes, self.nodes):
             if self.topology.capacity[i][j] <= 0:
+                continue
+            if self._paced(i, j):
+                self._add_paced_link_vars(i, j)
                 continue
             alpha_num_back = self.get_alpha_num_back(i, j)
             link_type = self.get_link_type(i, j)
             beta_num_back = self.get_beta_num_back(i, j)
             extra_epochs = alpha_num_back + beta_num_back
-            if link_type == self.LinkType.GPU_SWITCH and self.user_input.instance.switch_pipeline:
-                # For GPU-Switch link, we don't need to send the chunk in the one more extra epoch too as the switch to GPU link is instantaneous and we need another epoch to account for this case.
-                extra_epochs += 1
             not_necessary_k = [self.num_epochs -
                                i - 1 for i in range(extra_epochs)]
             for s, c, k in product(self.sources, self.chunks, self.epochs):
@@ -124,13 +277,14 @@ class AllGatherFormulation(BaseFormulation):
                 dem_sat_constr.add(self.buffer[s][d][c][k])
                 for i in self.nodes:
                     if self.topology.capacity[i][d] > 0:
+                        if self._paced(i, d):
+                            dem_sat_constr.add(self._paced_landing(s, i, d, c, k))
+                            continue
                         alpha_num_back = self.get_alpha_num_back(i, d)
-                        link_type = self.get_link_type(i, d)
-                        if link_type != self.LinkType.SWITCH_GPU or not self.user_input.instance.switch_pipeline:
-                            beta_num_back = self.get_beta_num_back(i, d)
-                            if k - alpha_num_back - beta_num_back >= 0:
-                                dem_sat_constr.add(
-                                    self.flow[s][i][d][c][k - alpha_num_back - beta_num_back])
+                        beta_num_back = self.get_beta_num_back(i, d)
+                        if k - alpha_num_back - beta_num_back >= 0:
+                            dem_sat_constr.add(
+                                self.flow[s][i][d][c][k - alpha_num_back - beta_num_back])
                 self.model.addConstr(dem_sat_constr == self.total_demand_sat[
                     s][d][c][k], name="dest_total_last_s_%d_d_%d_c_%d_k_%d" % (s, d, c, k))
                 if not astar_multiple_rounds:
@@ -140,21 +294,30 @@ class AllGatherFormulation(BaseFormulation):
         logging.debug(
             f'Finished adding destination constraints in {time.time() - start}')
 
-    def hop_timing(self, j: int, i: int) -> Tuple[int, int]:
+    def hop_timing(self, j: int, i: int, pace: int = None) -> Tuple[int, int]:
         """
             (landing offset, occupancy) of one send on link (j, i), for consumers that read the
             schedule back (the hierarchical solver's tree extraction).
 
-            landing offset: a send in epoch k is in non-switch node i's buffer from epoch k + offset
-                -- the inverse of _arrival_flow, so the two cannot disagree. The epoch during which
-                the bytes LAND is therefore k + offset - 1.
-            occupancy: how many epochs the send holds the link, beta + 1 (get_beta_num_back).
+            landing offset: a send in epoch k is usable at i from epoch k + offset -- in a
+                non-switch i's buffer (the inverse of _arrival_flow, so the two cannot disagree; the
+                epoch during which the bytes LAND is therefore k + offset - 1), or, at a switch on a
+                cut-through traversal, forwarded in epoch k + offset.
+            occupancy: how many epochs the send holds the link: its pace class + 1 on a paced link,
+                else beta + 1 (get_beta_num_back).
+
+            pace: the send's pace class (flow_class); defaults to the link's own beta, the class it
+            carries whenever it is its traversal's bottleneck.
         """
         alpha_num_back = self.get_alpha_num_back(j, i)
         beta_num_back = self.get_beta_num_back(j, i)
-        if self.get_link_type(j, i) != self.LinkType.SWITCH_GPU or not self.user_input.instance.switch_pipeline:
+        if not self._paced(j, i):
             return alpha_num_back + 1 + beta_num_back, beta_num_back + 1
-        return alpha_num_back, beta_num_back + 1
+        if pace is None:
+            pace = beta_num_back
+        if i in self._switches:
+            return alpha_num_back, pace + 1
+        return alpha_num_back + 1 + pace, pace + 1
 
     def _arrival_flow(self, s: int, j: int, i: int, c: int, k: int):
         """
@@ -164,38 +327,15 @@ class AllGatherFormulation(BaseFormulation):
                 buffer[k] = buffer[k-1] + sum_j arrival(j -> i, k)
             factored out so forward_dwell_constraints reads the identical term.
         """
+        if self._paced(j, i):
+            # landed by the end of epoch k - 1, i.e. in the buffer at the beginning of epoch k
+            landing = self._paced_landing(s, j, i, c, k - 1)
+            return landing if landing.size() else None
         alpha_num_back = self.get_alpha_num_back(j, i)
-        link_type = self.get_link_type(j, i)
-        if link_type != self.LinkType.SWITCH_GPU or not self.user_input.instance.switch_pipeline:
-            beta_num_back = self.get_beta_num_back(j, i)
-            if k - alpha_num_back - 1 - beta_num_back >= 0:
-                # -1 is required as Buffer[i] stands for buffer at the "beginning" of epoch i
-                return self.flow[s][j][i][c][k - alpha_num_back - 1 - beta_num_back]
-            return None
-                # switch second link is ignored to remove double accounting of transmission delay
-                #
-                # KNOWN LIMITATION (non-uniform link bandwidths + sub-chunk epoch). Dropping
-                # beta_num_back here, and in the SWITCH_SWITCH branch of the switch send rule
-                # below, charges the whole cut-through traversal the cost of its FIRST
-                # GPU->switch hop: the credited delivery time is 1 + beta(first hop), whereas
-                # the physical cut-through time is ceil(chunk / min bandwidth ALONG THE PATH)
-                # = 1 + max(beta over the legs used). The two agree whenever every link
-                # carries at least one whole chunk per epoch (beta == 0 everywhere), which is
-                # what epoch_type SLOWEST_LINK gives you and what uniform-bandwidth
-                # topologies give you for free. They diverge when a fast ingress port feeds
-                # narrower fabric links AND the epoch is shorter than a chunk on those links:
-                # the solve then reports a makespan SHORTER than any single link on its own
-                # chosen path can deliver -- optimistic, not infeasible. Measured on
-                # mini_1gpu_1nic at a 0.08 s epoch with 1 GB chunks (100Gbps NICs, 50Gbps
-                # uplinks): 0.08 s reported, 0.16 s physical, 0.48 s for the same run with
-                # switch_pipeline=False. Charging the max needs the path identity, which this
-                # per-link flow formulation does not carry; charging the SUM (keep
-                # beta_num_back in both pipelined branches) would be sound but conservative.
-                # ACCEPTED as-is: the routing is unaffected, and the affected inputs
-                # (teccl/examples/sample_inputs/mini_*_partial_*.json) say in their
-                # _known_limitation that their MILP timings are not to be quoted.
-        if k - alpha_num_back >= 0:
-            return self.flow[s][j][i][c][k - alpha_num_back]
+        beta_num_back = self.get_beta_num_back(j, i)
+        if k - alpha_num_back - 1 - beta_num_back >= 0:
+            # -1 is required as Buffer[i] stands for buffer at the "beginning" of epoch i
+            return self.flow[s][j][i][c][k - alpha_num_back - 1 - beta_num_back]
         return None
 
     def node_constraint_helper(self, i: int, s: int, c: int, k: int, previous_round_buffers: List[List[int]]) -> None:
@@ -247,71 +387,97 @@ class AllGatherFormulation(BaseFormulation):
             # A node can send in an epoch what is in the buffer at the start of the epoch.
             # Since a node can (copy) send the chunk from its buffer to multiple neighbors, we account for that
             #  using the max_ function. The maximum that a node can send to any of its neighbors is the buffer.
-            self.aux_var.append(self.model.addVar(
-                0, GRB.INFINITY, vtype=GRB.CONTINUOUS, name='aux_var_%d_%d_%d_%d' % (s, i, c, k)))
-            self.model.addConstr(self.aux_var[len(self.aux_var) - 1] == gp.max_(
-                [self.flow[s][i][v][c][k] for v in range(self.num_nodes) if self.topology.capacity[i][v] > 0]), name="node_aux_flow_s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
+            # A send that may carry several copies at once (send_bound > 1, paced links only) is
+            # bounded by copies * buffer instead: one held chunk feeds any number of copies.
+            single = []
+            for v in range(self.num_nodes):
+                if self.topology.capacity[i][v] <= 0:
+                    continue
+                copies = self.send_bound(s, i, v, c, k)
+                if copies > 1:
+                    self.model.addConstr(
+                        self.flow[s][i][v][c][k] <= copies * self.buffer[s][i][c][k],
+                        name="node_copies_s_%d_i_%d_v_%d_c_%d_k_%d" % (s, i, v, c, k))
+                    continue
+                single.append(self.flow[s][i][v][c][k])
+            if single:
+                self.aux_var.append(self.model.addVar(
+                    0, GRB.INFINITY, vtype=GRB.CONTINUOUS, name='aux_var_%d_%d_%d_%d' % (s, i, c, k)))
+                self.model.addConstr(self.aux_var[len(self.aux_var) - 1] == gp.max_(single), name="node_aux_flow_s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
 
-            node_constr = gp.LinExpr(0.0)
-            node_constr.add(self.buffer[s][i][c][k])
-            self.model.addConstr(node_constr >= self.aux_var[
-                len(self.aux_var) - 1], name="node_flow_s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
+                node_constr = gp.LinExpr(0.0)
+                node_constr.add(self.buffer[s][i][c][k])
+                self.model.addConstr(node_constr >= self.aux_var[
+                    len(self.aux_var) - 1], name="node_flow_s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
+        elif self.user_input.instance.switch_pipeline:
+            # Cut-through switch: it forwards, in the SAME class, what reaches it in this epoch.
+            # Conservation per pace class is what keeps a traversal at one class end to end, and
+            # hence paced at its slowest link (see the pace-class note at the top of the class).
+            # Every in-link counts at k - alpha, the GPU->switch one included: the traversal's
+            # links all start in the sender's epoch. Epoch 0 is no exception -- a source GPU's
+            # epoch-0 send is relayed in epoch 0. (previous_round_buffers is A*-only and A* keeps
+            # its own timing rules, so it is not threaded through here.)
+            inflow = defaultdict(lambda: gp.LinExpr(0.0))
+            for j in self.nodes:
+                if self.topology.capacity[j][i] > 0:
+                    alpha_num_back = self.get_alpha_num_back(j, i)
+                    for b, var in self._pace(s, j, i, c, k - alpha_num_back).items():
+                        inflow[b].add(var)
+            outflow = defaultdict(list)
+            for v in self.nodes:
+                if self.topology.capacity[i][v] > 0:
+                    for b, var in self._pace(s, i, v, c, k).items():
+                        outflow[b].append(var)
+            for b, outs in sorted(outflow.items()):
+                self._switch_egress_constr(inflow[b], outs, "s_%d_i_%d_c_%d_k_%d_b_%d" % (s, i, c, k, b))
         else:
-            # Switch can send whatever it got in the last epochs and round
+            # Store-and-forward switch: it sends what fully arrived in earlier epochs and rounds.
             switch_node_constr = gp.LinExpr(0.0)
             if k > 0:
                 for j in range(self.num_nodes):
                     if self.topology.capacity[j][i] > 0:
                         alpha_num_back = self.get_alpha_num_back(j, i)
-                        link_type = self.get_link_type(j, i)
-                        if link_type == self.LinkType.SWITCH_SWITCH and self.user_input.instance.switch_pipeline:
-                            # Chained switches act as a single cut-through fabric: the full
-                            # store-and-forward cost was already paid once at the first
-                            # GPU->switch hop, so a switch-to-switch hop only adds propagation delay.
-                            # KNOWN LIMITATION: "paid once at the first hop" is the wrong quantity
-                            # when link bandwidths differ -- the bottleneck leg, not the first leg,
-                            # paces a cut-through traversal. See the long note on the SWITCH_GPU
-                            # buffer credit in node_constraint_helper.
-                            if k - alpha_num_back >= 0:
-                                switch_node_constr.add(
-                                    self.flow[s][j][i][c][k - alpha_num_back])
-                        else:
-                            beta_num_back = self.get_beta_num_back(j, i)
-                            if k - alpha_num_back - 1 - beta_num_back >= 0:
-                                switch_node_constr.add(
-                                    self.flow[s][j][i][c][k - alpha_num_back - 1 - beta_num_back])
+                        beta_num_back = self.get_beta_num_back(j, i)
+                        if k - alpha_num_back - 1 - beta_num_back >= 0:
+                            switch_node_constr.add(
+                                self.flow[s][j][i][c][k - alpha_num_back - 1 - beta_num_back])
 
             if previous_round_buffers and k < len(previous_round_buffers[s][i][c]):
                 switch_node_constr.add(previous_round_buffers[s][i][c][k])
 
-            if not self.user_input.instance.switch_copy:
-                '''
-                    switch no-copy version. For every outgoing chunk there has to be a corresponding incoming chunk.
-                '''
-                switch_outgoing_links = gp.LinExpr(0.0)
-                for v in range(self.num_nodes):
-                    if self.topology.capacity[i][v] > 0:
-                        switch_outgoing_links.add(self.flow[s][i][v][c][k])
-                # We allow the switch to drop the chunks with ">=" as we found it to be faster.
-                # If we use "==" then in allgather case, it will result in no unnecessary flows.
-                self.model.addConstr(switch_node_constr >= switch_outgoing_links,
-                                     name="switch_flow_s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
+            self._switch_egress_constr(
+                switch_node_constr,
+                [self.flow[s][i][v][c][k] for v in range(self.num_nodes) if self.topology.capacity[i][v] > 0],
+                "s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
+
+    def _switch_egress_constr(self, inflow: gp.LinExpr, outs: List, tag: str) -> None:
+        """What a switch may send in one epoch given what reaches it (`inflow`)."""
+        if not self.user_input.instance.switch_copy:
+            '''
+                switch no-copy version. For every outgoing chunk there has to be a corresponding incoming chunk.
+            '''
+            switch_outgoing_links = gp.LinExpr(0.0)
+            for out in outs:
+                switch_outgoing_links.add(out)
+            # We allow the switch to drop the chunks with ">=" as we found it to be faster.
+            # If we use "==" then in allgather case, it will result in no unnecessary flows.
+            self.model.addConstr(inflow >= switch_outgoing_links, name="switch_flow_" + tag)
+        else:
+            '''
+                switch copy version. The switch can copy the incoming chunk to multiple outgoing links.
+            '''
+            self.aux_var.append(self.model.addVar(
+                0, GRB.INFINITY, vtype=GRB.CONTINUOUS, name='aux_var_switch_' + tag))
+            self.model.addConstr(self.aux_var[len(self.aux_var) - 1] == gp.max_(outs),
+                                 name="node_switch_flow_" + tag)
+            # We allow the switch to drop the chunks with ">=" as we found it to be faster.
+            # If we use "==" then in allgather case, it will result in no unnecessary flows, which is necessary for the symmetric case.
+            if self.user_input.instance.symmetry:
+                self.model.addConstr(inflow == self.aux_var[len(self.aux_var) - 1],
+                                     name="switch_flow_" + tag)
             else:
-                '''
-                    switch copy version. The switch can copy the incoming chunk to multiple outgoing links.
-                '''
-                self.aux_var.append(self.model.addVar(
-                    0, GRB.INFINITY, vtype=GRB.CONTINUOUS, name='aux_var_%d_%d_%d_%d' % (s, i, c, k)))
-                self.model.addConstr(self.aux_var[len(self.aux_var) - 1] == gp.max_(
-                    [self.flow[s][i][v][c][k] for v in range(self.num_nodes) if self.topology.capacity[i][v] > 0]), name="node_switch_flow_s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
-                # We allow the switch to drop the chunks with ">=" as we found it to be faster.
-                # If we use "==" then in allgather case, it will result in no unnecessary flows, which is necessary for the symmetric case.
-                if self.user_input.instance.symmetry:
-                    self.model.addConstr(switch_node_constr == self.aux_var[len(self.aux_var) - 1],
-                                         name="switch_flow_s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
-                else:
-                    self.model.addConstr(switch_node_constr >= self.aux_var[len(self.aux_var) - 1],
-                                         name="switch_flow_s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
+                self.model.addConstr(inflow >= self.aux_var[len(self.aux_var) - 1],
+                                     name="switch_flow_" + tag)
 
     def node_constraints(self, previous_buffers=None) -> None:
         logging.debug(f'Adding node buffer and flow constraints')
@@ -389,6 +555,21 @@ class AllGatherFormulation(BaseFormulation):
             beta_num_back = max(0, math.ceil(1 / epoch_capacity) - 1)
             if k - beta_num_back < 0:
                 continue
+            if self._paced(i, j):
+                # Epoch k's load: every class-b send started in k-b..k streams 1/(b+1) chunk through
+                # the link in epoch k. Scaled by beta + 1, a link's own class (b = beta) reads
+                # exactly as the window row below; a slower class takes a smaller share for longer.
+                # The rows for k < beta that the guard above skips are implied by row beta, since
+                # every class's window reaches back to epoch 0 there.
+                for b in self.pace_classes(i, j):
+                    for l in range(b + 1):
+                        for s, c in product(self.sources, self.chunks):
+                            var = self._pace(s, i, j, c, k - l).get(b)
+                            if var is not None:
+                                cap_constr.add(var, (beta_num_back + 1) / (b + 1))
+                self.model.addConstr(
+                    cap_constr <= ((beta_num_back + 1) * epoch_capacity), name="capacity_i_%d_j_%d_k_%d" % (i, j, k))
+                continue
             for l in range(beta_num_back + 1):
                 # Only demand-bearing sources carry flow; a zero-demand source's
                 # flow is 0 and contributes nothing to the link load.
@@ -461,6 +642,15 @@ class AllGatherFormulation(BaseFormulation):
                 f = self.flow[s][a][b][c][k]
                 if not isinstance(f, gp.Var):
                     continue
+                copies = self.send_bound(s, a, b, c, k)
+                if copies > 1:
+                    # a send that may carry several copies (max_copies): order on whether it is
+                    # used at all, or two copies would make the row infeasible outright
+                    used = self.model.addVar(vtype=GRB.BINARY,
+                                             name='switch_used_%d_%d_%d_%d_%d' % (s, a, b, c, k))
+                    self.model.addConstr(f <= copies * used,
+                                         name="switch_used_s_%d_a_%d_b_%d_c_%d_k_%d" % (s, a, b, c, k))
+                    f = used
                 # f == 1  =>  u[a] - u[b] <= -1  (u[a] < u[b]); f == 0 leaves it slack.
                 self.model.addConstr(
                     order_var(s, a, c, k) - order_var(s, b, c, k) + N * f <= N - 1,
@@ -470,33 +660,16 @@ class AllGatherFormulation(BaseFormulation):
 
     def use_one_less_epoch(self) -> None:
         """
-           Constraints to find the solution using one less epoch than the input number of epochs.
-           This is required for the case when the switch to gpu link is off (instantaneous transfer).
-           We have flow_K to know which node n is receiving the chunk from the switch, but the demand at
-           node n is taken to be satisifed in the previous epoch K-1.
-           For the iterative search, the solver needs extra epochs to find the solution at K-1, but it can
-           also find the solution at K epochs as we stop the search when the solution count is 1.
-        """
-        if not self.user_input.instance.switch_pipeline:
-            return
-        logging.debug(
-            f'Adding demand sat for switch to gpu link constraints to limit max epochs to 1 less than input')
-        start = time.time()
-        self.aux_var.append(self.model.addVar(
-            0, GRB.INFINITY, vtype=GRB.CONTINUOUS, name='aux_var_switch_gpu'))
-        required_demand_sats = []
-        for s, d, c in product(self.nodes, self.nodes, self.chunks):
-            if not self.demand[s][d][c]:
-                continue
-            required_demand_sats.append(
-                self.total_demand_sat[s][d][c][self.num_epochs - 2])
+           No-op, kept for the iterative driver (scheduler.get_schedules) that asks for it.
 
-        self.model.addConstr(self.aux_var[len(self.aux_var) - 1] == gp.min_(
-            required_demand_sats), name="min_total_demand_sat_switch_gpu")
-        self.model.addConstr(1 == self.aux_var[len(
-            self.aux_var) - 1], name="min_total_demand_sat_switch_gpu_1")
-        logging.debug(
-            f'Finished adding demand sat for switch to gpu link constraints in {time.time() - start}')
+           It used to force every demand to be met one epoch before the horizon when switches cut
+           through, because a cut-through switch's out-links were indexed one epoch after the
+           chunk's arrival was credited, so a traversal landing in the last epoch needed a send in
+           an epoch past the horizon. Pace classes index a traversal at its head and credit it when
+           its last byte lands (see the pace-class note at the top of the class), so a horizon of K
+           epochs now holds every schedule that finishes in K and nothing needs to be held back.
+        """
+        return
 
     def add_symmetry_constraints(self) -> None:
         """
@@ -551,6 +724,15 @@ class AllGatherFormulation(BaseFormulation):
                 # in a prior epoch and is still going through
                 for i, j in product(self.nodes, self.nodes):
                     if self.topology.capacity[i][j] <= 0 or i in self.topology.switch_indices:
+                        continue
+                    if self._paced(i, j):
+                        # a class-b traversal keeps its first link busy for b + 1 epochs
+                        for b in self.pace_classes(i, j):
+                            for l in range(b + 1):
+                                for s, c in product(self.sources, self.chunks):
+                                    var = self._pace(s, i, j, c, k - l).get(b)
+                                    if var is not None:
+                                        tmp.add(var)
                         continue
                     beta_num_back = self.get_beta_num_back(i, j)
                     if k - beta_num_back < 0:
@@ -634,10 +816,14 @@ class AllGatherFormulation(BaseFormulation):
 
     def hierarchical_objective_tiers(self) -> List[Tuple[str, gp.LinExpr, float]]:
         """
-        The three tiers of ObjectiveType.LEXICOGRAPHIC (highest priority first), the MILP
-        counterpart of LPFormulation.hierarchical_objective_tiers -- same three quantities,
-        summed over the extra chunk index this formulation carries:
+        The tiers of ObjectiveType.LEXICOGRAPHIC (highest priority first), the MILP
+        counterpart of LPFormulation.hierarchical_objective_tiers -- same quantities, summed
+        over the extra chunk index this formulation carries:
 
+          tier 0, makespan:     the epoch by which every demand is met (makespan_tier). Without
+                                it the latency tier alone, a SUM over demands, can tie a schedule
+                                that finishes an epoch later -- some demands land earlier, a relay
+                                lands later -- whenever the horizon leaves room.
           tier 1, latency:      -sum over (s, d, c, k) of total_demand_sat, i.e. every chunk
                                 pays one unit for every epoch it has not landed yet.
           tier 2, host relay:   flow leaving a host that did not originate there (s != n).
@@ -650,6 +836,11 @@ class AllGatherFormulation(BaseFormulation):
         a LinExpr as a constant exactly as the single-objective code above does.
         """
         instance = self.user_input.instance
+
+        demanded = [(s, d, c) for s, d, c in product(self.sources, self.nodes, self.chunks)
+                    if self.demand[s][d][c]]
+        makespan = self.makespan_tier(
+            lambda k: (self.total_demand_sat[s][d][c][k] for s, d, c in demanded))
 
         latency = gp.LinExpr(0.0)
         for s, d, c, k in product(self.sources, self.nodes, self.chunks, self.epochs):
@@ -674,6 +865,7 @@ class AllGatherFormulation(BaseFormulation):
                 switch_chain.add(self.flow[s][i][j][c][k], 1.0)
 
         return [
+            ("makespan", makespan, instance.objective_makespan_rel_tol),
             ("latency", latency, instance.objective_latency_rel_tol),
             ("host_relay", relay, instance.objective_relay_rel_tol),
             ("switch_chain", switch_chain, 0.0),
@@ -787,20 +979,24 @@ class AllGatherFormulation(BaseFormulation):
         correct_k = max(demand_met_epoch.values())
         return (list_of_sends, demand_met_epoch, buffers, correct_k)
 
-    def get_viable_predecessors(self, flows: Set[Tuple[int, int, int, int, int]], s: int, d: int, c: int, k: int, pred_memo: Dict) -> List[Tuple[int, int, int, int, int]]:
+    def get_viable_predecessors(self, flows: Set[Tuple[int, int, int, int, int]], s: int, d: int, c: int, k: int, pred_memo: Dict, pace: int = None) -> List[Tuple[Tuple[int, int, int, int, int], int]]:
         """
-            Return every flow that could have delivered chunk (s, c) to node d by epoch k,
+            Return every (flow, pace class) that could have delivered chunk (s, c) to node d by
+            epoch k,
             i.e. all (s, n, d, c, k') in `flows` where n->d with the epoch offset implied by
             the link type (propagation alpha, per-hop beta, and cut-through switch legs).
             Sorted by send epoch (earliest first) so the DFS in _dfs_trace_to_source tries
             the earliest-arriving predecessor first (mirrors the old greedy min-epoch pick).
 
-            Memoized on (s, d, c, k): the result is a pure function of `flows` and the query,
+            For a switch d on a cut-through traversal, k is one before the epoch d forwards in, and
+            `pace` is the class it forwards: only a same-class send reaching d in that epoch fed it.
+
+            Memoized on (s, d, c, k, pace): the result is a pure function of `flows` and the query,
             independent of any back-trace path, so caching is sound. The no-copy switch rule
             is applied AFTER this lookup (as `claims` in _dfs_trace_to_source), never by
             mutating `flows`, so the memo never goes stale.
         """
-        key = (s, d, c, k)
+        key = (s, d, c, k, pace)
         cached = pred_memo.get(key)
         if cached is not None:
             return cached
@@ -810,29 +1006,35 @@ class AllGatherFormulation(BaseFormulation):
             if self.topology.capacity[n][d] <= 0:
                 continue
             alpha_num_back = self.get_alpha_num_back(n, d)
-            beta_num_back = -1
-            link_type = self.get_link_type(n, d)
-            cutthrough = (
-                self.user_input.instance.switch_pipeline and
-                link_type in (self.LinkType.SWITCH_GPU, self.LinkType.SWITCH_SWITCH)
-            )
-            if not cutthrough:
+            if not self._paced(n, d):
                 beta_num_back = self.get_beta_num_back(n, d)
-            expected_flow = (s, n, d, c, k - alpha_num_back - beta_num_back)
-            if expected_flow in flows:
-                viable_flows.append(expected_flow)
-        viable_flows.sort(key=lambda x: x[4])
+                expected_flow = (s, n, d, c, k - alpha_num_back - beta_num_back)
+                if expected_flow in flows:
+                    viable_flows.append((expected_flow, beta_num_back))
+            elif d in self._switches:
+                # same-class send reaching the switch in the epoch it forwards (k + 1)
+                expected_flow = (s, n, d, c, k + 1 - alpha_num_back)
+                if expected_flow in flows and pace in self.flow_classes(*expected_flow):
+                    viable_flows.append((expected_flow, pace))
+            else:
+                # end of a traversal: a class-b send finished landing in epoch k
+                for b in self.pace_classes(n, d):
+                    expected_flow = (s, n, d, c, k - alpha_num_back - b)
+                    if expected_flow in flows and b in self.flow_classes(*expected_flow):
+                        viable_flows.append((expected_flow, b))
+        viable_flows.sort(key=lambda x: x[0][4])
         pred_memo[key] = viable_flows
         return viable_flows
 
     def _dfs_trace_to_source(self, flows: Set[Tuple[int, int, int, int, int]], s: int, node: int, c: int, k: int,
                              visited: frozenset, pred_memo: Dict, buffers: Dict, budget: List[int],
-                             claims: Dict = None, out_flow: Tuple[int, int, int, int, int] = None
-                             ) -> List[Tuple[int, int, int, int, int]]:
+                             claims: Dict = None, out_flow: Tuple[int, int, int, int, int] = None,
+                             out_pace: int = None) -> List[Tuple[Tuple[int, int, int, int, int], int]]:
         """
             Trace how `node` received chunk (s, c) by epoch k back to the source, returning
-            the list of flows [flow_into_node, ..., flow_from_source] or None if there is no
-            acyclic route. This is a depth-first search WITH BACKTRACKING: when a switch has
+            the list of (flow, pace class) [into_node, ..., from_source] or None if there is no
+            acyclic route. `out_pace` is the class of `out_flow` the trace arrived on: a switch
+            forwards in the class it received. This is a depth-first search WITH BACKTRACKING: when a switch has
             several viable predecessors (common under switch_copy) the greedy min-epoch pick
             may dead-end at a cut-through top-switch mesh even though a real predecessor
             reaches the source; on a dead end we try the next predecessor instead of dropping
@@ -847,27 +1049,29 @@ class AllGatherFormulation(BaseFormulation):
             most num_nodes * num_epochs; `budget` caps total node expansions to keep a
             pathological (exponential) search from running away.
 
-            `claims` (no-copy switches only) maps a flow INTO a switch to the one flow OUT of the
-            switch it already feeds on a committed path; `out_flow` is the switch-outgoing flow
-            this call is tracing for, set when `node` is a switch. An incoming flow claimed by a
-            DIFFERENT outgoing flow is unavailable -- a no-copy switch cannot fan one copy out
-            twice -- but one claimed by the SAME outgoing flow is a shared path prefix and is
-            reused freely (e.g. A -> T0 -> B committed for B, then reused by C's path through B).
+            `claims` (no-copy switches only) maps a flow INTO a switch to the flows OUT of the
+            switch it already feeds on committed paths; `out_flow` is the switch-outgoing flow
+            this call is tracing for, set when `node` is a switch. An incoming flow whose every
+            copy (flow_copies) is claimed by OTHER outgoing flows is unavailable -- a no-copy
+            switch forwards one copy per copy received -- but one claimed by the SAME outgoing
+            flow is a shared path prefix and is reused freely (e.g. A -> T0 -> B committed for B,
+            then reused by C's path through B).
         """
         if budget[0] <= 0:
             return None
         budget[0] -= 1
-        for f in self.get_viable_predecessors(flows, s, node, c, k, pred_memo):
+        pace = out_pace if out_flow is not None and self._paced(out_flow[1], out_flow[2]) else None
+        for f, f_pace in self.get_viable_predecessors(flows, s, node, c, k, pred_memo, pace):
             pred = f[1]
             if (pred, f[4]) in visited:
                 # picking f would revisit a same-epoch vertex -> a zero-time cycle; skip it.
                 continue
-            if claims is not None and out_flow is not None and claims.get(f, out_flow) != out_flow:
-                # this switch's incoming copy already feeds a different outgoing hop.
+            if claims is not None and out_flow is not None and not self._claimable(claims, f, out_flow):
+                # every copy this switch received on f already feeds a different outgoing hop.
                 continue
             if pred == s:
                 # reached the chunk source node.
-                return [f]
+                return [(f, f_pace)]
             if pred not in self.topology.switch_indices:
                 # A GPU relays out of its buffer; the epoch it received the chunk is given by
                 # buffer. Without a buffer var this branch can't be continued -> try the next.
@@ -881,10 +1085,16 @@ class AllGatherFormulation(BaseFormulation):
             sub = self._dfs_trace_to_source(
                 flows, s, pred, c, nk, visited | {(pred, f[4])}, pred_memo, buffers, budget,
                 claims=claims,
-                out_flow=f if pred in self.topology.switch_indices else None)
+                out_flow=f if pred in self.topology.switch_indices else None, out_pace=f_pace)
             if sub is not None:
-                return [f] + sub
+                return [(f, f_pace)] + sub
         return None
+
+    def _claimable(self, claims: Dict, in_flow: Tuple, out_flow: Tuple) -> bool:
+        """Whether a no-copy switch can feed out_flow from in_flow: it already does, or in_flow
+        carried a copy (flow_copies) that no committed path has claimed yet."""
+        taken = claims.get(in_flow, ())
+        return out_flow in taken or len(taken) < self.flow_copies(*in_flow)
 
     def chunk_flow_path_to_string(self, chunk_path: List[Tuple[int, int, int, int, int]]) -> Tuple[int, List[str]]:
         """
@@ -959,6 +1169,8 @@ class AllGatherFormulation(BaseFormulation):
         # hierarchical solver reads the routing off the paths, and must treat an untraced demand
         # as a missing delivery rather than a warning.
         self.per_demand_paths = {}
+        # (s, d, c) -> the pace class of each hop of per_demand_paths[(s, d, c)], aligned with it
+        self.per_demand_classes = {}
         self.untraced_demands = []
         for s, d, c in product(self.nodes, self.nodes, self.chunks):
             if not self.demand[s][d][c]:
@@ -984,10 +1196,10 @@ class AllGatherFormulation(BaseFormulation):
             # unsound whole-cycle removal: with binary flows a legit forward edge and a wasteful
             # reverse edge form one 2-cycle, so removing the cycle would delete the legit edge.
             budget = [50 * len(self.nodes) * (self.num_epochs + 1)]
-            my_path = self._dfs_trace_to_source(
+            traced = self._dfs_trace_to_source(
                 flows, s, d, c, demand_met_k, frozenset(), pred_memo, buffers, budget,
                 claims=claims)
-            if my_path is None:
+            if traced is None:
                 # No acyclic route to source: the solver delivers this demand only via a
                 # same-epoch circulation (a phantom cut-through switch cycle -- a formulation
                 # artifact), or the search budget was exhausted. Skip this demand instead of
@@ -997,9 +1209,11 @@ class AllGatherFormulation(BaseFormulation):
                     f"(no acyclic path -- likely a same-epoch switch circulation); skipping.")
                 self.untraced_demands.append((s, d, c))
                 continue
+            my_path = [f for f, _pace in traced]
             for f in my_path:
                 required_flows.add(f)
-            self.per_demand_paths[(s, d, c)] = list(my_path)
+            self.per_demand_paths[(s, d, c)] = my_path
+            self.per_demand_classes[(s, d, c)] = [pace for _f, pace in traced]
             # No-copy: a switch relays a single copy, so a committed path CLAIMS each flow into a
             # switch for the one outgoing flow it fed. Later traces may reuse the same in -> out
             # pair (a shared prefix, e.g. through a relay GPU that also wants the chunk) but not
@@ -1010,7 +1224,8 @@ class AllGatherFormulation(BaseFormulation):
             if claims is not None:
                 for out_f, in_f in zip(my_path, my_path[1:]):
                     if in_f[2] in self.topology.switch_indices:
-                        claims.setdefault(in_f, out_f)
+                        if self._claimable(claims, in_f, out_f):
+                            claims.setdefault(in_f, set()).add(out_f)
             chunk_str_path = self.chunk_flow_path_to_string(my_path)
             chunk_paths[f"Demand at {d} for chunk {c} from {s} met by epoch {demand_met_k}"] = [
                 x[1] for x in chunk_str_path]

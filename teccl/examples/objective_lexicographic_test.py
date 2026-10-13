@@ -1,6 +1,9 @@
 """
 Behavioral tests for ObjectiveType.LEXICOGRAPHIC (the latency > host-relay > switch-chain
-hierarchy in teccl/solvers/base_formulation.py), run against BOTH formulations.
+hierarchy in teccl/solvers/base_formulation.py), run against BOTH formulations. The MILP puts
+a makespan tier above those three (the LP does not; see LPFormulation.hierarchical_objective_
+tiers). The probes finish in the same epoch on every route, so it ties throughout; it is
+checked against the solved epoch count.
 
 Each test runs an AllGather between two GPUs on a tiny topology (teccl.topologies.
 objective_probes) that offers two routes, and asserts WHICH route the objective picks:
@@ -118,9 +121,10 @@ def objective_report(solver):
     (ObjNVal), not recomputed from the flows.
 
     This is the check that the formulation really installed the hierarchy: a single-objective
-    run reports NumObj == 1, a LEXICOGRAPHIC run reports 3 named tiers. Cross-read the tier
-    values against the metrics below -- host_relay and switch_chain must match exactly, and
-    latency is the negated sum of total_demand_sat.
+    run reports NumObj == 1, a LEXICOGRAPHIC run reports 4 named tiers on the MILP, 3 on the LP. Cross-read the tier
+    values against the metrics below -- makespan is minus the epochs from the finish on,
+    host_relay and switch_chain must match exactly, and latency is the negated sum of
+    total_demand_sat.
     """
     model = solver.model
     num_obj = model.NumObj
@@ -150,6 +154,7 @@ def metrics(solver):
 
     report = objective_report(solver)
     return {
+        "formulation": Formulation.MILP if isinstance(solver, AllGatherFormulation) else Formulation.LP,
         "epochs": solver.find_demand_satisfied_k() + 1,
         "switch_hops": switch_hops,
         "host_relay": relay if relay > TOL else 0.0,
@@ -168,16 +173,22 @@ def assert_hierarchy_installed(m):
     """
     The tests below assert routing OUTCOMES, which a formulation could also produce by
     accident (or by its single-objective flow penalty). This asserts the mechanism: the
-    solved model carried three named objectives, and Gurobi's own optimal value for the
-    relay/chain tiers equals what we measured off the flow variables.
+    solved model carried the named objectives (makespan first on the MILP), and Gurobi's own
+    optimal value for the makespan/relay/chain tiers equals what we measured off the solution.
     """
-    assert m["num_obj"] == 3, \
-        f"expected 3 lexicographic objectives on the solved model, found {m['num_obj']}: " \
-        f"the formulation did not install the hierarchy"
+    expected = (["makespan"] if m["formulation"] == Formulation.MILP else []) + \
+        ["latency", "host_relay", "switch_chain"]
+    assert m["num_obj"] == len(expected), \
+        f"expected {len(expected)} lexicographic objectives on the solved model, found " \
+        f"{m['num_obj']}: the formulation did not install the hierarchy"
     names = [name for name, _ in m["tiers"]]
-    assert names == ["latency", "host_relay", "switch_chain"], \
-        f"tiers installed in the wrong order: {names}"
+    assert names == expected, f"tiers installed in the wrong order: {names}"
     by_name = dict(m["tiers"])
+    if "makespan" in by_name:
+        # the tier counts the epochs with everything met: finish epoch (epochs - 1) through the end
+        assert abs(by_name["makespan"] + (NUM_EPOCHS - m["epochs"] + 1)) <= TOL, \
+            f"Gurobi's makespan tier ({by_name['makespan']:g}) disagrees with the finish " \
+            f"epoch ({m['epochs']} of {NUM_EPOCHS})"
     assert abs(by_name["host_relay"] - m["host_relay"]) <= TOL, \
         f"Gurobi's host_relay tier ({by_name['host_relay']:g}) disagrees with the flows " \
         f"({m['host_relay']:g}) -- the tier is not measuring what the test measures"

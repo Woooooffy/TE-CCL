@@ -12,7 +12,8 @@ logic. Per path:
                   sends in exactly the epoch its inbound hop makes the chunk available there
     delivered     the chunk lands by the epoch the solver reports the demand met
 and across the union of a chunk's paths, when switch_copy is OFF: each flow into a switch feeds at
-most one distinct flow out of it (a no-copy switch forwards one copy per copy received).
+most as many distinct flows out of it as it carried copies (a no-copy switch forwards one copy
+per copy received).
 
 Gurobi-free (fixtures replayed into a model-less formulation):
   [0] the validator itself rejects forged bad paths (sourceless, late switch hop, no-copy fan-out)
@@ -45,18 +46,23 @@ logging.disable(logging.WARNING)
 # ------------------------------------------------------------------------------------------------
 # The independent validator
 # ------------------------------------------------------------------------------------------------
-def _landing_offset(f, j, i):
-    """Epochs from a send on (j, i) to the chunk being usable at i -- re-derived from the
-    formulation's rules (node_constraint_helper), not read off the tracer.
+def _landing_offset(f, hop, pace):
+    """Epochs from a send `hop` = (s, j, i, c, k) to the chunk being usable at i -- re-derived from
+    the formulation's rules (node_constraint_helper), not read off the tracer.
 
-    Into a GPU: in the buffer from k + alpha + 1 + beta, or k + alpha for a cut-through
-    switch -> GPU hop. Into a switch (no buffer): forwardable in epoch k + alpha for a cut-through
-    switch -> switch hop, else k + alpha + 1 + beta."""
+    With switch_pipeline, every link touching a switch is part of a cut-through traversal paced
+    at its class b (`pace`, which the solver must actually have sent the hop in): into a switch,
+    forwardable in epoch k + alpha; into a GPU, in the buffer from k + alpha + 1 + b. Any other hop
+    (GPU -> GPU, or every hop of a store-and-forward fabric): in the buffer, or forwardable, from
+    k + alpha + 1 + beta."""
+    _s, j, i, _c, _k = hop
     alpha, beta = f.get_alpha_num_back(j, i), f.get_beta_num_back(j, i)
-    lt = f.get_link_type(j, i)
-    pipeline = f.user_input.instance.switch_pipeline
-    cut = pipeline and lt in (f.LinkType.SWITCH_GPU, f.LinkType.SWITCH_SWITCH)
-    return alpha if cut else alpha + 1 + beta
+    switches = set(f.topology.switch_indices)
+    if not (f.user_input.instance.switch_pipeline and (i in switches or j in switches)):
+        return alpha + 1 + beta
+    assert pace in f.flow_classes(*hop), f"{hop}: traced in class {pace}, not one it was sent in"
+    assert pace >= beta, f"{hop}: class {pace} below the link's own beta {beta}"
+    return alpha if i in switches else alpha + 1 + pace
 
 
 def validate_paths(f, raw_flows, demand_met):
@@ -66,6 +72,10 @@ def validate_paths(f, raw_flows, demand_met):
     switches = set(f.topology.switch_indices)
     switch_out_of_in = defaultdict(set)          # (s, c, in-flow into a switch) -> out-flows
     for (s, d, c), path in f.per_demand_paths.items():
+        paces = f.per_demand_classes.get((s, d, c))
+        if paces is None or len(paces) != len(path):   # a forged path (test [0]): its own classes
+            paces = [min(f.flow_classes(*h)) for h in path]
+        paces = list(reversed(paces))
         hops = list(reversed(path))              # traced destination-first
         tag = f"demand s={s} d={d} c={c}"
         if not hops:
@@ -88,12 +98,12 @@ def validate_paths(f, raw_flows, demand_met):
                     switch_out_of_in[(s, c, hops[n - 1])].add(h)
             elif k < held:
                 problems.append(f"{tag}: gpu {i} sends in epoch {k}, holds the chunk from {held}")
-            held = k + _landing_offset(f, i, j)
+            held = k + _landing_offset(f, h, paces[n])
         met = demand_met.get((s, d, c))
         if met is not None and held > met + 1:
             problems.append(f"{tag}: lands in epoch {held} but is reported met by {met}")
     for (s, c, in_flow), outs in switch_out_of_in.items():
-        if len(outs) > 1:
+        if len(outs) > f.flow_copies(*in_flow):
             problems.append(f"no-copy switch {in_flow[2]} forwards chunk ({s}, {c}) received on "
                             f"{in_flow} to {len(outs)} places {sorted(outs)}")
     return problems
@@ -143,16 +153,19 @@ def _replay(topology, switch_copy, flows, demand_met, buffers):
 
 
 # The real raw solution of source cell B's chunk 0 from the coarse hetero switch-copy solve,
-# before switch_acyclicity_constraints: B only ever sends at epochs 2 and 3, yet at epoch 1 the
-# chunk is circulating T0 <-> T1 and copied out to A and C, both "met" at epoch 0.
-PHANTOM_FLOWS = [(1, 3, 2, 0, 1), (1, 3, 4, 0, 1), (1, 4, 0, 0, 1), (1, 4, 3, 0, 1),
-                 (1, 1, 3, 0, 2), (1, 1, 3, 0, 3)]
+# before switch_acyclicity_constraints, re-timed to the pace-class rules (a switch forwards in the
+# epoch its traversal starts, so every epoch is one earlier than as recorded): B only ever sends at
+# epochs 1 and 2, yet at epoch 0 the chunk is circulating T0 <-> T1 and copied out to A and C,
+# both "met" at epoch 0.
+PHANTOM_FLOWS = [(1, 3, 2, 0, 0), (1, 3, 4, 0, 0), (1, 4, 0, 0, 0), (1, 4, 3, 0, 0),
+                 (1, 1, 3, 0, 1), (1, 1, 3, 0, 2)]
 PHANTOM_MET = {(1, 0, 0): 0, (1, 2, 0): 0}
 PHANTOM_BUF = {(1, 0, 0): 1, (1, 1, 0): 0, (1, 2, 0): 1}
 
-# B's chunk 1 from the same solve, grounded: B -> T0 in epoch 0, and T0 sends it on TWICE in
-# epoch 1 -- to C, and to T1 (then A). One switch in-flow, two out-flows: a switch copy.
-FANOUT_FLOWS = [(1, 1, 3, 1, 0), (1, 3, 2, 1, 1), (1, 3, 4, 1, 1), (1, 4, 0, 1, 1)]
+# B's chunk 1 from the same solve, grounded: B -> T0 in epoch 0, and T0 sends it on TWICE in the
+# same epoch (cut-through) -- to C, and to T1 (then A). One switch in-flow, two out-flows: a
+# switch copy.
+FANOUT_FLOWS = [(1, 1, 3, 1, 0), (1, 3, 2, 1, 0), (1, 3, 4, 1, 0), (1, 4, 0, 1, 0)]
 FANOUT_MET = {(1, 0, 1): 0, (1, 2, 1): 0}
 FANOUT_BUF = {(1, 1, 1): 0, (1, 0, 1): 1, (1, 2, 1): 1}
 

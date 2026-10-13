@@ -1,0 +1,21 @@
+// pace_chain.topo with the speeds inverted, the CONTROL for it:
+//
+//     g0 --50G-- s0 --100G-- s1 --50G-- g1
+//
+// A slow link follows a fast one here too (s0->s1->g1), but it is no slower than the FIRST link,
+// so the first hop already is the bottleneck and a traversal takes 0.16 s under both the old
+// first-hop rule and the pace classes. A pairwise "charge the step up between adjacent links" rule
+// would have charged the 100G -> 50G step a second time (0.24 s); the pace classes must not.
+
+module main() {
+    rdma L2AckInterval=0 L2ChunkSize=4000 Mtu=4096 CcMode=12;
+
+    node g0 type=gpu;
+    node g1 type=gpu;
+    node s0 type=switch;
+    node s1 type=switch;
+
+    link g0 s0 bandwidth=50[Gbps] latency=700[ns];
+    link s0 s1 bandwidth=100[Gbps] latency=700[ns];
+    link s1 g1 bandwidth=50[Gbps] latency=700[ns];
+}

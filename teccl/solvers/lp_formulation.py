@@ -492,6 +492,16 @@ class LPFormulation(BaseFormulation):
         pure linear expression to MINIMIZE, so the model stays an LP -- no auxiliary
         indicator/max_ variables, unlike the TOTAL_DEMAND completion reward.
 
+        No tier 0 (makespan), unlike the MILP. Tier 1 is a sum over demand, so on its own it
+        can tie a schedule that finishes later. But "every demand met by k" needs a binary per
+        epoch here (a met fraction is continuous), and every way of adding it that was tried
+        (2026-10-13) changed WHICH optimal vertex the LP returns: as a MIP tier, as a separate
+        finish search followed by a pinned pure LP, and even when the pinned re-solve only
+        happened if the unpinned solution finished late. The hierarchical solver is sensitive
+        to that choice. Rail-optimized hierarchical alltoall then failed identity resolution
+        (off-grid splits) or path extraction (1e-5 of untraced flow), for a gain of 2 epochs
+        in 1461 on hetero alltoall.
+
         tier 1, latency: sum over epochs of the demand still OUTSTANDING at the end of that
             epoch, = sum_k (all_demand - sum_{s,d} total_demand_sat[s][d][k]). Dropping the
             constant, minimizing it is maximizing -sum_k sum_{s,d} total_demand_sat, i.e. the

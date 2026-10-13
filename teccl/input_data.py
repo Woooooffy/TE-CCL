@@ -54,9 +54,13 @@ class ObjectiveType(Enum):
             solver prefer routes with fewer switch relays -- e.g. a direct leaf hop over a spine
             detour. The penalty is scaled far below the completion reward so it acts purely as a
             tie-breaker and never trades completion time for fewer hops.
-        6 - LEXICOGRAPHIC - A three-tier hierarchical (lexicographic) objective solved with
-            Gurobi's multi-objective support, in strictly decreasing priority:
-              tier 1 (latency)      minimize the demand-weighted completion time,
+        6 - LEXICOGRAPHIC - A hierarchical (lexicographic) objective solved with Gurobi's
+            multi-objective support, in strictly decreasing priority:
+              tier 0 (makespan)     MILP only: minimize the epoch by which EVERY demand is met
+                                    (the collective's finish time), so the tiers below can only
+                                    choose among the fastest schedules. The LP has no tier 0
+                                    (see LPFormulation.hierarchical_objective_tiers),
+              tier 1 (latency)      among those, minimize the demand-weighted completion time,
               tier 2 (host relay)   among the tier-1 optima, minimize the volume that a GPU
                                     forwards on behalf of another GPU (relay through a host
                                     burns that host's link bandwidth and its copy engines),
@@ -241,6 +245,7 @@ class InstanceParams:
     # 0.0 == pure lexicographic (a tier is fixed at its exact optimum before the next is
     # optimized). Give latency a small slack (e.g. 0.01) when you would accept 1% more
     # completion time to buy a materially less relay-heavy / shorter-chained routing.
+    objective_makespan_rel_tol: float = 0.0  # slack on tier 0 (makespan, MILP only) for tiers 1-3
     objective_latency_rel_tol: float = 0.0   # slack on tier 1 (latency) for tiers 2-3
     objective_relay_rel_tol: float = 0.0     # slack on tier 2 (host relay) for tier 3
     solution_method: SolutionMethod = SolutionMethod.ONE_SHOT

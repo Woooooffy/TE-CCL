@@ -174,7 +174,8 @@ def extract_trees(milp, mapping: HierarchyMapping, demand: PreservingDemand) -> 
       * each route is a valid chain (`_validate_route`: chains, dwells, no cell revisited);
       * the routes of one column form a TREE: each cell is entered by at most one leg.
 
-    `milp` needs `.per_demand_paths`, `.untraced_demands`, `.topology` and `.hop_timing(j, i)`.
+    `milp` needs `.per_demand_paths`, `.per_demand_classes`, `.untraced_demands`, `.topology` and
+    `.hop_timing`.
     """
     if getattr(milp, "untraced_demands", None):
         raise RuntimeError(
@@ -198,8 +199,17 @@ def extract_trees(milp, mapping: HierarchyMapping, demand: PreservingDemand) -> 
                     raise RuntimeError(f"MILP solution has no traced path for cell {g.cell} column "
                                        f"{c} -> cell {v}")
                 hops = []
-                for (_s, i, j, _c, k) in reversed(path):      # traced destination-first
-                    offset, occupancy = milp.hop_timing(i, j)
+                paces = milp.per_demand_classes[(g.cell, v, c)]
+                for (_s, i, j, _c, k), pace in reversed(list(zip(path, paces))):  # destination-first
+                    # A send carrying several copies (AllGatherFormulation.max_copies) is several
+                    # transmissions, but send_group keys (cell, egress switch, epoch) and would
+                    # merge them into one -- one gateway, one uplink charge. Unsupported until
+                    # the extraction unit is a stream (switch_copy_design.md section 11).
+                    copies = milp.flow_copies(_s, i, j, _c, k)
+                    assert copies == 1, (
+                        f"MILP send {(_s, i, j, _c, k)} carries {copies} copies; the hierarchical "
+                        f"extraction counts one transmission per send")
+                    offset, occupancy = milp.hop_timing(i, j, pace)
                     hops.append(_Hop(sender=i, receiver=j, volume=1.0, send_epoch=k,
                                      arrival_epoch=k + offset - 1, occupancy=occupancy))
                 legs = [canonical.setdefault(replace(leg, origin=(g.cell, g.cell)), leg)

@@ -244,6 +244,28 @@ class BaseFormulation(ABC):
             if self.topology.capacity[i][j] > 0
         ]
 
+    def makespan_tier(self, met_fractions) -> gp.LinExpr:
+        """
+            Tier 0 of ObjectiveType.LEXICOGRAPHIC: the collective's finish time, as an expression
+            to MINIMIZE. One indicator per epoch, all_met[k] <= every demand's met indicator at
+            the end of k; the tier is -sum_k all_met[k], i.e. minus the number of epochs in which
+            everything is already done, which is the horizon minus the finish epoch.
+
+            met_fractions(k) yields, for epoch k, expressions that are BINARY and equal 1 exactly
+            when a demand is fully met by the end of k (the MILP's total_demand_sat), so the
+            indicator can be continuous -- at an integer point it equals their minimum, 0 or 1.
+            With continuous met fractions it would reward a fraction of every demand early over
+            finishing them all sooner; see LPFormulation.hierarchical_objective_tiers for why
+            the LP has no tier 0.
+        """
+        tier = gp.LinExpr(0.0)
+        for k in self.epochs:
+            all_met = self.model.addVar(0, 1, vtype=GRB.CONTINUOUS, name=f'makespan_met_{k}')
+            for n, met in enumerate(met_fractions(k)):
+                self.model.addConstr(all_met <= met, name=f'makespan_met_{k}_{n}')
+            tier.add(all_met, -1.0)
+        return tier
+
     def hierarchical_objective_tiers(self) -> List[Tuple[str, gp.LinExpr, float]]:
         """
             The tiers of ObjectiveType.LEXICOGRAPHIC, HIGHEST priority first, as
