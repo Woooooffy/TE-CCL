@@ -15,12 +15,18 @@ and across the union of a chunk's paths, when switch_copy is OFF: each flow into
 most as many distinct flows out of it as it carried copies (a no-copy switch forwards one copy
 per copy received).
 
+`validate_sends` checks the tracer's authoritative output, `sends` (teccl/sends.py), as a forest:
+every (identity, node) is delivered by exactly one branch, every sender already holds what it
+sends, every demand is delivered on time, and without switch copy every send has one branch.
+
 Gurobi-free (fixtures replayed into a model-less formulation):
   [0] the validator itself rejects forged bad paths (sourceless, late switch hop, no-copy fan-out)
   [1] phantom: a chunk that appears from a same-epoch T0 <-> T1 loop is REFUSED, not traced
   [2] switch copy: one switch in-flow feeding two out-flows traces BOTH demands
   [3] no copy: the same flows trace only ONE of them -- the other is a second copy that the
       switch never received
+  [3b] no copy, but B sent TWO copies into T0: both demands traced, as two sends with the same
+      sender, epoch and first link (two transmissions, not one)
 Gurobi (size-limited license is enough; SKIPPED if the model does not fit):
   [4] real solves, switch_copy on and off, every demand traced and every path valid -- including
       the coarse hetero instance whose switch-copy solve used to deliver 2 demands via a phantom
@@ -109,6 +115,35 @@ def validate_paths(f, raw_flows, demand_met):
     return problems
 
 
+def validate_sends(f, demand_met):
+    """Every problem with `f.sends` as a forest of transmissions, as strings; [] means valid."""
+    from teccl.sends import delivery_index
+
+    problems = []
+    seen = defaultdict(int)
+    for send in f.sends:
+        for b in send.fanout:
+            seen[(send.identity, b.receiver)] += 1
+        if not f.switch_copy and len(send.fanout) > 1:
+            problems.append(f"no-copy send {send} has {len(send.fanout)} branches")
+    problems += [f"{key} delivered {n} times" for key, n in seen.items() if n > 1]
+    index = delivery_index(f.sends)
+    for send in f.sends:
+        if send.sender != send.identity[0]:
+            held = index.get((send.identity, send.sender))
+            if held is None or held[1].ready > send.epoch:
+                problems.append(f"{send.sender} sends {send.identity} in epoch {send.epoch} but "
+                                f"holds it from {held[1].ready if held else None}")
+    for (s, d, c), path in f.per_demand_paths.items():
+        delivery = index.get(((s, c), d))
+        if delivery is None:
+            problems.append(f"demand {(s, d, c)} has a path but no send delivers it")
+        elif delivery[1].ready > demand_met[(s, d, c)] + 1:
+            problems.append(f"demand {(s, d, c)} lands in {delivery[1].ready}, met by "
+                            f"{demand_met[(s, d, c)]}")
+    return problems
+
+
 # ------------------------------------------------------------------------------------------------
 # Fixtures
 # ------------------------------------------------------------------------------------------------
@@ -139,11 +174,14 @@ def _ui(switch_copy, objective=ObjectiveType.PAPER, num_epochs=-1):
     return ui
 
 
-def _replay(topology, switch_copy, flows, demand_met, buffers):
-    """A model-less AllGatherFormulation whose 'solution' is the given flows."""
+def _replay(topology, switch_copy, flows, demand_met, buffers, copies=None):
+    """A model-less AllGatherFormulation whose 'solution' is the given flows (each carrying one
+    copy unless `copies` says otherwise)."""
     from teccl.solvers.allgather import AllGatherFormulation
 
     f = AllGatherFormulation(_ui(switch_copy), topology)
+    if copies:
+        f.flow_copies = lambda *h: copies.get(h, 1)
     f.get_flows_buffer_demand = lambda: (list(flows), dict(demand_met), dict(buffers),
                                          max(demand_met.values()))
     f.find_demand_satisfied_k = lambda: max(demand_met.values())
@@ -201,9 +239,13 @@ def test_switch_copy_fanout():
     assert set(f.per_demand_paths) == {(1, 0, 1), (1, 2, 1)}, f.per_demand_paths
     shared = (1, 1, 3, 1, 0)
     assert all(p[-1] == shared for p in f.per_demand_paths.values()), f.per_demand_paths
-    problems = validate_paths(f, FANOUT_FLOWS, FANOUT_MET)
+    problems = validate_paths(f, FANOUT_FLOWS, FANOUT_MET) + validate_sends(f, FANOUT_MET)
     assert not problems, problems
-    print("  [2] switch copy: one B->T0 send feeds T0->C and T0->T1->A; both demands traced, valid")
+    [send] = f.sends
+    assert (send.sender, send.epoch) == (1, 0), send
+    assert [(b.receiver, b.via) for b in send.fanout] == [(0, (3, 4)), (2, (3,))], send
+    print("  [2] switch copy: one B->T0 send feeds T0->C and T0->T1->A; both demands traced, valid "
+          "-- as ONE send with two branches")
 
 
 def test_no_copy_single_copy():
@@ -211,9 +253,25 @@ def test_no_copy_single_copy():
     assert len(f.untraced_demands) == 1 and len(f.per_demand_paths) == 1, (
         f"a no-copy switch forwards ONE copy per copy received: {f.untraced_demands}, "
         f"{f.per_demand_paths}")
-    problems = validate_paths(f, FANOUT_FLOWS, FANOUT_MET)
+    problems = validate_paths(f, FANOUT_FLOWS, FANOUT_MET) + validate_sends(f, FANOUT_MET)
     assert not problems, problems
+    assert len(f.sends) == 1 and len(f.sends[0].fanout) == 1, f.sends
     print("  [3] no copy: the same flows trace exactly one demand; the second copy never existed")
+
+
+def test_no_copy_two_copies():
+    """A paced send is a count of copies: B -> T0 carrying TWO lets a no-copy T0 feed both C and
+    T1 (then A). That is two transmissions on one link in one epoch, and must come out as two
+    sends -- one gateway and one uplink charge for both would undercount the link."""
+    f = _replay(_hetero_coarse(), False, FANOUT_FLOWS, FANOUT_MET, FANOUT_BUF,
+                copies={(1, 1, 3, 1, 0): 2})
+    assert f.untraced_demands == [], f.untraced_demands
+    problems = validate_paths(f, FANOUT_FLOWS, FANOUT_MET) + validate_sends(f, FANOUT_MET)
+    assert not problems, problems
+    assert len(f.sends) == 2, f.sends
+    assert len({(x.sender, x.epoch, x.fanout[0].via[0]) for x in f.sends}) == 1, f.sends
+    assert sorted(x.fanout[0].receiver for x in f.sends) == [0, 2], f.sends
+    print("  [3b] no copy, two copies into T0: both demands traced, as two sends on one link")
 
 
 # ------------------------------------------------------------------------------------------------
@@ -267,11 +325,13 @@ def test_real_solves():
         assert b.untraced_demands == [], f"{name}: untraced {b.untraced_demands}"
         assert set(b.per_demand_paths) == demanded, (
             f"{name}: traced {len(b.per_demand_paths)} of {len(demanded)} demands")
-        problems = validate_paths(b, raw, met)
+        problems = validate_paths(b, raw, met) + validate_sends(b, met)
         assert not problems, f"{name}: {problems[:5]}"
         fanouts = sum(1 for outs in _switch_fanouts(b).values() if len(outs) > 1)
+        multicast = sum(1 for x in b.sends if len(x.fanout) > 1)
         print(f"  [4] {name}: {len(demanded)}/{len(demanded)} demands traced, all paths valid, "
-              f"{fanouts} switch fan-out(s) used, {b.find_demand_satisfied_k() + 1} epochs")
+              f"{fanouts} switch fan-out(s) used, {len(b.sends)} sends ({multicast} multicast), "
+              f"{b.find_demand_satisfied_k() + 1} epochs")
 
 
 def _switch_fanouts(f):
@@ -292,6 +352,7 @@ if __name__ == "__main__":
     test_phantom_refused()
     test_switch_copy_fanout()
     test_no_copy_single_copy()
+    test_no_copy_two_copies()
     if "--no-gurobi" not in sys.argv:
         test_real_solves()
     print("MILP trace tests OK")

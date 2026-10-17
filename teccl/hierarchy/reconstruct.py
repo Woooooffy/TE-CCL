@@ -57,7 +57,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
-from math import ceil, floor, gcd, lcm
+from math import floor, gcd, lcm
 from typing import AbstractSet, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -65,6 +65,7 @@ from scipy.optimize import linprog
 
 from teccl.hierarchy.abstract import HierarchyMapping, classify_identities
 from teccl.hierarchy.scale import ChunkScale
+from teccl.sends import Branch, Send, link_windows, rate
 from teccl.topologies.topology import Topology
 
 # A fine data identity: (fine source GPU s, fine chunk index ci). This is already the global
@@ -87,25 +88,6 @@ EPS = 1e-6
 # InstanceParams.max_denom instead of raising this constant -- see resolve_max_denom, which is
 # what every grid-sized comparison in this module actually reads.
 MAX_DENOM = 64
-
-
-@dataclass(frozen=True)
-class ResolvedPiece:
-    """One inter-cell egress piece with a concrete fine identity pinned onto real GPUs/links."""
-    src_cell: int
-    dst_cell: int
-    identity: Identity                    # (s, ci); serialized as "for chunk {ci} from {s}"
-    egress_gpu: int                       # fine GPU in src_cell that physically sends (== s iff no relay)
-    ingress_gpu: int                      # fine GPU in dst_cell that physically receives
-    via_switches: Tuple[int, ...]         # FINE switch ids along the coarse path
-    volume: float
-    send_epoch: int                       # coarse epoch it leaves src_cell
-    arrival_epoch: int                    # coarse epoch it is consumed at dst_cell
-    # Physical transmission rate in GB/s, or None for an unpaced flow. Set by THIS level
-    # (see _piece_rate): the level that scheduled a flow is the only one that knows the
-    # epoch it was paced against, so it computes the rate rather than leaving a consumer
-    # to re-derive one from a single global epoch duration.
-    rate: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -171,7 +153,10 @@ def demand_is_hard(demand: IntraCellDemand) -> bool:
 
 @dataclass
 class IdentityResolution:
-    pieces: List[ResolvedPiece] = field(default_factory=list)
+    # This level's network transmissions, resolved onto real GPUs: fine GPU and switch ids, this
+    # level's (coarse) epochs, one Send per physical transmission. A switch copy is ONE send with
+    # several branches, so nothing downstream has to recognise shared hops.
+    pieces: List[Send] = field(default_factory=list)
     intra_demands: List[IntraCellDemand] = field(default_factory=list)
     # Granularity every volume above is expressed in, after sub-chunk refinement. Downstream
     # quantities derived from chunk size (fine epoch duration, epochs per coarse epoch,
@@ -179,11 +164,6 @@ class IdentityResolution:
     # which stays the un-refined root value. See teccl/hierarchy/scale.py.
     scale: Optional[ChunkScale] = None
     subdivision: int = 1              # the Q that was applied (1 == no refinement)
-    # Whether the level that produced these pieces keeps ONE copy of a chunk and fans it out (the
-    # MILP): pieces of one sub-identity that share a fine link in an epoch -- the legs of a
-    # switch-copy fan-out -- are then a single transfer, and every capacity check downstream must
-    # count them once. False for the LP, whose same-identity pieces are separate flows.
-    copy_aware: bool = False
 
 
 # --------------------------------------------------------------------------------------------
@@ -251,7 +231,7 @@ class _CoarsePiece:
     # How many of this level's epochs the leg holds its bottleneck link for. 1 for every LP leg
     # (the LP's capacity is continuous, so a hop always fits one epoch); a MILP hop over a link
     # carrying less than one chunk per epoch spends beta + 1 (get_beta_num_back). It is what the
-    # pacing rate divides by (_piece_rate) -- a piece paced to fill ONE epoch would overstate it.
+    # pacing rate divides by (teccl.sends.rate) -- a piece paced to fill ONE epoch would overstate it.
     occupancy: int = 1
 
 
@@ -959,159 +939,6 @@ def _place_downstream_legs(route: "_CoarseRoute", identity: Identity, first_egre
     return [(placed, vol) for placed, vol, _ in frags]
 
 
-def send_group(leg: "_CoarsePiece") -> Tuple[int, int, int]:
-    """The physical send a leg starts with: (sending cell, egress switch, send epoch).
-
-    The MILP's flow on a link in an epoch is ONE binary per chunk, so all legs of one chunk's tree
-    that leave a cell toward the same switch in the same epoch begin with the SAME transfer -- the
-    switch then fans it out (switch copy). They must share a gateway GPU and be charged to its
-    uplink once. Without switch copy a switch forwards one copy per copy received, so every group
-    is a single leg and nothing below changes.
-    """
-    return (leg.src_cell, leg.egress_neighbor, leg.send_epoch)
-
-
-def _place_tree_route(route: "_CoarseRoute", identity: Identity, first_egress_gpu: int,
-                      volume: float, target_gpus: AbstractSet[int],
-                      mapping: HierarchyMapping, fine_topology: Topology, epoch_duration: float,
-                      ingress_ledger: Dict[Tuple[int, int, int], float],
-                      egress_ledger: Dict[Tuple[int, int, int], float],
-                      tol: float, placed_legs: Dict[Tuple[Identity, "_CoarsePiece"], Tuple[int, int]]
-                      ) -> Tuple[Tuple[int, int], ...]:
-    """`_place_downstream_legs` for a COPY-AWARE level (the MILP): one route of an identity's
-    multicast tree, placed whole, sharing legs with the routes already placed for it.
-
-    Three things differ from the LP's placement, and each follows from the MILP's solution shape:
-
-    * A tree's per-destination routes share prefix legs (A -> B is on the route to B and on the
-      route to C through B). The shared leg is ONE transfer, so it is placed once and memoized in
-      `placed_legs`, keyed (identity, leg); a later route through it reuses its GPUs and charges
-      no ledger twice. That is the copy semantics the LP does not have.
-    * Volumes are whole: a landing never splits across downlinks (`allow_split=False`), so step B
-      sees integral volumes and the level keeps Q == 1.
-    * A forwarding cell need not be co-located. The MILP's forward-dwell constraint
-      (AllGatherFormulation.forward_dwell_constraints) only lets a cell re-send from a GPU other
-      than the landing one when the leg leaves at least two epochs after it lands -- one for the
-      intra-cell relay. So co-location is preferred and, failing it, the relay is legal exactly when
-      `outbound.send_epoch >= leg.arrival_epoch + 2`; _emit_refined then emits the relay as a
-      released egress_stage. Anything tighter is a contract breach and fails loud.
-
-    The FIRST leg's egress is NOT committed here: the integral assignment already chose it under
-    the gateways' per-epoch capacity and pre-committed it to `egress_ledger`, so forwarded legs out
-    of the same cell see the true remaining room.
-
-    Returns the per-leg (egress GPU, ingress GPU) tuple.
-    """
-    def forward_room(outbound: "_CoarsePiece") -> Dict[int, float]:
-        """Per-epoch uplink room left on each gateway of a forwarded leg, over its whole window."""
-        gateways = [g for g, _cap in _leg_gateways(outbound, mapping, fine_topology)]
-        out_cap = _egress_epoch_capacity(outbound, gateways, mapping, fine_topology,
-                                         epoch_duration)
-        return {g: out_cap[g] - max(egress_ledger.get((g, outbound.egress_neighbor, e), 0.0)
-                                    for e in range(outbound.send_epoch,
-                                                   outbound.send_epoch + outbound.occupancy))
-                for g in gateways}
-
-    def land(leg, candidates, preferred, what):
-        in_cap = _ingress_epoch_capacity(leg, candidates, mapping, fine_topology, epoch_duration)
-        # Per-epoch volume: a leg occupying n epochs uses 1/n of its link in each (the MILP's
-        # windowed capacity constraint), so that is what the per-epoch ledgers are charged.
-        [(landed, _v)] = _pick_ingress(leg, candidates, identity, volume / leg.occupancy,
-                                       preferred, in_cap, ingress_ledger, tol=tol, what=what,
-                                       allow_split=False)
-        return landed
-
-    placed: List[Tuple[int, int]] = []
-    egress_gpu = first_egress_gpu
-    for i, leg in enumerate(route.legs):
-        is_last = (i == len(route.legs) - 1)
-        outbound = None if is_last else route.legs[i + 1]
-        key = (identity, leg)
-        if key in placed_legs:
-            eg, landed = placed_legs[key]
-            if eg != egress_gpu:
-                raise AssertionError(
-                    f"identity {identity}: shared leg {leg.src_cell} -> {leg.dst_cell} (epoch "
-                    f"{leg.send_epoch}) was placed from gpu {eg}, but this route reaches it from "
-                    f"gpu {egress_gpu}; one transfer cannot have two senders")
-        else:
-            candidates = list(_leg_ingress_candidates(leg, mapping))
-            if is_last:
-                landed = land(leg, candidates, set(target_gpus), "ingress")
-            else:
-                # A transit GPU must LAND the bytes and then SEND them on, so co-location needs a
-                # bridging GPU with room on BOTH sides -- chosen jointly, as the LP's
-                # _place_downstream_legs does with `room_limit`. Choosing on ingress room alone
-                # can land on a bridge whose uplink is already full while another bridge has room,
-                # and then the only way out is a relay the dwell may not allow.
-                bridging = _bridging_gpus(leg.dst_cell, leg, outbound, mapping)
-                room = forward_room(outbound)
-                per_epoch = volume / outbound.occupancy
-                joint = [g for g in bridging if room.get(g, 0.0) >= per_epoch - tol]
-                landed = None
-                if joint:
-                    try:
-                        landed = land(leg, joint, set(), "transit")
-                    except RuntimeError:
-                        landed = None            # no joint bridge has ingress room either
-                if landed is None:
-                    if outbound.send_epoch < leg.arrival_epoch + 2:
-                        raise RuntimeError(
-                            f"cell {leg.dst_cell} must forward identity {identity} in epoch "
-                            f"{outbound.send_epoch}, one epoch after it lands (arrival "
-                            f"{leg.arrival_epoch}), so it must land on a GPU that can also send "
-                            f"it -- but no bridging GPU {bridging} has room on both its ingress "
-                            f"and its uplink toward coarse neighbor {outbound.egress_neighbor} "
-                            f"(uplink room {room}). The coarse level sees only the cell's "
-                            f"AGGREGATE link capacity, so it can co-locate more forwarding than "
-                            f"any single GPU's links carry.")
-                    # The dwell leaves an epoch for a relay: land anywhere, relay to a gateway.
-                    landed = land(leg, candidates, set(bridging), "transit")
-            placed_legs[key] = (egress_gpu, landed)
-        placed.append((egress_gpu, landed))
-        if is_last:
-            break
-
-        out_key = (identity, outbound)
-        if out_key in placed_legs:
-            egress_gpu = placed_legs[out_key][0]
-            continue
-        # Under switch copy, another out-leg of this tree may already have made the SAME send
-        # (same cell, egress switch and epoch -- see send_group). It is one transfer: same
-        # gateway, already charged to the ledger.
-        group_key = ("send", identity, send_group(outbound))
-        if group_key in placed_legs:
-            egress_gpu = placed_legs[group_key]
-            continue
-        room = forward_room(outbound)
-        gateways = sorted(room)
-        per_epoch = volume / outbound.occupancy
-        if landed in room and room[landed] >= per_epoch - tol:
-            egress_gpu = landed                     # co-located: no intra-cell work
-        elif outbound.send_epoch >= leg.arrival_epoch + 2:
-            fits = [g for g in gateways if room[g] >= per_epoch - tol]
-            if not fits:
-                raise RuntimeError(
-                    f"forwarding egress capacity exhausted at cell {outbound.src_cell} epoch "
-                    f"{outbound.send_epoch}: identity {identity} needs {volume:g} toward coarse "
-                    f"neighbor {outbound.egress_neighbor}, gateway room "
-                    f"{ {g: round(r, 6) for g, r in room.items()} }")
-            egress_gpu = min(sorted(fits), key=lambda g: room[g])   # best fit, as _pick_ingress
-        else:
-            raise RuntimeError(
-                f"cell {leg.dst_cell} forwards identity {identity} in epoch {outbound.send_epoch}, "
-                f"one epoch after it lands (arrival {leg.arrival_epoch}), but the landing gpu "
-                f"{landed} cannot send toward coarse neighbor {outbound.egress_neighbor} "
-                f"(gateways {gateways}, room {room}). A relay to another gateway needs a second "
-                f"epoch, which the MILP's forward-dwell constraint should have charged -- was "
-                f"the level solved without CoarseTopology.forward_bridges?")
-        for e in range(outbound.send_epoch, outbound.send_epoch + outbound.occupancy):
-            _commit_egress(replace(outbound, send_epoch=e), egress_gpu, per_epoch, identity,
-                           mapping, fine_topology, epoch_duration, egress_ledger, tol)
-        placed_legs[group_key] = egress_gpu
-    return tuple(placed)
-
-
 def _commit_egress(leg: "_CoarsePiece", gpu: int, volume: float, identity: Identity,
                    mapping: HierarchyMapping, fine_topology: Topology, epoch_duration: float,
                    ledger: Dict[Tuple[int, int, int], float], tol: float) -> None:
@@ -1541,74 +1368,35 @@ def _subdivision_factor(assignments: Sequence[_Assignment]) -> int:
     return q
 
 
-def _piece_rate(volume: float, scale: ChunkScale, coarse_epoch: float, occupancy: int = 1) -> float:
-    """This level's pacing rule: send a piece at exactly the rate that fills ONE COARSE
-    EPOCH with its volume.
-
-    Rate bookkeeping belongs to the level that produced the flow. This level solved on a
-    coarse epoch grid, so its flows are paced to that grid -- a consumer downstream sees a
-    fine epoch axis and could not reconstruct this number. (The level BELOW, the memoized
-    NVSwitch schedule, deliberately paces nothing: its flows carry ordering only, so they
-    get no rate at all.)
-
-    The rule is self-clocking (a send completes exactly at its epoch boundary, so a chain of
-    same-link sends stays on the grid) and heterogeneity-blind: it never reads a link
-    bandwidth, yet the coarse solve's own feasibility, sum(volume) <= bw * Delta / chunk,
-    gives sum(rate) <= bw -- with equality exactly where the solver saturated the link. That
-    implication is a statement about THIS level's capacity constraint, which is why this
-    level is also the one that asserts it (see _assert_rate_within_capacity).
-
-    `occupancy` generalizes "one epoch" to the leg's own: a MILP hop over a link carrying less
-    than a chunk per epoch holds it for beta + 1 epochs (_CoarsePiece.occupancy), and the level's
-    capacity constraint is then a window sum over those epochs, so the self-clocking rate is the
-    volume spread over the whole window. 1 for every LP leg.
-    """
-    return volume * scale.bytes_per_chunk / (coarse_epoch * occupancy)
-
-
 def _assert_rate_within_capacity(result: IdentityResolution, fine_topology: Topology,
-                                 coarse_epoch: float, one_copy_per_link: bool = False) -> None:
+                                 coarse_epoch: float) -> None:
     """Per fine link per coarse epoch, the paced rates must fit the link bandwidth.
 
-    This is the capacity guarantee the coarse solve was entitled to assume, re-expressed in
-    rate units: it holds by construction if every gateway's share of each coarse link stayed
-    within its fine capacity (egress is split proportionally to fine capacity; ingress is
-    assigned under an explicit per-epoch ledger, see _pick_ingress). Checking it here is what
-    makes "the fine schedule implements the coarse solution" a verified property rather than
-    an assumed one.
+    Every network send is paced by the self-clocking rule (teccl.sends.rate): its volume spread
+    over the `span` coarse epochs it holds its links, so it finishes exactly at an epoch boundary.
+    The rule never reads a link bandwidth, yet the coarse solve's own feasibility,
+    sum(volume) <= bw * Delta / chunk, gives sum(rate) <= bw -- with equality exactly where the
+    solver saturated the link. Checking it here, on fine links, is what makes "the fine schedule
+    implements the coarse solution" a verified property rather than an assumed one: it holds by
+    construction only if every gateway's share of each coarse link stayed within its fine capacity
+    (egress by the gateway choice, ingress by the per-epoch ledger in _pick_ingress).
+
+    A send charges every link of its tree ONCE (teccl.sends.link_windows), so a switch copy's
+    shared links count one transmission, not one per branch.
     """
-    egress: Dict[Tuple[int, int, int], float] = defaultdict(float)
-    ingress: Dict[Tuple[int, int, int], float] = defaultdict(float)
-    bytes_per_chunk = result.scale.bytes_per_chunk if result.scale else None
-    # `one_copy_per_link` (copy-aware levels): two pieces of the SAME sub-identity on the same
-    # fine link in the same epoch are one transfer -- the legs of a switch-copy fan-out share
-    # their first hop. Never for the LP, whose same-identity pieces are separate flows it paid for.
-    counted = set()
+    load: Dict[Tuple[int, int, int], float] = defaultdict(float)
     for p in result.pieces:
-        if p.rate is None:
-            continue
-        # A piece is on its link for volume * bytes / rate seconds: exactly one epoch when it was
-        # paced to fill one (every LP piece), longer for a multi-epoch MILP leg. Count its rate in
-        # every epoch it covers, ending at its arrival on the ingress side.
-        span = 1
-        if bytes_per_chunk:
-            span = max(1, ceil(p.volume * bytes_per_chunk / (p.rate * coarse_epoch) - 1e-9))
-        for e in range(span):
-            out_key = (p.egress_gpu, p.via_switches[0], p.send_epoch + e)
-            in_key = (p.via_switches[-1], p.ingress_gpu, p.arrival_epoch - e)
-            if not one_copy_per_link or (p.identity, "out", out_key) not in counted:
-                egress[out_key] += p.rate
-                counted.add((p.identity, "out", out_key))
-            if not one_copy_per_link or (p.identity, "in", in_key) not in counted:
-                ingress[in_key] += p.rate
-                counted.add((p.identity, "in", in_key))
+        r = rate(p, result.scale.bytes_per_chunk, coarse_epoch)
+        for (a, b), window in link_windows(p).items():
+            for e in window:
+                load[(a, b, e)] += r
     over = []
-    for (a, b, k), rate in sorted(egress.items()) + sorted(ingress.items()):
+    for (a, b, k), r in sorted(load.items()):
         bw = fine_topology.capacity[a][b]
         # Relative, not absolute: rates here span a 900 GB/s NVLink and a 25 GB/s spine uplink in
         # the same schedule, and one absolute epsilon cannot be meaningful on both.
-        if rate > bw * (1.0 + RATE_REL_TOL):
-            over.append((a, b, k, round(rate, 4), round(bw, 4)))
+        if r > bw * (1.0 + RATE_REL_TOL):
+            over.append((a, b, k, round(r, 4), round(bw, 4)))
     if over:
         raise AssertionError(
             f"paced sends exceed fine link bandwidth on {len(over)} (link, coarse epoch) "
@@ -1618,7 +1406,7 @@ def _assert_rate_within_capacity(result: IdentityResolution, fine_topology: Topo
 
 def _emit_refined(assignments: Sequence[_Assignment],
                   targets: Dict[Tuple[Identity, int], Tuple[int, ...]],
-                  q: int, scale: ChunkScale, coarse_epoch: float) -> IdentityResolution:
+                  q: int) -> IdentityResolution:
     """Expand each assignment into `volume * q` whole sub-chunk pieces plus their intra demands.
 
     Sub-chunk indices are allocated per (identity, dst_cell): the assignments delivering one
@@ -1660,17 +1448,15 @@ def _emit_refined(assignments: Sequence[_Assignment],
             for _ in range(count):
                 sub: Identity = (s, ci * q + cursor)
                 cursor += 1
-                # ONE ResolvedPiece PER LEG, all sharing this sub-chunk index. That shared index is
-                # what makes a transit chain expressible at all: the two halves of one delivery are
-                # the same commodity, and `_emit_refined`'s per-(identity, dst_cell) cursor is what
-                # guarantees it. Downstream needs nothing else -- each leg is an ordinary network
-                # flow, and the demand between them is what orders the two.
+                # ONE single-branch Send PER LEG, all sharing this sub-chunk index. That shared
+                # index is what makes a transit chain expressible at all: the two halves of one
+                # delivery are the same commodity, and `_emit_refined`'s per-(identity, dst_cell)
+                # cursor is what guarantees it. Downstream needs nothing else -- each leg is an
+                # ordinary network flow, and the demand between them is what orders the two.
                 for li, (leg, (eg, ig)) in enumerate(zip(legs, placed)):
-                    result.pieces.append(ResolvedPiece(
-                        src_cell=leg.src_cell, dst_cell=leg.dst_cell, identity=sub, egress_gpu=eg,
-                        ingress_gpu=ig, via_switches=leg.via_switches, volume=1.0,
-                        send_epoch=leg.send_epoch, arrival_epoch=leg.arrival_epoch,
-                        rate=_piece_rate(1.0, scale, coarse_epoch, leg.occupancy)))
+                    result.pieces.append(Send(
+                        identity=sub, sender=eg, epoch=leg.send_epoch, span=leg.occupancy,
+                        fanout=(Branch(ig, tuple(leg.via_switches), leg.arrival_epoch + 1),)))
                     if li == 0:
                         # Source cell: stage the NATIVE data onto the gateway, if it isn't there.
                         if eg != native:
@@ -1708,16 +1494,10 @@ def _place_decisions(decisions: Sequence[Tuple[int, int, Identity, "_Slot", floa
                      mapping: HierarchyMapping, fine_topology: Topology, epoch_duration: float,
                      ingress_ledger: Dict[Tuple[int, int, int], float],
                      egress_ledger: Dict[Tuple[int, int, int], float],
-                     tol: float, max_denom: int,
-                     placed_legs: Optional[Dict] = None
-                     ) -> List[_Assignment]:
+                     tol: float, max_denom: int) -> List[_Assignment]:
     """Lay decided (U, V, identity, slot, volume) assignments onto real GPUs, leg by leg, and
-    return the `_Assignment`s step B consumes. Shared by both step-A variants that decide by
-    assignment -- the LP's fractional one and the MILP's integral one -- which differ in how they
-    DECIDE, not in how a decision is placed.
-
-    `placed_legs` selects the copy-aware (MILP) placement, `_place_tree_route`, and is the memo of
-    legs already laid down; None (the LP) keeps `_place_downstream_legs` exactly as it was.
+    return the `_Assignment`s step B consumes. (The MILP does not come through here: its level is
+    a forest of sends, placed send by send in milp_routing.)
     """
     assignments: List[_Assignment] = []
     # TRANSIT ROUTES ARE PLACED FIRST, and this ordering is load-bearing rather than cosmetic.
@@ -1737,16 +1517,10 @@ def _place_decisions(decisions: Sequence[Tuple[int, int, Identity, "_Slot", floa
         for (U, V, d, slot, vol) in decisions:
             if slot.route.is_transit != want_transit:
                 continue
-            if placed_legs is None:
-                placed = _place_downstream_legs(
-                    slot.route, d, slot.egress_gpu, vol, set(targets.get((d, V), ())),
-                    mapping, fine_topology, epoch_duration, ingress_ledger, egress_ledger,
-                    tol=tol, max_denom=max_denom)
-            else:
-                placed = [(_place_tree_route(
-                    slot.route, d, slot.egress_gpu, vol, set(targets.get((d, V), ())),
-                    mapping, fine_topology, epoch_duration, ingress_ledger, egress_ledger,
-                    tol=tol, placed_legs=placed_legs), vol)]
+            placed = _place_downstream_legs(
+                slot.route, d, slot.egress_gpu, vol, set(targets.get((d, V), ())),
+                mapping, fine_topology, epoch_duration, ingress_ledger, egress_ledger,
+                tol=tol, max_denom=max_denom)
             for leg_gpus, v in placed:
                 assignments.append(_Assignment(
                     src_cell=U, dst_cell=V, identity=d, route=slot.route,
@@ -1970,8 +1744,7 @@ def build_child_problems(assignments: Sequence[_Assignment],
                          scale: Optional[ChunkScale] = None,
                          relabel=None,
                          snap_tol: Optional[float] = None,
-                         max_denom: Optional[int] = None,
-                         copy_aware: bool = False) -> IdentityResolution:
+                         max_denom: Optional[int] = None) -> IdentityResolution:
     """STEP B: turn this level's `_Assignment`s into its flows plus THE NEXT LEVEL'S PROBLEM.
 
     This runs at EVERY level, whatever produced the assignments, and it is not optional plumbing:
@@ -1991,10 +1764,6 @@ def build_child_problems(assignments: Sequence[_Assignment],
            None => snap_tolerance()'s no-solver default. A caller holding the solver that produced
            these volumes should pass snap_tolerance(solver) so the grid is checked against the
            tolerance the volumes were actually computed to.
-    copy_aware: the level's solver keeps ONE copy of a chunk and multicasts it (the MILP), so the
-           routes of one identity's tree share legs, and _emit_refined emits each shared leg once
-           per route that uses it. Those duplicates are one transfer and are dropped. Never set for
-           the LP: its routes to different cells are separate flows the coarse solve paid for.
     max_denom: the grid `snap_tol` was sized against. None => resolve_max_denom()'s no-solver
            default (the module MAX_DENOM). Must be paired with a `snap_tol` from the SAME solver
            (see resolve_max_denom / InstanceParams.max_denom) -- passing one solver's tolerance
@@ -2011,20 +1780,23 @@ def build_child_problems(assignments: Sequence[_Assignment],
     refined = root.refine(q)
     root.assert_conserves(refined)
 
-    result = _emit_refined(assignments, targets, q, refined, epoch_duration)
-    if copy_aware:
-        if q != 1:
-            raise AssertionError(f"a copy-aware level refined by Q={q}; its volumes are whole "
-                                 f"identities, so a shared leg's pieces would not be identical")
-        result.pieces = list(dict.fromkeys(result.pieces))
-    result.copy_aware = copy_aware
+    result = _emit_refined(assignments, targets, q)
     result.scale = refined
     result.subdivision = q
+    return finish_resolution(result, mapping, fine_demand, fine_topology, epoch_duration,
+                             relabel=relabel)
+
+
+def finish_resolution(result: IdentityResolution, mapping: HierarchyMapping, fine_demand,
+                      fine_topology: Topology, epoch_duration: float,
+                      relabel=None) -> IdentityResolution:
+    """The tail every level's lowering shares, whatever emitted its sends: merge duplicate staging
+    relays, add the demand that never left a cell, make the demand kinds disjoint, and check the
+    paced sends against the fine links. `result` must already carry its scale and subdivision."""
     _coalesce_egress(result)
-    _emit_self_distribution(result, fine_demand, mapping, q, relabel=relabel)
+    _emit_self_distribution(result, fine_demand, mapping, result.subdivision, relabel=relabel)
     _dedup_deliveries(result)
-    _assert_rate_within_capacity(result, fine_topology, epoch_duration,
-                                 one_copy_per_link=copy_aware)
+    _assert_rate_within_capacity(result, fine_topology, epoch_duration)
     return result
 
 

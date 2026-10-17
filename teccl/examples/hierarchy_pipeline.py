@@ -88,8 +88,9 @@ def report_resolution_invariants(res, fine, coarse_epoch: float) -> None:
     ing = defaultdict(float)
     for p in res.pieces:
         gb = p.volume * scale.bytes_per_chunk
-        eg[(p.egress_gpu, p.via_switches[0], p.send_epoch)] += gb
-        ing[(p.ingress_gpu, p.via_switches[-1], p.arrival_epoch)] += gb
+        eg[(p.sender, p.fanout[0].via[0], p.epoch)] += gb
+        for b in p.fanout:
+            ing[(b.receiver, b.via[-1], b.ready - 1)] += gb
     over = []
     for (g, sw, k), vol in sorted(eg.items()):
         cap = fine.capacity[g][sw] * ep
@@ -111,7 +112,7 @@ def report_resolution_invariants(res, fine, coarse_epoch: float) -> None:
         landed = sum(1 for d in single if d.dst_gpus[0] == d.src_gpu)
         print(f"  ingress landing: {landed}/{len(single)} single-target arrivals "
               f"({100 * landed / len(single):.0f}%) landed directly on a GPU that wants them")
-    relayed = sum(1 for p in res.pieces if p.egress_gpu != p.identity[0])
+    relayed = sum(1 for p in res.pieces if p.sender != p.identity[0])
     print(f"  egress: {relayed}/{len(res.pieces)} pieces leave via a non-native gateway "
           f"(lexicographic tier 1 minimizes this; the ingress tier never trades against it)")
 
@@ -138,7 +139,7 @@ def report_intra_fits_epoch(flows, res, fine, coarse_epoch: float) -> None:
     stitch, so on a failing run it names the hot (cell, band) next to the derivation that explains
     it, rather than dying several steps later."""
     delta, m = derive_grid(res.scale, fine, coarse_epoch)
-    num_coarse_epochs = max((p.send_epoch for p in res.pieces), default=-1) + 1
+    num_coarse_epochs = max((p.epoch for p in res.pieces), default=-1) + 1
     per_band = band_rounds(flows)
     bounded = {k: r for k, r in per_band.items() if aligned_band(k[1], num_coarse_epochs)}
     peak = max(bounded.values(), default=0)

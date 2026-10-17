@@ -10,6 +10,11 @@ import threading, queue
 from enum import Enum
 from z3 import *
 
+try:                                  # sibling module; this file runs both as a script
+    from routes import Tree                                              # noqa: E402
+except ImportError:                   # ... and as part of the teccl package
+    from teccl.ncclize.routes import Tree
+
 @dataclass
 class _Gpu:
     copies: list
@@ -323,7 +328,8 @@ def _is_relay_link(topology, src, dst):
 
 def _allocate_channels_match_topology(op_sets, topology, instances, scale_remote, logging, max_channels=32):
     '''
-    Assign each op_set (a [send_op, recv_op] pair) a channel, round-robining within each
+    Assign each op_set ([send_op, recv_op], or [send_op, recv_1..recv_N] for a multicast) a
+    channel, round-robining within each
     (src, dst) edge's replica count (topology.link(src,dst), scaled by instances/scale_remote)
     exactly as before -- *except* now partitioned first by op.path_key, so that two flows
     sharing an edge but taking different physical paths (e.g. different switch routes in a
@@ -352,63 +358,70 @@ def _allocate_channels_match_topology(op_sets, topology, instances, scale_remote
     its own threadblock and keeping send and recv at the same .step; see the threadblock
     construction in ncclize() below.
 
-    max_channels caps the channel ids used per edge (num_distinct_path_keys * link); this
-    is a real hardware/runtime limit (MAXCHANNELS in NCCL/MSCCL, 32 as of the vendored
-    msccl-executor-nccl fork) on how many channels a single GPU's threadblocks may
-    reference in total, so it's enforced here rather than left to fail confusingly
-    downstream.
+    max_channels bounds every channel ID assigned (a multicast route needs an id free on all of
+    its edges, which can exceed what any one edge needs); this is a real hardware/runtime limit
+    (MAXCHANNELS in NCCL/MSCCL, 32 as of the vendored msccl-executor-nccl fork) on the channel ids a
+    single GPU's threadblocks may reference, so it's enforced here rather than left to fail
+    confusingly downstream.
     '''
     if len(topology.switches) > 0 and logging:
         print('Warning: Switches in the topology are ignored for the channel policy MatchTopology.')
-    # print(topology)
+    global is_reduce
     ops_by_channel = defaultdict(list)
-    # (src, dst) -> {path_key: first-seen index}; index 0 is always assigned to whichever
-    # path_key is seen first for that edge, so an edge with only path_key=None (every
-    # non-teccl caller, and any teccl edge with no switch-path diversity) always gets
-    # index 0 for it -- channel = 0 * link + rr == rr, identical to pre-existing behavior.
-    path_index_by_edge = defaultdict(dict)
-    next_channel = defaultdict(lambda: 0)
-    for op_set in op_sets:
-        send = op_set[0]
-        assert send.op_type == 's'
-        src = send.gpu
-        dst = send.peer
-        path_key = send.path_key
 
+    def replicas(src, dst):
         link = topology.link(src,dst) * instances
-        global is_reduce
         if is_reduce: # and ("DGX1" in topology.name or "DGX2RFix" in topology.name):
             if link == 0:
                 print(f"link {src}->{dst} was 0. Making it {topology.link(dst,src)}")
                 topology.links[dst][src] = topology.links[src][dst]
                 link = topology.link(src,dst)
-                # topology.link(src,dst) = topology.link(dst,src)
                 assert link > 0
         else:
-            #if link <= 0:
-            #    print("INVALID SEND:", src, "->", dst)
-            #    print("Topology links:", topology.links)
             assert link > 0, 'Encountered send on non-existent link'
         if _is_relay_link(topology, src, dst):
             link = link * scale_remote
+        return link
 
-        path_indices = path_index_by_edge[(src, dst)]
-        if path_key not in path_indices:
-            path_indices[path_key] = len(path_indices)
-        path_idx = path_indices[path_key]
-
-        edge_channels_needed = len(path_indices) * link
-        if edge_channels_needed > max_channels:
-            raise ValueError(
-                f'Edge {src}->{dst} needs {len(path_indices)} distinct path(s) x {link} '
-                f'replica(s) = {edge_channels_needed} channels, exceeding max_channels='
-                f'{max_channels}. Reduce the number of distinct switch paths routed over '
-                f'this edge, or raise max_channels if the target NCCL/MSCCL build supports '
-                f'more channels.')
-
-        chan = path_idx * link + next_channel[(src, dst, path_key)]
+    # ONE ROUTE PER CONNECTION (multicast_output_design.md 4.4). A route -- (src, dst, path_key)
+    # for a unicast, (src, Tree) for a multicast -- owns its channels on every edge it uses, and a
+    # new route takes the first channel ids no OTHER route owns on ANY of its edges. Different
+    # routes on one edge therefore never share a channel, hence never a (channel, peer) connection
+    # or a threadblock; that covers a tree and a unicast running along one of its branches too.
+    # A unicast route has one edge, and the k-th one seen on an edge finds exactly
+    # [k*link, (k+1)*link) free -- so a schedule without multicast keeps today's numbering.
+    owned = defaultdict(set)      # (src, dst) edge -> channel ids some route holds on it
+    route_chans = {}              # route -> its channel ids
+    next_channel = defaultdict(lambda: 0)
+    for op_set in op_sets:
+        send = op_set[0]
+        assert send.op_type == 's'
+        src = send.gpu
+        receivers = send.peer if isinstance(send.peer, tuple) else (send.peer,)
+        route = (src, send.path_key) if isinstance(send.peer, tuple) else (src, send.peer, send.path_key)
+        chans = route_chans.get(route)
+        if chans is None:
+            edges = [(src, r) for r in receivers]
+            link = min(replicas(*e) for e in edges)
+            taken = set().union(*(owned[e] for e in edges))
+            chans, c = [], 0
+            while len(chans) < link:
+                if c not in taken:
+                    chans.append(c)
+                c += 1
+            if chans[-1] >= max_channels:
+                raise ValueError(
+                    f'route {route} on edge(s) {edges} needs channel id {chans[-1]} '
+                    f'({len(taken)} channel(s) already held by other routes on those edges, '
+                    f'{link} replica(s)), exceeding max_channels={max_channels}. Reduce the '
+                    f'number of distinct switch paths routed over these edges, or raise '
+                    f'max_channels if the target NCCL/MSCCL build supports more channels.')
+            for e in edges:
+                owned[e].update(chans)
+            route_chans[route] = chans
+        chan = chans[next_channel[route]]
         ops_by_channel[chan].extend(op_set)
-        next_channel[(src, dst, path_key)] = (next_channel[(src, dst, path_key)] + 1) % link
+        next_channel[route] = (next_channel[route] + 1) % len(chans)
 
     return ops_by_channel
 
@@ -419,6 +432,54 @@ class ChannelPolicy(Enum):
 
     def __str__(self):
         return self.value
+
+
+def _peer_order(peer):
+    """Sort key for a threadblock's send peer, which is a rank, -1, or a multicast rank tuple."""
+    return tuple(peer) if isinstance(peer, tuple) else (peer,)
+
+
+def _assert_one_route_per_threadblock(gpus):
+    """Every threadblock carries the ops of exactly ONE route (multicast_output_design.md 4.4).
+
+    A threadblock is one (gpu, direction, peer, channel) connection, and the channel allocator gives
+    every route its own channels on each edge it uses, so two routes -- two flow ids, or two unpaced
+    paths -- never share a connection. Checked on the emitted structure rather than trusted from the
+    allocator's bookkeeping, so a change to either cannot quietly break it.
+    """
+    for gpu in gpus.values():
+        for tb in gpu.threadblocks:
+            routes = {op.path_key for op in tb.steps}
+            if len(routes) > 1:
+                raise AssertionError(
+                    f'gpu {tb.steps[0].gpu} threadblock (send={tb.send}, recv={tb.recv}, '
+                    f'chan={tb.channel}) mixes {len(routes)} routes {sorted(routes, key=str)}; '
+                    f'different routes must land on different channels')
+
+
+def _assert_multicast_pairing(gpus):
+    """Every multicast send threadblock is matched, op for op and in the same order, by one recv
+    threadblock on EACH receiver (recv = the sender, same channel) -- the (peer, channel) FIFO
+    pairing invariant, extended to N receivers."""
+    recv_tbs = {}
+    for rank, gpu in gpus.items():
+        for tb in gpu.threadblocks:
+            if tb.recv != -1:
+                recv_tbs[(rank, tb.recv, tb.channel)] = tb
+    for rank, gpu in gpus.items():
+        for tb in gpu.threadblocks:
+            if not isinstance(tb.send, tuple):
+                continue
+            sent = [(op.step, op.cnt, op.mscclflowid) for op in tb.steps]
+            for receiver in tb.send:
+                rtb = recv_tbs.get((receiver, rank, tb.channel))
+                got = None if rtb is None else [(op.step, op.cnt, op.mscclflowid)
+                                                for op in rtb.steps]
+                if got != sent:
+                    raise AssertionError(
+                        f'multicast threadblock on gpu {rank} (send={tb.send}, chan={tb.channel}) '
+                        f'is not matched by gpu {receiver}\'s recv threadblock: sends {sent}, '
+                        f'receives {got}')
 
 
 def _widen_rates_for_tb_serialization(gpus):
@@ -841,6 +902,29 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for srcbuff, srcoff, dstbuff, dstoff in buffs_and_offs:
                 yield (srcbuff, srcoff, dstbuff, dstoff, 1)
 
+    def make_multicast_intervals(src, dsts, addrs_set):
+        """make_intervals for one send to several receivers: a run is merged only while it is
+        contiguous at the source AND at every receiver. Yields (srcbuf, srcoff, ((dstbuf, dstoff)
+        per receiver, in `dsts` order), cnt)."""
+        rows = sorted((get_buffer_and_offset(gpus[src], addr),
+                       tuple(get_buffer_and_offset(gpus[d], addr) for d in dsts))
+                      for addr in addrs_set)
+        if not merge_contiguous:
+            for (sb, so), dl in rows:
+                yield sb, so, dl, 1
+            return
+        start = prev = rows[0]
+        def follows(x, p):
+            return (x[0][0] == p[0][0] and x[0][1] == p[0][1] + 1 and
+                    all(xb == pb and xo == po + 1 for (xb, xo), (pb, po) in zip(x[1], p[1])))
+        for x in rows[1:]:
+            if follows(x, prev):
+                prev = x
+            else:
+                yield start[0][0], start[0][1], start[1], prev[0][1] - start[0][1] + 1
+                start = prev = x
+        yield start[0][0], start[0][1], start[1], prev[0][1] - start[0][1] + 1
+
     # Turn all steps of the algorithm into operations
     op_sets = []
     # (src, dst, path_key) route -> its flow id. A flow id is a bijection with a
@@ -879,14 +963,20 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         else:
             for addr, src, dst in step.sends:
                 path_key = flow_path_keys.get((step_idx, addr, src, dst)) if flow_path_keys else None
-                grouped_sends[(src, dst, path_key)].add(addr)
+                # A multicast route (a routes.Tree) is ONE transmission: its branches, which taccl
+                # sees as one send per receiver, group under the tree's whole receiver tuple.
+                if isinstance(path_key, Tree):
+                    grouped_sends[(src, path_key.receivers, path_key)].add(addr)
+                else:
+                    grouped_sends[(src, dst, path_key)].add(addr)
             if isinstance(piece_rate, dict):
                 # A merged op emits ONE rate for all cnt of its pieces, so every piece
                 # merged into it must have been paced identically. Assert that rather
                 # than picking one: a level that paces its flows non-uniformly would
                 # otherwise have its schedule silently misrepresented here.
                 for (src, dst, path_key), addrs in grouped_sends.items():
-                    vals = {piece_rate.get((step_idx, addr, src, dst)) for addr in addrs}
+                    vals = {piece_rate.get((step_idx, addr, src, r)) for addr in addrs
+                            for r in (dst if isinstance(dst, tuple) else (dst,))}
                     assert len(vals) == 1, (
                         f"pieces merged into one op ({src}->{dst} at step {step_idx}, "
                         f"path {path_key}) carry different rates {sorted(vals, key=str)}; "
@@ -899,6 +989,15 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             for key, addrs in grouped_sends.items():
                 src, dst = key[0], key[1]
                 path_key = key[2] if len(key) > 2 else None
+                if isinstance(dst, tuple):
+                    # multicast: (src, receivers, src_buf, src_off, ((dst_buf, dst_off) per
+                    # receiver), cnt, path_key) -- the 7-tuple shape marks it below
+                    for src_buf, src_off, dsts, cnt in make_multicast_intervals(src, dst, addrs):
+                        for i in range(instances):
+                            sends.append((src, dst, src_buf, src_off * instances + i * cnt,
+                                          tuple((b, o * instances + i * cnt) for b, o in dsts),
+                                          cnt, path_key))
+                    continue
                 for src_buf, src_off, dst_buf, dst_off, cnt in make_intervals(src, dst, addrs):
                     for i in range(instances):
                         new_src_off = src_off * instances + i * cnt
@@ -927,31 +1026,41 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         global is_reduce
         for send in sends:
             redop = None
-            if len(send) == 8:
-                src, dst, src_buf, src_off, dst_buf, dst_off, cnt, path_key = send
+            if len(send) == 7:
+                # MULTICAST: one send op to every receiver of the tree, one recv op on each. The
+                # send's dst fields are informational (each recv carries its own), so they are
+                # kept only when every receiver agrees.
+                src, dst, src_buf, src_off, dsts, cnt, path_key = send
+                dst_buf, dst_off = dsts[0] if len(set(dsts)) == 1 else (None, None)
+                targets = list(zip(dst, dsts))
             else:
-                src, dst, src_buf, src_off, dst_buf, dst_off, cnt, redop, path_key = send
+                if len(send) == 8:
+                    src, dst, src_buf, src_off, dst_buf, dst_off, cnt, path_key = send
+                else:
+                    src, dst, src_buf, src_off, dst_buf, dst_off, cnt, redop, path_key = send
+                targets = [(dst, (dst_buf, dst_off))]
             read_keys = [(src,src_buf,src_off+i) for i in range(cnt)]
-            # A send must wait for the previous recv (if any) to finish
-            send_depends = list(set(d for k in read_keys for d in writers[k]))
-
-            write_keys = [(dst,dst_buf,dst_off+i) for i in range(cnt)]
-            # A receive must wait for both the previous recv and any previous sends to finish
-            recv_depends = list(set(d for deps in (readers, writers) for k in write_keys for d in deps[k]))
+            # A send must wait for the previous recv (if any) to finish. Deduplicated IN ORDER
+            # (dict.fromkeys, not set): ops hash by identity, so a set's order -- and with it which
+            # dependency becomes depid and which a nop -- would follow memory addresses and make the
+            # XML differ from run to run.
+            send_depends = list(dict.fromkeys(d for k in read_keys for d in writers[k]))
 
             send_op = _Op(src, dst, step_idx, True, 's', src_buf, src_off, dst_buf, dst_off, cnt, send_depends)
-            if redop is None:
-                recv_op = _Op(dst, src, step_idx, False, 'r', src_buf, src_off, dst_buf, dst_off, cnt, recv_depends)
-            else:
-                assert redop == 'rrc'
-                is_reduce = True
-                recv_op = _Op(dst, src, step_idx, False, redop, src_buf, src_off, dst_buf, dst_off, cnt, recv_depends)
-
-            # Carry the path key through to channel assignment (see
-            # _allocate_channels_match_topology()'s docstring): None for every caller
-            # except teccl_ncclize.py's flow_path_keys on a switch-relayed hop.
-            send_op.path_key = path_key
-            recv_op.path_key = path_key
+            recv_ops = []
+            writes = []
+            for receiver, (r_buf, r_off) in targets:
+                write_keys = [(receiver, r_buf, r_off+i) for i in range(cnt)]
+                # A receive must wait for both the previous recv and any previous sends to finish
+                recv_depends = list(dict.fromkeys(d for deps in (readers, writers) for k in write_keys for d in deps[k]))
+                if redop is None:
+                    recv_op = _Op(receiver, src, step_idx, False, 'r', src_buf, src_off, r_buf, r_off, cnt, recv_depends)
+                else:
+                    assert redop == 'rrc'
+                    is_reduce = True
+                    recv_op = _Op(receiver, src, step_idx, False, redop, src_buf, src_off, r_buf, r_off, cnt, recv_depends)
+                recv_ops.append(recv_op)
+                writes.append((write_keys, recv_op))
 
             # Per-piece transmission rate. A scalar piece_rate paces every op the same
             # (the flat single-level case); a dict is a per-flow rate supplied by the
@@ -959,14 +1068,18 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             # deliberately unpaced.
             rate = (group_rate.get((src, dst, path_key)) if isinstance(piece_rate, dict)
                     else piece_rate)
-            send_op.piece_rate = rate
-            recv_op.piece_rate = rate
+            # Carry the path key through to channel assignment (see
+            # _allocate_channels_match_topology()'s docstring): None for every caller
+            # except teccl_ncclize.py's flow_path_keys on a switch-relayed hop.
+            for op in (send_op, *recv_ops):
+                op.path_key = path_key
+                op.piece_rate = rate
 
             # send_op.step and recv_op.step are DELIBERATELY EQUAL (both step_idx). Threadblocks
             # are one per (gpu, direction, peer, channel) and their ops are sorted by .step, so
             # equal steps make the two ends of a connection order their operations identically:
-            # ops_by_channel receives [send_op, recv_op] together per op_set, so the sender's and
-            # the receiver's threadblocks see the same op_sets in the same sequence, and a stable
+            # ops_by_channel receives [send_op, recv_op(s)] together per op_set, so the sender's and
+            # the receivers' threadblocks see the same op_sets in the same sequence, and a stable
             # sort on equal keys preserves it -- ties included. That is the invariant the runtime
             # requires of a (peer, channel) FIFO.
             #
@@ -975,13 +1088,15 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             # threadblock. Threadblocks are no longer packed (see below), so there is no unrelated
             # send to stall, and advancing it would only reintroduce the ordering mismatch.
 
-            # The flow id is a bijection with the physical route (src -> switches
-            # -> dst), keyed by (src, dst, path_key): every send/recv on that
-            # route, in any epoch and for any chunk, shares one id. This gives the
-            # switch forwarding table exactly one entry per route. Per-op epoch
-            # ordering is recovered from send_epoch_manifest (populated at XML
-            # emission), not from the flow id, precisely because one flow id now
-            # spans multiple epochs.
+            # The flow id is a bijection with the physical ROUTE: (src, dst, path_key) for a
+            # unicast (src -> switches -> dst), (src, Tree) for a multicast (the switch path to
+            # every receiver). Every send/recv on that route, in any epoch and for any chunk,
+            # shares one id, and a multicast's send and all of its recvs share the tree's. This
+            # gives the switch forwarding table exactly one entry per route. A tree and a unicast
+            # along one of its branches are different routes, with different ids: a switch
+            # forwards on the id alone, and the tree's branching switch replicates where the
+            # unicast's does not. Per-op epoch ordering is recovered from send_epoch_manifest
+            # (populated at XML emission), not from the flow id, because one id spans epochs.
             #
             # Flow ids are emitted ONLY for PACED (rate-bearing) ops, for the same
             # reason the rate is: both are properties of a NETWORK send. A flow id
@@ -989,7 +1104,7 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             # a rate exists to hold that send to the epoch grid the level solved
             # on. An intra-cell hop has neither -- it crosses an NVSwitch that
             # forwards on its own and it was scheduled for ORDER, not for pacing
-            # (see reconstruct._piece_rate and flat_schedule._segment) -- so
+            # (see teccl.sends.rate and flat_schedule._segment) -- so
             # tagging it would put a phantom entry in the forwarding table for a
             # switch that is never programmed from it.
             #
@@ -997,15 +1112,14 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             #  * flow id <-> route stays a bijection, now over the paced routes
             #    only: route_flow_ids is still keyed by route and still hands out
             #    one dense id per distinct route.
-            #  * distinct paths still land on distinct channels: channel
-            #    allocation partitions each edge by op.path_key, never by flow id
-            #    (see _allocate_channels_match_topology), and path_key is set on
-            #    every op regardless of pacing.
+            #  * distinct routes still land on distinct channels: channel allocation
+            #    partitions by the same route key (see _allocate_channels_match_topology),
+            #    and path_key is set on every op regardless of pacing.
             # What the restriction does require is that a route not be paced in
             # one epoch and unpaced in another -- that would tag only part of the
             # route's traffic and leave the switch with packets it has an entry
             # for but cannot match. Nothing structurally forbids it, so assert it.
-            route = (src, dst, path_key)
+            route = (src, path_key) if isinstance(dst, tuple) else (src, dst, path_key)
             paced = rate is not None
             prev_paced = route_paced.setdefault(route, paced)
             assert prev_paced == paced, (
@@ -1015,25 +1129,27 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
 
             if paced:
                 flow_id = route_flow_ids.setdefault(route, len(route_flow_ids))
-                send_op.mscclflowid = flow_id
-                recv_op.mscclflowid = flow_id
+                for op in (send_op, *recv_ops):
+                    op.mscclflowid = flow_id
 
                 if flow_manifest is not None:
                     flow_manifest.append({
                         'flow_id': flow_id,
                         'step': step_idx,
                         'src': src,
-                        'dst': dst,
+                        'dst': None if isinstance(dst, tuple) else dst,
+                        'dsts': list(dst) if isinstance(dst, tuple) else [dst],
                         'path_key': path_key,
                     })
 
-            # Record the send and receive as a set of operations that must happen on the same channel
-            # if src_off == 0 or src_off == 1:
-            op_sets.append([send_op, recv_op])
+            # Record the send and its receive(s) as a set of operations that must happen on the
+            # same channel.
+            op_sets.append([send_op, *recv_ops])
 
             # Mark writers and readers to be added for the next step
-            for k in write_keys:
-                new_writers[k].append(recv_op)
+            for write_keys, recv_op in writes:
+                for k in write_keys:
+                    new_writers[k].append(recv_op)
             for k in read_keys:
                 new_readers[k].append(send_op)
         # Writes cut the dependency to both previous writes and reads
@@ -1176,7 +1292,7 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
     # This is important as in NCCL threadblocks using the same NVLink concurrently should be close together
     for rank, gpu in gpus.items():
         gpu.threadblocks = sorted([tb for tbs in tbs_by_gpu_chan[rank].values() for tb in tbs],
-            key=lambda tb: (tb.send, tb.recv, tb.channel))
+            key=lambda tb: (_peer_order(tb.send), tb.recv, tb.channel))
         for i, tb in enumerate(gpu.threadblocks):
             tb.rbid = i
 
@@ -1191,6 +1307,10 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
             tb.steps.sort(key=lambda op: op.step)
             for op in tb.steps:
                 op.block_rbid = tb.rbid
+
+    if flow_path_keys and channel_policy == ChannelPolicy.MatchTopology:
+        _assert_one_route_per_threadblock(gpus)
+        _assert_multicast_pairing(gpus)
 
     _widen_rates_for_tb_serialization(gpus)
 
@@ -1286,7 +1406,13 @@ def ncclize(algorithm, remap_scratch = None, channel_policy=ChannelPolicy.MatchT
         for tb in gpu.threadblocks:
             tb_elem = ET.SubElement(gpu_elem, 'tb')
             tb_elem.set('id', str(tb.rbid))
-            tb_elem.set('send', str(tb.send))
+            # A multicast threadblock sends to every listed rank at once (one transmission,
+            # replicated by the switch): `send` is then a comma-separated, sorted rank list. A stock
+            # runtime cannot parse it -- deliberately, since reading it as one peer would drop
+            # receivers, and expanding it into N unicasts is the uplink oversubscription multicast
+            # exists to avoid (teccl_ncclize --no-multicast does that explicitly).
+            tb_elem.set('send', ','.join(map(str, tb.send)) if isinstance(tb.send, tuple)
+                        else str(tb.send))
             tb_elem.set('recv', str(tb.recv))
             tb_elem.set('chan', str(tb.channel))
             for op in tb.ops:

@@ -270,6 +270,15 @@ def level_formulation(ctx: LevelContext, depth: int):
     return f or Formulation.LP
 
 
+def level_switch_copy(ctx: LevelContext, depth: int) -> bool:
+    """Whether the switches of the level at `depth` copy (InstanceParams.switch_copy), the default
+    -- copy at the root only -- without user input."""
+    from teccl.input_data import InstanceParams, resolve_switch_copy
+
+    instance = getattr(getattr(ctx, "user_input", None), "instance", None)
+    return resolve_switch_copy(instance or InstanceParams(), depth)
+
+
 def level_milp_chunking(ctx: LevelContext, depth: int):
     """The MILP chunking policy at `depth` (InstanceParams.milp_chunking), "holder" without input."""
     from teccl.input_data import resolve_milp_chunking
@@ -323,12 +332,11 @@ def gurobi_level_solver(problem: Subproblem, ctx: LevelContext, mapping, demand_
     if best is None:
         raise RuntimeError(f"level depth={problem.depth} produced no solved formulation")
     if milp_demand is not None:
-        from teccl.hierarchy.milp_routing import extract_trees
+        from teccl.hierarchy.milp_routing import level_sends
         best.get_schedule()
         return CoarseSolution(per_chunk_flow_paths=None, topology=best.topology,
                               epoch_duration=best.epoch_duration, step_a="integral",
-                              trees=extract_trees(best, mapping, milp_demand),
-                              milp_demand=milp_demand)
+                              sends=level_sends(best, milp_demand), milp_demand=milp_demand)
     # Carry the solver's own numeric tolerance forward: it is what the lowering half sizes its
     # rational snap against (reconstruct.snap_tolerance). Read it off `ui` rather than a default so
     # a level solved under a tightened feasibility_tol gets a correspondingly tighter grid check.
@@ -402,7 +410,7 @@ def _solve_base(problem: Subproblem, ctx: LevelContext) -> LevelSolution:
         ctx.warn_unmodelled_deadlines(problem, hard)
 
     flows = row.schedule_cell(problem.cell_id, cell, problem.demands,
-                              switch_copy=False, debug=ctx.debug,
+                              switch_copy=level_switch_copy(ctx, problem.depth), debug=ctx.debug,
                               subdivision=_subdivision_of(problem.scale),
                               topology=problem.topology)
     ctx.memo[key] = flows
@@ -499,7 +507,7 @@ def _solve_recursive(problem: Subproblem, ctx: LevelContext) -> LevelSolution:
     # makes this level's `m` a legitimate stride for its caller: a band that overruns its epoch
     # would, once folded, overlap the next one. Failing here names the level and the cell, instead
     # of surfacing as an unattributable overrun in the final schedule.
-    assert_bands_fit(flows, m, num_coarse_epochs=max((p.send_epoch for p in res.pieces),
+    assert_bands_fit(flows, m, num_coarse_epochs=max((p.epoch for p in res.pieces),
                                                      default=-1) + 1)
 
     return LevelSolution(flows=flows, pieces=res.pieces, scale=net_scale,
@@ -524,12 +532,10 @@ def _lower(solution: CoarseSolution, problem: Subproblem, coarse, mapping, fine_
     relabel = level_demand.relabel if level_demand is not None else None
     holder = level_demand.holders if level_demand is not None else None
     if solution.step_a == "integral":
-        from teccl.hierarchy.milp_routing import assign_identities_integral
-        assignments, targets, epoch = assign_identities_integral(
-            solution.trees, solution.milp_demand, mapping, fine_tensor, problem.topology,
-            solution.epoch_duration, relabel=relabel, holder_of=holder)
-        return build_child_problems(assignments, targets, mapping, fine_tensor, problem.topology,
-                                    epoch, scale=problem.scale, relabel=relabel, copy_aware=True)
+        from teccl.hierarchy.milp_routing import lower_integral
+        return lower_integral(solution.sends, solution.milp_demand, mapping, fine_tensor,
+                              problem.topology, solution.epoch_duration, scale=problem.scale,
+                              relabel=relabel, holder_of=holder)
     if solution.step_a == "free":
         assignments, targets, epoch = assign_identities_free(
             solution, mapping, fine_tensor, problem.topology, level_chunk=g,
@@ -652,7 +658,7 @@ def write_side_outputs(res: IdentityResolution, flows: Sequence[IntraFlow], pref
 
     with open(f"Schedules/{prefix}_intra.json", "w") as f:
         json.dump([dict(cell=x.cell, identity=list(x.identity), sender=x.sender,
-                        receiver=x.receiver, via_switch=x.via_switch, volume=x.volume,
+                        fanout=[[b.receiver, list(b.via)] for b in x.fanout], volume=x.volume,
                         band=x.band, local_round=x.local_round, span=x.span,
                         identities=[list(i) for i in x.identities], kind=x.kind, hard=x.hard)
                    for x in flows], f, indent=2)

@@ -50,7 +50,7 @@ def _solve(coarse, demand_pairs, num_cells):
     out = os.path.join(tempfile.mkdtemp(), "coarse.json")
     ui.instance = InstanceParams(
         collective=Collective.ALLGATHER, formulation=Formulation.MILP, num_chunks=1,
-        epoch_type=EpochType.SLOWEST_LINK, objective_type=ObjectiveType.PAPER,
+        epoch_type=EpochType.SLOWEST_LINK, objective_type=ObjectiveType.LEXICOGRAPHIC,
         solution_method=SolutionMethod.ONE_SHOT, switch_copy=False, num_epochs=8,
         schedule_output_file=out)
     ui.gurobi.output_flag = 0

@@ -32,7 +32,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from teccl.hierarchy.crossbar_solve import IntraFlow
-from teccl.hierarchy.reconstruct import Identity, IntraCellDemand, ResolvedPiece
+from teccl.hierarchy.reconstruct import Identity, IntraCellDemand
+from teccl.sends import Branch, Send
 from teccl.hierarchy.scale import ChunkScale
 from teccl.topologies.topology import Topology
 
@@ -196,7 +197,7 @@ class LevelSolution:
     every level.
     """
     flows: List[IntraFlow] = field(default_factory=list)
-    pieces: List[ResolvedPiece] = field(default_factory=list)
+    pieces: List[Send] = field(default_factory=list)
     scale: Optional[ChunkScale] = None
     # This level's own step-B output, its epoch length, and its TIME GRID.
     #
@@ -220,13 +221,16 @@ class LevelSolution:
     def pieces_as_flows(self, cell_id: int, band: int) -> List[IntraFlow]:
         """Re-read this level's inter-cell pieces as intra flows of the cell one level up.
 
-        `send_epoch` becomes the round offset because a piece leaving in this level's epoch k is,
+        One flow per send, keeping its whole fan-out: a switch copy at this level stays one
+        transfer with several receivers in the parent.
+
+        `epoch` becomes the round offset because a piece leaving in this level's epoch k is,
         from the parent's point of view, a transfer in round k of the band it granted.
         """
         return [IntraFlow(
-            cell=cell_id, identity=p.identity, sender=p.egress_gpu, receiver=p.ingress_gpu,
-            via_switch=p.via_switches[0], volume=p.volume, band=band,
-            local_round=int(p.send_epoch), kind="sublevel_transfer", hard=False)
+            cell=cell_id, identity=p.identity, sender=p.sender,
+            fanout=tuple(Branch(b.receiver, b.via) for b in p.fanout), volume=p.volume, band=band,
+            local_round=int(p.epoch), kind="sublevel_transfer", hard=False)
             for p in self.pieces]
 
 
@@ -243,7 +247,7 @@ class CoarseSolution:
                  step_a: str = "free",
                  feasibility_tol: Optional[float] = None,
                  max_denom: Optional[int] = None,
-                 trees=None, milp_demand=None) -> None:
+                 sends=None, milp_demand=None) -> None:
         if step_a not in self.STEP_A:
             raise ValueError(f"step_a must be one of {self.STEP_A}, got {step_a!r}")
         self.per_chunk_flow_paths = per_chunk_flow_paths
@@ -263,17 +267,17 @@ class CoarseSolution:
         # is identity READ OFF the routing (only a closed-form row), and does the level stay
         # INTEGRAL (Q == 1: the closed-form rows and the MILP).
         self.step_a = step_a
-        # The MILP level's read-back (milp_routing.extract_trees) and the count demand its columns
+        # The MILP level's read-back (milp_routing.level_sends) and the count demand its columns
         # stand for (milp_routing.PreservingDemand). None for every other step A.
-        self.trees = trees
+        self.sends = sends
         self.milp_demand = milp_demand
 
     # free         identity-free routing (the LP): assign_identities_free recovers identity, and
     #              the lowering may refine (Q > 1).
     # closed_form  a memoized row routed each identity itself: assign_identities_preserving reads
     #              the assignment off directly.
-    # integral     the MILP: whole identities ride whole trees, but WHICH identity rides which
-    #              tree is still decided (milp_routing.assign_identities_integral). Q == 1.
+    # integral     the MILP: whole identities ride whole columns of sends, but WHICH identity rides
+    #              which column is still decided (milp_routing.lower_integral). Q == 1.
     STEP_A = ("free", "closed_form", "integral")
 
     @property

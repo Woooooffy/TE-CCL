@@ -100,8 +100,9 @@ def _check_link_capacity(res, topo, coarse_epoch) -> tuple:
     ing = collections.defaultdict(float)
     for p in res.pieces:
         gb = p.volume * res.scale.bytes_per_chunk
-        eg[(p.egress_gpu, p.via_switches[0], p.send_epoch)] += gb
-        ing[(p.ingress_gpu, p.via_switches[-1], p.arrival_epoch)] += gb
+        eg[(p.sender, p.fanout[0].via[0], p.epoch)] += gb
+        for b in p.fanout:
+            ing[(b.receiver, b.via[-1], b.ready - 1)] += gb
     over, worst_e, worst_i = [], 0.0, 0.0
     for (g, sw, k), vol in sorted(eg.items()):
         cap = topo.capacity[g][sw] * coarse_epoch
@@ -153,7 +154,7 @@ def _check_intra_fits_epoch(res, flows, topo, coarse_epoch) -> tuple:
     # charged their true length, so including them here would assert something stronger than the
     # property the stitch actually guarantees.
     delta, m = derive_grid(res.scale, topo, coarse_epoch)
-    num_coarse_epochs = max((p.send_epoch for p in res.pieces), default=-1) + 1
+    num_coarse_epochs = max((p.epoch for p in res.pieces), default=-1) + 1
     bounded = {k: r for k, r in band_rounds(flows).items()
                if aligned_band(k[1], num_coarse_epochs)}
     peak = max(bounded.values(), default=0)
@@ -201,11 +202,11 @@ def replay(tag: str, collective: Collective) -> bool:
     n_required = _check_delivery_coverage(res, flows)
     peak, m, hot = _check_intra_fits_epoch(res, flows, topo, coarse_epoch)
 
-    ingress_used = collections.Counter(p.ingress_gpu for p in res.pieces)
+    ingress_used = collections.Counter(b.receiver for p in res.pieces for b in p.fanout)
     single = [d for d in res.intra_demands
               if d.kind == "ingress_distribution" and len(d.dst_gpus) == 1]
     landed = sum(1 for d in single if d.dst_gpus[0] == d.src_gpu)
-    relayed = sum(1 for p in res.pieces if p.egress_gpu != p.identity[0])
+    relayed = sum(1 for p in res.pieces if p.sender != p.identity[0])
 
     print(f"  {tag}: Q={res.subdivision} {res.scale}")
     print(f"    {len(res.pieces)} pieces, {len(res.intra_demands)} intra demands, "
@@ -267,21 +268,23 @@ def replay_transit() -> bool:
     legs_by_id = collections.defaultdict(list)
     for pc in res.pieces:
         legs_by_id[pc.identity].append(pc)
-    chains = {i: sorted(ps, key=lambda p: p.send_epoch)
+    chains = {i: sorted(ps, key=lambda p: p.epoch)
               for i, ps in legs_by_id.items() if len(ps) > 2}
     assert chains, "the bridged fixture must produce store-and-forward chains"
+    cell = mapping.fine_to_coarse
     n_forwarded = 0
     for identity, ps in chains.items():
-        forwarded = [p for p in ps if p.src_cell == 1 and p.send_epoch > 0]
+        forwarded = [p for p in ps if cell[p.sender] == 1 and p.epoch > 0]
         for f in forwarded:
-            inbound = [p for p in ps if p.dst_cell == 1 and p.arrival_epoch < f.send_epoch]
-            assert inbound, f"{identity}: leg {f} forwards data that never arrived at the bridge"
-            latest = max(p.arrival_epoch for p in inbound)
-            assert f.send_epoch >= latest + 1, (
-                f"{identity}: forwarded in epoch {f.send_epoch} but its data lands in {latest}")
+            inbound = [b for p in ps for b in p.fanout
+                       if cell[b.receiver] == 1 and b.ready <= f.epoch]
+            assert inbound, f"{identity}: send {f} forwards data that never arrived at the bridge"
+            latest = max(b.ready for b in inbound)
+            assert f.epoch >= latest, (
+                f"{identity}: forwarded in epoch {f.epoch} but its data is held only from {latest}")
             # Co-located bridge: whoever landed it is whoever re-sends it, so no intra hop.
-            assert f.egress_gpu in {p.ingress_gpu for p in inbound}, (
-                f"{identity}: forwarded from gpu {f.egress_gpu}, which did not land the data")
+            assert f.sender in {b.receiver for b in inbound}, (
+                f"{identity}: forwarded from gpu {f.sender}, which did not land the data")
             n_forwarded += 1
 
     print(f"  transit (BridgedIslandsCluster): Q={res.subdivision} {res.scale}")

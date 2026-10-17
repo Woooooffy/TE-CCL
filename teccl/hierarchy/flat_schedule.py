@@ -4,7 +4,8 @@ topology. Runs exactly once, after the recursion has returned.
 
 Inputs are the two halves of the ROOT level:
   * `IdentityResolution.pieces` -- inter-cell flows, already pinned to real fine GPUs and fine
-    switch ids, carrying the root level's own pacing (`ResolvedPiece.rate`);
+    switch ids, one Send per transmission (a switch copy keeps its branches), paced at the root
+    level's own rate (teccl.sends.rate);
   * the `IntraFlow`s of everything beneath it, which `teccl.hierarchy.flatten.rebase` has ALREADY
     folded into the root's `(band, local_round)` -- one fold per level on the way up, so however
     deep the recursion went, what arrives here is two-level.
@@ -58,13 +59,14 @@ time by the ratio of rounds to depth (5-6x on these schedules).
 import logging
 import math
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import replace
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from teccl.hierarchy.crossbar_solve import PROLOGUE_BAND, IntraFlow, rounds_in
 from teccl.hierarchy.flatten import aligned_band, assert_bands_fit, derive_grid
 from teccl.hierarchy.reconstruct import Identity, IdentityResolution
 from teccl.hierarchy.scale import ChunkScale
+from teccl.sends import Branch, Send, delivery_index, link_windows, rate
 from teccl.topologies.topology import Topology
 
 # Record phases. These are ANNOTATION only -- placement is decided by the level that produced the
@@ -75,25 +77,10 @@ NETWORK = "network"            # the inter-cell send itself
 INGRESS = "ingress"            # fallback label for an intra flow with no recorded kind
 
 
-@dataclass(frozen=True)
-class DeliveryRecord:
-    """One physical GPU->GPU transfer on the fine topology, at an absolute fine epoch.
-
-    A record is emitted MERGED (`via_switches` annotates the route) rather than as separate
-    GPU->switch and switch->GPU hops: the ncclize parsers derive the GPU id universe from the set
-    of ids appearing as flow endpoints, so a switch id appearing there would be mistaken for a GPU.
-    """
-    identity: Identity                 # sub-identity (s, ci) at the REFINED scale
-    sender: int
-    receiver: int
-    via_switches: Tuple[int, ...]
-    volume: float
-    epoch: int                         # absolute fine epoch the transfer starts in
-    completion: int                    # absolute fine epoch by which the receiver holds it
-    rate: Optional[float]              # GB/s, or None for a deliberately unpaced flow
-    phase: str
-    cell: Optional[int] = None         # provenance, for the auxiliary annotation only
-    level: int = 0
+# The stitch's records are Sends (teccl/sends.py) on the ABSOLUTE fine-epoch axis: a network send
+# keeps its fan-out (a switch copy is one record with several branches), and an intra flow is a
+# one-branch send whose `kind` is its phase. A delivery is a (send, branch) pair.
+Delivery = Tuple[Send, Branch]
 
 
 # ----------------------------------------------------------------------------------------------
@@ -134,15 +121,15 @@ def prologue_width(intra_flows: Sequence[IntraFlow]) -> int:
 
 
 def build_records(res: IdentityResolution, intra_flows: Sequence[IntraFlow],
-                  m: int) -> Tuple[List[DeliveryRecord], int]:
-    """Place every inter-cell piece and intra-cell flow on the absolute fine epoch axis.
+                  m: int) -> Tuple[List[Send], int]:
+    """Place every inter-cell send and intra-cell flow on the absolute fine epoch axis.
 
     Pure translation -- see the module docstring for the four-line mapping. Returns the records and
     the prologue width W.
     """
     W = prologue_width(intra_flows)
 
-    records: List[DeliveryRecord] = []
+    records: List[Send] = []
     for f in intra_flows:
         epoch = f.local_round if f.band == PROLOGUE_BAND else W + m * f.band + f.local_round
         # One record per sub-chunk the transfer carries, ALL AT THE SAME EPOCH. A coalesced flow is
@@ -150,30 +137,22 @@ def build_records(res: IdentityResolution, intra_flows: Sequence[IntraFlow],
         # ncclize merges them back into a single cnt=Q operation -- which it can only do for
         # addresses that share a step.
         for identity in f.identities:
-            records.append(DeliveryRecord(
-                identity=identity, sender=f.sender, receiver=f.receiver,
-                # A hop over a DIRECT link has no switch to name (a physical ring cell), and
-                # `_segment` omits the "via switches" clause for an empty tuple. `(None,)` would
-                # instead emit the literal text "via switches None", which ncclize's
-                # PATH_SEGMENT_RE would then fail to parse.
-                via_switches=() if f.via_switch is None else (f.via_switch,),
-                volume=f.volume / len(f.identities), epoch=epoch,
-                # The transfer occupies its whole span and the receiver holds it once it finishes,
-                # which is what lets a flow ending at round r feed one starting at r+1 -- the
-                # precedence _schedule_band already enforced.
-                completion=epoch + f.span, rate=None,
-                phase=PROLOGUE if f.band == PROLOGUE_BAND else (f.kind or INGRESS),
-                cell=f.cell, level=f.local_round))
+            records.append(Send(
+                identity=identity, sender=f.sender, epoch=epoch, span=f.span,
+                volume=f.volume / len(f.identities),
+                # Every receiver holds the data once the transfer finishes, which is what lets a
+                # flow ending at round r feed one starting at r+1 -- the precedence _schedule_band
+                # already enforced. (A hop over a DIRECT link has no switch to name: a physical
+                # ring cell.)
+                fanout=tuple(replace(b, ready=epoch + f.span) for b in f.fanout),
+                kind=PROLOGUE if f.band == PROLOGUE_BAND else (f.kind or INGRESS)))
 
     for p in res.pieces:
-        records.append(DeliveryRecord(
-            identity=p.identity, sender=p.egress_gpu, receiver=p.ingress_gpu,
-            via_switches=tuple(p.via_switches), volume=p.volume,
-            epoch=W + m * p.send_epoch,
-            # The piece is held at the END of its arrival epoch, i.e. the leading edge of the next
-            # band -- which is where the fan-out that consumes it was scheduled.
-            completion=W + m * (p.arrival_epoch + 1), rate=p.rate, phase=NETWORK,
-            cell=p.src_cell))
+        # A send leaves at its band's leading edge, holds its links for its whole span of coarse
+        # epochs, and each branch is held at the END of its arrival epoch -- the leading edge of
+        # the band where the fan-out that consumes it was scheduled.
+        records.append(replace(p, epoch=W + m * p.epoch, span=m * p.span, kind=NETWORK,
+                               fanout=tuple(replace(b, ready=W + m * b.ready) for b in p.fanout)))
 
     return records, W
 
@@ -181,29 +160,23 @@ def build_records(res: IdentityResolution, intra_flows: Sequence[IntraFlow],
 # ----------------------------------------------------------------------------------------------
 # S4. Back-trace: chunk paths, causality, coverage
 # ----------------------------------------------------------------------------------------------
-def back_trace(records: Sequence[DeliveryRecord], fine_demand, subdivision: int
-               ) -> Dict[Tuple[int, Identity], List[DeliveryRecord]]:
-    """For every fine demand, the chain of records that delivers it, verified as it is built.
+def back_trace(records: Sequence[Send], fine_demand, subdivision: int
+               ) -> Dict[Tuple[int, Identity], List[Delivery]]:
+    """For every fine demand, the chain of deliveries that brings it from its source, verified as
+    it is built.
 
     The emitter and the verifier are one traversal on purpose: the path list serialized into
     "8-Chunk paths" IS the evidence that each demand is met, so a demand that cannot be traced back
     to its source is a hard error rather than a missing line in the output.
     """
-    # (identity, gpu) -> earliest epoch that gpu holds it
-    holds: Dict[Tuple[Identity, int], int] = {}
-    # (identity, gpu) -> the record that got it there earliest
-    via: Dict[Tuple[Identity, int], DeliveryRecord] = {}
-    for r in sorted(records, key=lambda r: (r.completion, r.epoch)):
-        key = (r.identity, r.receiver)
-        if key not in holds or r.completion < holds[key]:
-            holds[key] = r.completion
-            via[key] = r
-    # A source owns its own identities from the start.
-    sources = {(r.identity, r.identity[0]) for r in records}
-    for key in sources:
-        holds[key] = 0
+    # (identity, gpu) -> the delivery that got it there earliest
+    via = delivery_index(records)
+    # (identity, gpu) -> earliest epoch that gpu holds it; a source owns its identities from 0
+    holds = {key: branch.ready for key, (_send, branch) in via.items()}
+    for r in records:
+        holds[(r.identity, r.identity[0])] = 0
 
-    paths: Dict[Tuple[int, Identity], List[DeliveryRecord]] = {}
+    paths: Dict[Tuple[int, Identity], List[Delivery]] = {}
     n = len(fine_demand)
     chunks = len(fine_demand[0][0]) if n else 0
     missing: List[Tuple] = []
@@ -214,27 +187,28 @@ def back_trace(records: Sequence[DeliveryRecord], fine_demand, subdivision: int
                     continue
                 for j in range(subdivision):
                     sub = (s, ci * subdivision + j)
-                    chain: List[DeliveryRecord] = []
+                    chain: List[Delivery] = []
                     cur = t
                     seen = set()
                     while cur != s:
-                        rec = via.get((sub, cur))
-                        if rec is None:
+                        hop = via.get((sub, cur))
+                        if hop is None:
                             missing.append((t, sub, cur))
                             break
                         if (sub, cur) in seen:
                             raise AssertionError(
                                 f"cycle while tracing demand ({t}, {sub}) back to its source")
                         seen.add((sub, cur))
+                        send, branch = hop
                         # Causality: the sender must already hold the data when it sends.
-                        held = holds.get((sub, rec.sender))
-                        if held is None or held > rec.epoch:
+                        held = holds.get((sub, send.sender))
+                        if held is None or held > send.epoch:
                             raise AssertionError(
-                                f"causality violation delivering {sub} to {t}: {rec.sender} sends "
-                                f"in fine epoch {rec.epoch} but holds the data only from "
-                                f"{held!r} ({rec.phase}, via {rec.via_switches})")
-                        chain.append(rec)
-                        cur = rec.sender
+                                f"causality violation delivering {sub} to {t}: {send.sender} sends "
+                                f"in fine epoch {send.epoch} but holds the data only from "
+                                f"{held!r} ({send.kind}, via {branch.via})")
+                        chain.append(hop)
+                        cur = send.sender
                     else:
                         paths[(t, sub)] = list(reversed(chain))
     if missing:
@@ -247,18 +221,22 @@ def back_trace(records: Sequence[DeliveryRecord], fine_demand, subdivision: int
 # ----------------------------------------------------------------------------------------------
 # S5. Serialize
 # ----------------------------------------------------------------------------------------------
-def _segment(r: DeliveryRecord) -> str:
+def _segment(send: Send, branch: Branch, bytes_per_chunk: float, delta: float) -> str:
     """One "8-Chunk paths" / "7-Flows" hop, in the grammar teccl_ncclize's PATH_SEGMENT_RE reads.
 
-    The rate token is emitted only when the producing level paced the flow. Its absence is
-    meaningful, not a default: an intra-cell hop carries ordering but is deliberately not pinned to
-    the epoch grid, so throttling it would be inventing a constraint the solve never imposed.
+    One line per BRANCH: the string grammar names one receiver, so a switch copy is written as
+    one line per branch with the same sender and epoch. This projection is the one place the stitch
+    drops the fan-out; the records themselves keep it.
+
+    The rate token is emitted only for a network send, the one kind its level paced. Its absence
+    is meaningful, not a default: an intra-cell hop carries ordering but is deliberately not pinned
+    to the epoch grid, so throttling it would be inventing a constraint the solve never imposed.
     """
-    out = f"{r.sender}->{r.receiver} with volume {r.volume:g} in epoch {r.epoch}"
-    if r.rate is not None:
-        out += f" at rate {r.rate:g}"
-    if r.via_switches:
-        out += " via switches " + "->".join(str(x) for x in r.via_switches)
+    out = f"{send.sender}->{branch.receiver} with volume {send.volume:g} in epoch {send.epoch}"
+    if send.kind == NETWORK:
+        out += f" at rate {rate(send, bytes_per_chunk, delta):g}"
+    if branch.via:
+        out += " via switches " + "->".join(str(x) for x in branch.via)
     return out
 
 
@@ -294,8 +272,8 @@ def _chunk_label(ci: int, subdivision: int, dst_major: bool, num_gpus: int,
     return dst + (c * subdivision + j) * num_gpus
 
 
-def serialize(records: Sequence[DeliveryRecord],
-              paths: Dict[Tuple[int, Identity], List[DeliveryRecord]],
+def serialize(records: Sequence[Send],
+              paths: Dict[Tuple[int, Identity], List[Delivery]],
               scale: ChunkScale, delta: float, collective: str,
               num_sources: int, subdivision: int = 1) -> Dict:
     """Build the flow_str_info dict, in the nested (LP) format.
@@ -307,9 +285,10 @@ def serialize(records: Sequence[DeliveryRecord],
     """
     # Dense ranks exactly as ncclize derives them: the sorted set of ids appearing as a flow
     # endpoint is the GPU universe (switch ids only ever appear in a "via switches" annotation).
-    gpus = sorted({r.sender for r in records} | {r.receiver for r in records})
+    gpus = sorted({r.sender for r in records} | {b.receiver for r in records for b in r.fanout})
     dense = {g: i for i, g in enumerate(gpus)}
     dst_major = collective == "alltoall"
+    bpc = scale.bytes_per_chunk
 
     label_of: Dict[Identity, int] = {}
 
@@ -325,17 +304,38 @@ def serialize(records: Sequence[DeliveryRecord],
 
     chunk_paths: Dict[str, List] = {}
     for (t, identity), chain in sorted(paths.items()):
-        met = max(r.completion for r in chain)
+        met = max(b.ready for _r, b in chain)
         key = f"Demand at {t} for chunk {label(identity, t)} from {identity[0]} met by epoch {met}"
-        chunk_paths[key] = [[[r.epoch, _segment(r)] for r in chain]]
+        chunk_paths[key] = [[[r.epoch, _segment(r, b, bpc, delta)] for r, b in chain]]
 
     # "7-Flows" is human-readable only under the LP format (the ops come from "8-Chunk paths"), so
     # a record that serves no demand still deserves a line; label it via any destination it has.
     flows_str = sorted({(r.epoch, f"Chunk {label_of.get(r.identity, r.identity[1])} from "
-                                 f"{r.identity[0]} traveled over {_segment(r)}")
-                        for r in records})
+                                 f"{r.identity[0]} traveled over {_segment(r, b, bpc, delta)}")
+                        for r in records for b in r.fanout})
 
-    epochs_required = max((r.completion for r in records), default=0) + 1
+    # "10-Sends": the transmissions themselves, with every receiver each one reaches -- what ncclize
+    # builds its ops from (teccl_ncclize.parse_sends), and the one section that keeps a switch copy
+    # as ONE send. Only what the demand chains use: a send with only the branches some chain takes,
+    # in first-use order, so a schedule without copy expands to exactly the hops, in exactly the
+    # order, the legacy parser reads off "8-Chunk paths".
+    # The label is the DEMAND's (a dst-major label encodes the demand's final destination, not a
+    # relay hop's receiver), exactly as "8-Chunk paths" writes it on every hop of the chain.
+    used: Dict[Send, List[Branch]] = {}
+    demand_dst: Dict[Send, int] = {}
+    for (t, _identity), chain in sorted(paths.items()):
+        for r, b in chain:
+            branches = used.setdefault(r, [])
+            demand_dst.setdefault(r, t)
+            if b not in branches:
+                branches.append(b)
+    sends = [{"chunk": label(r.identity, demand_dst[r]), "from": r.identity[0],
+              "sender": r.sender, "epoch": r.epoch, "span": r.span,
+              "rate": rate(r, bpc, delta) if r.kind == NETWORK else None, "volume": r.volume,
+              "branches": [{"to": b.receiver, "via": list(b.via), "ready": b.ready} for b in bs]}
+             for r, bs in used.items()]
+
+    epochs_required = max((b.ready for r in records for b in r.fanout), default=0) + 1
     finish = delta * epochs_required
     info: Dict = {
         "0-Collective": collective,
@@ -352,6 +352,7 @@ def serialize(records: Sequence[DeliveryRecord],
         # Derived from the LIVE scale, not the root topology: the schedule describes chunks at the
         # refined granularity, and ncclize sizes every op from this.
         "9-Chunk_Size": scale.bytes_per_chunk,
+        "10-Sends": sends,
     }
     return info
 
@@ -359,32 +360,25 @@ def serialize(records: Sequence[DeliveryRecord],
 # ----------------------------------------------------------------------------------------------
 # Orchestration
 # ----------------------------------------------------------------------------------------------
-def assert_link_capacity(records: Sequence[DeliveryRecord], fine_topology: Topology,
-                         coarse_epoch: float, scale: ChunkScale,
-                         one_copy_per_link: bool = False) -> None:
+def assert_link_capacity(records: Sequence[Send], fine_topology: Topology, coarse_epoch: float,
+                         scale: ChunkScale, m: int) -> None:
     """Per fine link per COARSE epoch, the network traffic must fit the link.
 
     Only network records are checked: they are the ones the coarse solve made a capacity promise
     about, and the intra flows are certified separately by the phase-3 round bound (`rounds <= m`),
     which is the same statement in the NVSwitch's own units.
 
-    `one_copy_per_link` (a copy-aware level, IdentityResolution.copy_aware): records of the same
-    sub-identity on the same link in the same epoch are the branches of one switch-copy fan-out
-    and share that hop, so the link carries them once.
+    A send charges every link of its tree once (teccl.sends.link_windows), spread evenly over the
+    coarse epochs it holds the link: a switch copy's shared links count one transmission.
     """
     load: Dict[Tuple[int, int, int], float] = defaultdict(float)
-    counted = set()
     for r in records:
-        if r.phase != NETWORK:
+        if r.kind != NETWORK:
             continue
-        gb = r.volume * scale.bytes_per_chunk
-        for key in ((r.sender, r.via_switches[0], r.epoch),
-                    (r.via_switches[-1], r.receiver, r.completion)):
-            if one_copy_per_link:
-                if (r.identity, key) in counted:
-                    continue
-                counted.add((r.identity, key))
-            load[key] += gb
+        per_epoch = r.volume * scale.bytes_per_chunk * m / r.span
+        for (a, b), window in link_windows(r).items():
+            for e in range(window.start, window.stop, m):
+                load[(a, b, e)] += per_epoch
     over = [(a, b, k, round(v, 4), round(fine_topology.capacity[a][b] * coarse_epoch, 4))
             for (a, b, k), v in sorted(load.items())
             if v > fine_topology.capacity[a][b] * coarse_epoch + 1e-9]
@@ -394,30 +388,17 @@ def assert_link_capacity(records: Sequence[DeliveryRecord], fine_topology: Topol
             f"[(src, dst, epoch, GB, capacity)]: {over[:6]}")
 
 
-def _piece_key(identity, egress_gpu: int, ingress_gpu: int, send_epoch: int):
-    """The identity of a network send, shared by a ResolvedPiece and its DeliveryRecord.
-
-    `build_records` copies exactly these four fields across (record.epoch is the piece's
-    send_epoch scaled onto the fine axis), so this is what lets the caller intersect the surviving
-    records with `res.pieces` without carrying record objects into the check.
-    """
-    return (tuple(identity), egress_gpu, ingress_gpu, send_epoch)
-
-
-def emitted_network_sends(paths: Dict[Tuple[int, Identity], List[DeliveryRecord]],
+def emitted_network_sends(paths: Dict[Tuple[int, Identity], List[Delivery]],
                           W: int, m: int) -> set:
-    """The network sends that survive `back_trace`, keyed by `_piece_key`.
+    """The network deliveries that survive `back_trace`, as (identity, sender, coarse epoch,
+    receiver).
 
-    A record reachable from some demand's chain is one ncclize will emit; everything else is
-    pruned and exists only as a "7-Flows" line. `m` un-scales record.epoch back to the coarse
-    epoch the piece was filed at (record.epoch = W + m * send_epoch, see build_records).
+    A delivery reachable from some demand's chain is one ncclize will emit; everything else is
+    pruned and exists only as a "7-Flows" line. `m` un-scales the record epoch back to the coarse
+    epoch the send was filed at (record epoch = W + m * epoch, see build_records).
     """
-    return {_piece_key(r.identity, r.sender, r.receiver, (r.epoch - W) // m)
-            for chain in paths.values() for r in chain if r.phase == NETWORK}
-
-
-def _piece_is_emitted(p, emitted: set) -> bool:
-    return _piece_key(p.identity, p.egress_gpu, p.ingress_gpu, p.send_epoch) in emitted
+    return {(r.identity, r.sender, (r.epoch - W) // m, b.receiver)
+            for chain in paths.values() for r, b in chain if r.kind == NETWORK}
 
 
 def check_network_pacing(res: IdentityResolution, coarse_epoch: float,
@@ -434,9 +415,9 @@ def check_network_pacing(res: IdentityResolution, coarse_epoch: float,
 
     `emitted` is what makes that mirroring real, and it is REQUIRED for the answer to mean
     anything. `res.pieces` is a strict SUPERSET of what ships: ncclize builds its ops (and hence
-    its gate manifest) from the demand chains in "8-Chunk paths", so a piece that `back_trace`
+    its gate manifest) from the demand chains in "8-Chunk paths", so a delivery that `back_trace`
     pruned -- because that identity reached that receiver earlier by another route -- never
-    becomes an XML send. Those pruned pieces are not idle bookkeeping: counted here they
+    becomes an XML send. Those pruned deliveries are not idle bookkeeping: counted here they
     MANUFACTURE P2/P3 clock ticks at epochs where the emitted schedule has none, and every real
     residual they cover is reported as pinned. Measured on the 96-GPU dual-plane clustered
     allgather: 768 of 16896 pieces are pruned, and the phantom ticks they contribute hide all 16
@@ -444,19 +425,19 @@ def check_network_pacing(res: IdentityResolution, coarse_epoch: float,
     drive 16 receivers to 150% of their ingress capacity.
 
     So pass the emitted set built by `emitted_network_sends` from the NETWORK records that survive
-    `back_trace`. Pieces outside it are skipped on both sides of the rule -- they neither need
-    pinning nor may serve as anyone's clock. `None` means "no pruning information", which is only
-    correct for a caller that has not run `back_trace` yet.
+    `back_trace`. A send none of whose branches survives is skipped on both sides of the rule --
+    it neither needs pinning nor may serve as anyone's clock. `None` means "no pruning
+    information", which is only correct for a caller that has not run `back_trace` yet.
 
     Why the pruned pieces exist at all is a separate, deferred problem -- see the note on
     `assert_native_ownership` / lp_formulation.node_constraint_helper: the coarse LP has no copy
     semantics, so a cell that both wants an identity and relays it onward pulls it across the
     fabric twice.
 
-    A send occupies its uplink -- (egress_gpu, first switch on its route) -- from its send epoch for
-    volume/rate coarse epochs, i.e. it FINISHES serializing at send_epoch + duration (duration = 1
-    under the fill-one-epoch rate rule, more for a sub-rate multi-epoch send). A send at epoch k is
-    held to k if either clock ticks at k:
+    A send occupies its uplink from its epoch for its `span` coarse epochs, i.e. it FINISHES
+    serializing at epoch + span (the self-clocking pacing rule, teccl.sends.rate). One send is one
+    transmission however many branches it has: it is one clock tick at its sender, and an arrival
+    tick at each surviving receiver. A send at epoch k is held to k if either clock ticks at k:
 
       P2 -- some paced send FROM THE SAME GPU finishes at k (it occupied one of that GPU's uplinks
         through k-1 and completed at the boundary), so the GPU has an op completion to gate on; or
@@ -480,21 +461,20 @@ def check_network_pacing(res: IdentityResolution, coarse_epoch: float,
     rather than "starts at k-1" is what makes a multi-epoch send correctly pin a later send that
     begins as it completes.
     """
-    chunk = res.scale.bytes_per_chunk
     # gpu -> the coarse epochs at which one of its paced sends finishes, at which it starts a send
     # (the sends we must pin), and at which a paced delivery lands on it.
     finishes: Dict[int, set] = defaultdict(set)
     starts: Dict[int, set] = defaultdict(set)
     arrivals: Dict[int, set] = defaultdict(set)
     for p in res.pieces:
-        if p.rate is None:
-            continue  # an unpaced network flow imposes no pacing (and none exists today)
-        if emitted is not None and not _piece_is_emitted(p, emitted):
+        branches = [b for b in p.fanout
+                    if emitted is None or (p.identity, p.sender, p.epoch, b.receiver) in emitted]
+        if not branches:
             continue  # pruned by back_trace: never an XML send, so never anyone's clock either
-        duration = max(1, round(p.volume * chunk / (p.rate * coarse_epoch)))
-        finishes[p.egress_gpu].add(p.send_epoch + duration)
-        starts[p.egress_gpu].add(p.send_epoch)
-        arrivals[p.ingress_gpu].add(p.send_epoch + duration)
+        finishes[p.sender].add(p.epoch + p.span)
+        starts[p.sender].add(p.epoch)
+        for b in branches:
+            arrivals[b.receiver].add(p.epoch + p.span)
     residual: List[Tuple[int, int]] = []
     for gpu, epochs in sorted(starts.items()):
         for k in sorted(epochs):
@@ -507,7 +487,7 @@ def check_network_pacing(res: IdentityResolution, coarse_epoch: float,
 def build_flat_schedule(res: IdentityResolution, intra_flows: Sequence[IntraFlow],
                         fine_topology: Topology, fine_demand, coarse_epoch: float,
                         collective: str, grid: Optional[Tuple[float, int]] = None
-                        ) -> Tuple[Dict, List[DeliveryRecord]]:
+                        ) -> Tuple[Dict, List[Send]]:
     """The assembled hierarchical solution -> one flat schedule dict on the fine topology.
 
     Runs ONCE, at the end, on flows that `flatten.rebase` has already folded into the ROOT's
@@ -519,31 +499,31 @@ def build_flat_schedule(res: IdentityResolution, intra_flows: Sequence[IntraFlow
     an independent recomputation. It defaults to re-deriving for callers replaying a schedule from
     JSON, who have no LevelSolution to take it from.
 
-    Returns (flow_str_info, records).
+    Returns (flow_str_info, records). The records keep every send's fan-out; the info dict is the
+    per-branch projection ncclize reads today.
     """
     delta, m = grid if grid is not None else derive_grid(res.scale, fine_topology, coarse_epoch)
     assert_native_ownership(res)
 
     # Bands 0..K-1 are pinned to the network sends, so they must fit inside a coarse epoch.
-    num_coarse_epochs = max((p.send_epoch for p in res.pieces), default=-1) + 1
+    num_coarse_epochs = max((p.epoch for p in res.pieces), default=-1) + 1
     assert_bands_fit(intra_flows, m, num_coarse_epochs)
 
     records, W = build_records(res, intra_flows, m)
-    assert_link_capacity(records, fine_topology, coarse_epoch, scale=res.scale,
-                         one_copy_per_link=getattr(res, "copy_aware", False))
+    assert_link_capacity(records, fine_topology, coarse_epoch, res.scale, m)
     paths = back_trace(records, fine_demand, res.subdivision)
 
     # Network-layer pacing residuals (paced sends neither clock can pin). Reported, not fatal.
-    # Runs AFTER back_trace and on its surviving records only: ncclize derives its gate manifest
-    # from the demand chains, so a check over all of res.pieces would count pruned pieces as
+    # Runs AFTER back_trace and on its surviving deliveries only: ncclize derives its gate manifest
+    # from the demand chains, so a check over all of res.pieces would count pruned deliveries as
     # clock ticks the emitted schedule does not have and report residuals as pinned. See
     # check_network_pacing's docstring for the measured case that motivated this.
     emitted = emitted_network_sends(paths, W, m)
     pruned = sum(1 for p in res.pieces
-                 if p.rate is not None and not _piece_is_emitted(p, emitted))
+                 if not any((p.identity, p.sender, p.epoch, b.receiver) in emitted for b in p.fanout))
     residual = check_network_pacing(res, coarse_epoch, emitted)
     if pruned:
-        print(f"[flat] network pacing: {pruned} paced piece(s) are pruned by back_trace and never "
+        print(f"[flat] network pacing: {pruned} paced send(s) are pruned by back_trace and never "
               f"emitted; they are excluded from the pacing clocks below (see the deferred coarse "
               f"no-copy relay gap in check_network_pacing's docstring)")
     if residual:

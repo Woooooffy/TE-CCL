@@ -63,6 +63,12 @@ from teccl.solvers.demand import build_demand
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
 
 
+
+def _cells(p, m):
+    """(source cell, destination cell) of an LP piece -- a one-branch send in fine GPU ids."""
+    (b,) = p.fanout
+    return m.fine_to_coarse[p.sender], m.fine_to_coarse[b.receiver]
+
 def _fake_solver(per_chunk_flow_paths, switch_indices, epoch_duration=0.02):
     """Minimal stand-in for a solved LPFormulation: resolve_identities reads
     .per_chunk_flow_paths, .topology.switch_indices and .epoch_duration.
@@ -150,7 +156,7 @@ def test_hostB_forced_relay():
     for (U, V) in ((B, A), (B, C)):
         per_id = {}
         for p in res.pieces:
-            if (p.src_cell, p.dst_cell) == (U, V):
+            if _cells(p, m) == (U, V):
                 per_id[p.identity] = per_id.get(p.identity, 0.0) + p.volume
         assert set(per_id) == {(s, 0) for s in B_gpus}, (U, V, per_id)
         assert all(abs(v - 1.0) < 1e-6 for v in per_id.values()), per_id
@@ -159,7 +165,6 @@ def test_hostB_forced_relay():
     for dem in res.intra_demands:
         if dem.kind == "ingress_distribution" and dem.dst_gpus:
             if dem.identity[0] in B_gpus:
-                pieces_dst = {p.dst_cell for p in res.pieces if p.identity == dem.identity}
                 # target set is all gpus of whichever cell this ingress belongs to
                 assert dem.dst_gpus in (tuple(A_gpus), tuple(C_gpus)), dem
 
@@ -224,7 +229,7 @@ def test_zero_relay_symmetric():
     assert egress == [], egress   # identity native to its own gateway -> zero relay
     # each identity delivered exactly once, on its native gateway
     for p in res.pieces:
-        assert p.egress_gpu == p.identity[0], p
+        assert p.sender == p.identity[0], p
     print("  [3] symmetric case: zero egress relay OK")
 
 
@@ -326,7 +331,7 @@ def test_replay_real_allgather_json():
     for (U, V), ids in id_sets.items():
         per_id = defaultdict(list)
         for p in res.pieces:
-            if (p.src_cell, p.dst_cell) == (U, V):
+            if _cells(p, m) == (U, V):
                 s, sub = p.identity
                 per_id[(s, sub // q)].append(sub % q)
         assert set(per_id) == set(ids), (U, V, sorted(per_id), sorted(ids))
@@ -343,7 +348,7 @@ def test_replay_real_allgather_json():
     assert set(b_counts.values()) == {q}, dict(b_counts)
 
     # Host C's multi-GPU boundary to T1 (g11, g13) is actually used on some egress piece.
-    c_egress_gpus = {p.egress_gpu for p in res.pieces if p.src_cell == C}
+    c_egress_gpus = {p.sender for p in res.pieces if _cells(p, m)[0] == C}
     assert {11, 13} & c_egress_gpus, sorted(c_egress_gpus)
 
     # NATIVE-FIRST egress ordering. This used to be a hard post-hoc sort; it is now objective
@@ -351,8 +356,8 @@ def test_replay_real_allgather_json():
     # the two dominating tiers may override -- assert the aggregate, not a per-gateway inequality.
     # Aggregate mean epoch of relayed egress >= that of native egress: relays drift late, which is
     # what keeps them out of the pre-epoch-0 staging prologue.
-    native_eps = [p.send_epoch for p in res.pieces if p.identity[0] == p.egress_gpu]
-    relay_eps = [p.send_epoch for p in res.pieces if p.identity[0] != p.egress_gpu]
+    native_eps = [p.epoch for p in res.pieces if p.identity[0] == p.sender]
+    relay_eps = [p.epoch for p in res.pieces if p.identity[0] != p.sender]
     if native_eps and relay_eps:
         assert (sum(relay_eps) / len(relay_eps)) >= (sum(native_eps) / len(native_eps)), \
             (sorted(native_eps), sorted(relay_eps))
@@ -363,7 +368,8 @@ def test_replay_real_allgather_json():
     ep = schedule_json["1-Epoch_Duration"]
     used = defaultdict(float)
     for p in res.pieces:
-        used[(p.ingress_gpu, p.arrival_epoch)] += p.volume * res.scale.bytes_per_chunk
+        (b,) = p.fanout
+        used[(b.receiver, b.ready - 1)] += p.volume * res.scale.bytes_per_chunk
     over = []
     for (h, k), vol in sorted(used.items()):
         cap = topo.capacity[18][h] if topo.capacity[18][h] else topo.capacity[17][h]
@@ -381,7 +387,8 @@ def test_replay_real_allgather_json():
     # correct budget it lands on a GPU that actually wants the data instead -- strictly better, and
     # the objective's ingress tier asking for exactly that. What must hold in both worlds is that
     # more than one boundary GPU is used.
-    c_ingress = collections.Counter(p.ingress_gpu for p in res.pieces if p.dst_cell == C)
+    c_ingress = collections.Counter(p.fanout[0].receiver for p in res.pieces
+                                    if _cells(p, m)[1] == C)
     assert len(c_ingress) > 1, dict(c_ingress)
     assert max(c_ingress.values()) < sum(c_ingress.values()), dict(c_ingress)
 
@@ -438,7 +445,7 @@ def test_lexicographic_egress_dominates():
                              mapping, fine_demand, fine_topo)
     egress = [d for d in res.intra_demands if d.kind == "egress_stage"]
     assert egress == [], f"native egress was sacrificed to save an ingress relay: {egress}"
-    landed = {(p.identity, p.egress_gpu, p.ingress_gpu) for p in res.pieces}
+    landed = {(p.identity, p.sender, p.fanout[0].receiver) for p in res.pieces}
     assert landed == {((0, 0), 0, 2), ((1, 0), 1, 3)}, sorted(landed)
     # ...and the ingress relays it chose instead are emitted, one per identity, off-target.
     relays = sorted((d.identity, d.src_gpu, d.dst_gpus) for d in res.intra_demands
@@ -461,7 +468,7 @@ def test_ingress_prefers_target():
     pcp = {(0, 1, 0): [_single_switch_path(0, 1, 2, 1.0, k) for k in range(2)]}
     res = resolve_identities(_fake_solver(pcp, switch_indices=[2]),
                              mapping, fine_demand, fine_topo)
-    landing = {p.identity: p.ingress_gpu for p in res.pieces}
+    landing = {p.identity: p.fanout[0].receiver for p in res.pieces}
     for identity, h in landing.items():
         want = 2 if identity[1] // res.subdivision == 0 else 3
         assert h == want, (identity, h, want, landing)
@@ -507,7 +514,7 @@ def test_level_chunk_unit_invariance():
     ep = schedule_json["1-Epoch_Duration"]
 
     def fingerprint(res):
-        return ([(p.identity, p.egress_gpu, p.ingress_gpu, p.send_epoch, round(p.volume, 9))
+        return ([(p.identity, p.sender, p.fanout[0].receiver, p.epoch, round(p.volume, 9))
                  for p in res.pieces],
                 sorted((d.cell, d.kind, d.identity, d.src_gpu, tuple(d.dst_gpus))
                        for d in res.intra_demands),
@@ -587,24 +594,24 @@ def test_transit_route_both_legs_one_identity():
     and neither the demand anchor nor the sub-chunk index could relate them.
     """
     res = _resolve_bridged(BridgedIslandsCluster)
+    _, m = abstract(BridgedIslandsCluster(TopologyParams(name="BridgedIslandsCluster", chunk_size=1)))
     # A's chunks are (0, 0) and (1, 0); they reach cell C only through the bridge.
     for identity in ((0, 0), (1, 0)):
         legs = sorted((p for p in res.pieces if p.identity == identity
-                       and (p.src_cell, p.dst_cell) in ((_A, _B), (_B, _C))
-                       and p.send_epoch >= 1),
-                      key=lambda p: p.send_epoch)
+                       and _cells(p, m) in ((_A, _B), (_B, _C)) and p.epoch >= 1),
+                      key=lambda p: p.epoch)
         assert len(legs) == 2, f"{identity}: expected 2 transit legs, got {len(legs)}"
         first, second = legs
-        assert (first.src_cell, first.dst_cell) == (_A, _B)
-        assert (second.src_cell, second.dst_cell) == (_B, _C)
+        assert _cells(first, m) == (_A, _B)
+        assert _cells(second, m) == (_B, _C)
         assert first.identity == second.identity, "the two legs must be the same commodity"
         # The dwell the coarse solve budgets: land at the end of epoch k, leave in k+1.
-        assert second.send_epoch == first.arrival_epoch + 1, (
-            f"{identity}: transit dwell is {second.send_epoch - first.arrival_epoch}, want 1")
+        assert second.epoch == first.fanout[0].ready, (
+            f"{identity}: transit dwell is {second.epoch - first.fanout[0].ready + 1}, want 1")
         # And it really is the bridge host doing the forwarding, on the co-located GPU.
-        assert first.ingress_gpu == second.egress_gpu == 2, (
+        assert first.fanout[0].receiver == second.sender == 2, (
             f"{identity}: expected the bridge GPU 2 to land and re-send, got "
-            f"{first.ingress_gpu} -> {second.egress_gpu}")
+            f"{first.fanout[0].receiver} -> {second.sender}")
     print("  [10a] transit: both legs of one delivery carry the same identity, dwell 1 epoch, "
           "forwarded by the bridge GPU OK")
 
@@ -676,8 +683,7 @@ def test_transit_forward_release_and_deadline():
     deadline is the outbound leg's send.
     """
     a = _transit_assignment(leg_gpus=((0, 2), (3, 4)))   # lands on g2, leaves from g3
-    res = _emit_refined([a], {((0, 0), _C): (4, 5)}, q=1,
-                        scale=ChunkScale(bytes_per_chunk=1, num_chunks=1), coarse_epoch=0.02)
+    res = _emit_refined([a], {((0, 0), _C): (4, 5)}, q=1)
     fwd = [d for d in res.intra_demands if d.kind == "egress_stage" and d.cell == _B]
     assert len(fwd) == 1, f"expected one transit forward, got {fwd}"
     d = fwd[0]
@@ -704,26 +710,26 @@ def test_transit_legs_share_subchunk_index():
     refined groups.
     """
     a = _transit_assignment(leg_gpus=((0, 2), (2, 4)))
-    res = _emit_refined([a], {((0, 0), _C): (4, 5)}, q=1,
-                        scale=ChunkScale(bytes_per_chunk=1, num_chunks=1), coarse_epoch=0.02)
+    res = _emit_refined([a], {((0, 0), _C): (4, 5)}, q=1)
     assert len(res.pieces) == 2, f"a two-leg route must emit two flows, got {len(res.pieces)}"
     assert res.pieces[0].identity == res.pieces[1].identity, res.pieces
-    assert (res.pieces[0].src_cell, res.pieces[0].dst_cell) == (_A, _B)
-    assert (res.pieces[1].src_cell, res.pieces[1].dst_cell) == (_B, _C)
+    # gpus 0 (cell A) -> 2 (cell B), then 2 -> 4 (cell C): the two legs of the route
+    assert (res.pieces[0].sender, res.pieces[0].fanout[0].receiver) == (0, 2)
+    assert (res.pieces[1].sender, res.pieces[1].fanout[0].receiver) == (2, 4)
     # Fractional split: two half-volume assignments over the same route must still partition the
     # identity exactly, and every leg of both must share its own half's index.
     halves = [_transit_assignment(leg_gpus=((0, 2), (2, 4))),
               _transit_assignment(leg_gpus=((1, 2), (2, 5)))]
     halves = [replace(h, volume=0.5, exact=Fraction(1, 2)) for h in halves]
-    res2 = _emit_refined(halves, {((0, 0), _C): (4, 5)}, q=2,
-                         scale=ChunkScale(bytes_per_chunk=1, num_chunks=1), coarse_epoch=0.02)
+    res2 = _emit_refined(halves, {((0, 0), _C): (4, 5)}, q=2)
     assert len(res2.pieces) == 4, len(res2.pieces)
     by_sub = defaultdict(list)
     for p in res2.pieces:
-        by_sub[p.identity].append((p.src_cell, p.dst_cell))
+        by_sub[p.identity].append((p.epoch, p.sender, p.fanout[0].receiver))
     assert len(by_sub) == 2, f"q=2 must produce 2 sub-chunks, got {sorted(by_sub)}"
     for ident, legs in by_sub.items():
-        assert sorted(legs) == [(_A, _B), (_B, _C)], f"{ident}: legs {legs}"
+        (_e1, _a, b1), (_e2, b2, _c) = sorted(legs)
+        assert b1 == b2 == 2, f"{ident}: legs {legs} do not chain through the bridge gpu"
     print("  [10e] both legs of a route share one sub-chunk index; the cursor == q partition "
           "check holds for whole and split volumes OK")
 

@@ -493,7 +493,7 @@ def test_ncclize_emission():
                 key = fpk.get((si, addr, src, dst))
                 fid = ids.setdefault((src, dst, key), len(ids))
                 manifest.append({'flow_id': fid, 'step': si, 'src': src, 'dst': dst,
-                                 'path_key': key})
+                                 'dsts': [dst], 'path_key': key})
         routes = build_switch_routes(manifest, srm, topo.programmable_switch_indices,
                                      physical_port=topo.physical_port, gpu_rank_map=grm)
         per_edge = collections.defaultdict(set)
@@ -513,7 +513,7 @@ def test_ncclize_emission():
     # The split moves PORT NUMBERS and nothing else. The debug fields describe the route,
     # which the split does not touch, so they must be identical between the two topologies.
     def debug_only(routes):
-        return {s: {f: {k: v for k, v in e.items() if k != 'port'}
+        return {s: {f: {k: v for k, v in e.items() if k != 'ports'}
                     for f, e in sw.items()} for s, sw in routes['switches'].items()}
     assert debug_only(r0) == debug_only(r1), "the split perturbed the route itself"
     assert r0['switch_id_map'] == r1['switch_id_map']
@@ -523,7 +523,8 @@ def test_ncclize_emission():
     # leaf->spine0 port differs from the split one's precisely because the split leaf plugs two
     # cables where the unsplit leaf plugs one, which shifts every port after them.
     for r in (r0, r1):
-        assert all('port' in e for sw in r['switches'].values() for e in sw.values()), \
+        assert all(len(e.get('ports', ())) == 1 for sw in r['switches'].values()
+                   for e in sw.values()), \
             "an entry reached the table with no egress port"
 
     # Every programmed port is the port the ROUTE's own next raw hop is plugged into -- checked
@@ -545,7 +546,7 @@ def test_ncclize_emission():
                 continue
             entry = r1['switches'][str(dense[0])][str(rec['flow_id'])]
             cable = cables[i + 1] if cables is not None else 0
-            assert entry['port'] == topo1.physical_port(raw, raw_path[i + 1], cable), (rec, entry)
+            assert entry['ports'] == [topo1.physical_port(raw, raw_path[i + 1], cable)], (rec, entry)
             checked += 1
             split_checked += cables is not None
     assert checked and split_checked, "no port-qualified entry reached the forwarding table"

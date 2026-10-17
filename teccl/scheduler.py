@@ -185,7 +185,8 @@ class TECCLSolver(object):
 
         # LP formulation: collective-agnostic, demand-matrix driven.
         assert formulation == Formulation.LP
-        if collective == Collective.ALLGATHER and user_input.instance.switch_copy:
+        if collective == Collective.ALLGATHER and resolve_switch_copy(
+                user_input.instance, user_input.instance.level_depth):
             raise ValueError(
                 "AllGather with the LP formulation requires switch_copy=False: the LP aggregates "
                 "flow per source and cannot represent switch/GPU copy (replication).")

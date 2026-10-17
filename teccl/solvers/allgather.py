@@ -3,6 +3,7 @@ import logging
 import math
 import time
 from itertools import product
+from types import SimpleNamespace
 from typing import Dict, List, Set, Tuple
 
 import gurobipy as gp
@@ -10,6 +11,7 @@ import numpy as np
 from gurobipy import GRB
 from teccl.gurobi_env import get_gurobi_env
 from teccl.input_data import *
+from teccl.sends import Branch, Send
 from teccl.solvers.base_formulation import BaseFormulation
 from teccl.topologies.topology import Topology
 
@@ -23,6 +25,8 @@ class AllGatherFormulation(BaseFormulation):
         # solver/log/model labels follow the collective actually being solved so an alltoall run
         # does not overwrite an allgather log.
         self.collective_name = user_input.instance.collective.name.lower()
+        # Whether this level's switches copy (InstanceParams.switch_copy may be per level).
+        self.switch_copy = resolve_switch_copy(user_input.instance, user_input.instance.level_depth)
         self.solver_name = f"{user_input.instance.collective.name.title()}_MILP"
         self.required_flows = []
         self.flows_str_info = {}
@@ -135,7 +139,7 @@ class AllGatherFormulation(BaseFormulation):
         is 1: a same-class copy downstream of a copying switch is that switch's job, and a GPU
         needs a chunk once, so a second same-class copy on one link only spends its capacity.
         Concurrent copies then exist only across classes. Without switch copy, max_copies."""
-        return 1 if self.user_input.instance.switch_copy else self.max_copies(s, c)
+        return 1 if self.switch_copy else self.max_copies(s, c)
 
     def send_bound(self, s: int, i: int, j: int, c: int, k: int) -> int:
         """Upper bound of flow[s][i][j][c][k]: how many copies that send may carry (1 if none)."""
@@ -452,7 +456,7 @@ class AllGatherFormulation(BaseFormulation):
 
     def _switch_egress_constr(self, inflow: gp.LinExpr, outs: List, tag: str) -> None:
         """What a switch may send in one epoch given what reaches it (`inflow`)."""
-        if not self.user_input.instance.switch_copy:
+        if not self.switch_copy:
             '''
                 switch no-copy version. For every outgoing chunk there has to be a corresponding incoming chunk.
             '''
@@ -615,7 +619,7 @@ class AllGatherFormulation(BaseFormulation):
         #    (and prunes) -- no constraint required.
         # Only the copy (max-egress) case lets a circulation manufacture an ungrounded
         # delivery, which is the physically-unrealizable phantom this constraint forbids.
-        if not (self.user_input.instance.switch_pipeline and self.user_input.instance.switch_copy):
+        if not (self.user_input.instance.switch_pipeline and self.switch_copy):
             return
         switches = set(self.topology.switch_indices)
         ss_links = [(a, b) for a in switches for b in switches
@@ -992,8 +996,8 @@ class AllGatherFormulation(BaseFormulation):
             `pace` is the class it forwards: only a same-class send reaching d in that epoch fed it.
 
             Memoized on (s, d, c, k, pace): the result is a pure function of `flows` and the query,
-            independent of any back-trace path, so caching is sound. The no-copy switch rule
-            is applied AFTER this lookup (as `claims` in _dfs_trace_to_source), never by
+            independent of any back-trace path, so caching is sound. Which inputs the forest
+            still has free is decided AFTER this lookup (in _dfs_trace_to_source), never by
             mutating `flows`, so the memo never goes stale.
         """
         key = (s, d, c, k, pace)
@@ -1026,19 +1030,45 @@ class AllGatherFormulation(BaseFormulation):
         pred_memo[key] = viable_flows
         return viable_flows
 
+    def stream_copies(self, f: Tuple[int, int, int, int, int], b: int) -> int:
+        """How many class-b copies the solved send f carries. A flow var counts copies (pace
+        classes made it integer), and a send split over several classes counts each in its own
+        pace var; a send with one live class keeps its count in the flow var itself."""
+        classes = self._pace(*f) if self._paced(f[1], f[2]) else {}
+        if len(classes) > 1:
+            var = classes.get(b)
+            return int(round(var.X)) if var is not None else 0
+        return self.flow_copies(*f)
+
     def _dfs_trace_to_source(self, flows: Set[Tuple[int, int, int, int, int]], s: int, node: int, c: int, k: int,
                              visited: frozenset, pred_memo: Dict, buffers: Dict, budget: List[int],
-                             claims: Dict = None, out_flow: Tuple[int, int, int, int, int] = None,
-                             out_pace: int = None) -> List[Tuple[Tuple[int, int, int, int, int], int]]:
+                             forest: SimpleNamespace, out_flow: Tuple[int, int, int, int, int] = None,
+                             out_pace: int = None):
         """
-            Trace how `node` received chunk (s, c) by epoch k back to the source, returning
-            the list of (flow, pace class) [into_node, ..., from_source] or None if there is no
-            acyclic route. `out_pace` is the class of `out_flow` the trace arrived on: a switch
-            forwards in the class it received. This is a depth-first search WITH BACKTRACKING: when a switch has
-            several viable predecessors (common under switch_copy) the greedy min-epoch pick
-            may dead-end at a cut-through top-switch mesh even though a real predecessor
-            reaches the source; on a dead end we try the next predecessor instead of dropping
-            the whole demand.
+            Trace how `node` received chunk (s, c) by epoch k back to what is already known --
+            the source, or the forest of streams committed for earlier demands -- returning
+            (hops, anchor), or None if there is no acyclic route.
+
+              hops:   [(flow, pace class), ...] the NEW streams, destination-first;
+              anchor: the committed stream the last of them continues (a switch input it is copied
+                      from, or the delivery of the GPU it leaves), None when it leaves the source.
+
+            A stream is one physical transmission, `(flow, class, copy)`: a flow var counts
+            copies (stream_copies), so one flow tuple can be several. `out_pace` is the class of
+            `out_flow`, the switch output this call traces the input of: a switch forwards in the
+            class it received. At a switch the forest decides which inputs are free:
+              * switch copy: an input already on the forest is JOINED -- the switch replicates it,
+                so a second output reuses it rather than tracing another transmission;
+              * no copy: each copy of an input feeds one output, so an input whose copies are all
+                committed is not a candidate (this replaced the per-flow `claims` map).
+            A GPU already on the forest is a join too: it holds the chunk, and the stream that
+            delivered it is the parent of whatever it sends.
+
+            This is a depth-first search WITH BACKTRACKING: when a switch has several viable
+            predecessors (common under switch_copy) the greedy min-epoch pick may dead-end at a
+            cut-through top-switch mesh even though a real predecessor reaches the source; on a
+            dead end we try the next predecessor instead of dropping the whole demand. Committed
+            inputs are tried first, so the forest shares as much as the solution allows.
 
             `visited` holds the (node, send_epoch) vertices already on the current path. In
             the time-expanded graph GPU forwarding strictly advances the epoch, so the only
@@ -1048,31 +1078,33 @@ class AllGatherFormulation(BaseFormulation):
             bounds recursion: every step consumes a distinct (node, epoch), so depth is at
             most num_nodes * num_epochs; `budget` caps total node expansions to keep a
             pathological (exponential) search from running away.
-
-            `claims` (no-copy switches only) maps a flow INTO a switch to the flows OUT of the
-            switch it already feeds on committed paths; `out_flow` is the switch-outgoing flow
-            this call is tracing for, set when `node` is a switch. An incoming flow whose every
-            copy (flow_copies) is claimed by OTHER outgoing flows is unavailable -- a no-copy
-            switch forwards one copy per copy received -- but one claimed by the SAME outgoing
-            flow is a shared path prefix and is reused freely (e.g. A -> T0 -> B committed for B,
-            then reused by C's path through B).
         """
         if budget[0] <= 0:
             return None
         budget[0] -= 1
+        copy = self.switch_copy
         pace = out_pace if out_flow is not None and self._paced(out_flow[1], out_flow[2]) else None
-        for f, f_pace in self.get_viable_predecessors(flows, s, node, c, k, pred_memo, pace):
+        candidates = self.get_viable_predecessors(flows, s, node, c, k, pred_memo, pace)
+        if out_flow is not None and copy:
+            candidates = sorted(candidates, key=lambda fb: forest.used.get(fb, 0) == 0)
+        for f, f_pace in candidates:
             pred = f[1]
             if (pred, f[4]) in visited:
                 # picking f would revisit a same-epoch vertex -> a zero-time cycle; skip it.
                 continue
-            if claims is not None and out_flow is not None and not self._claimable(claims, f, out_flow):
-                # every copy this switch received on f already feeds a different outgoing hop.
-                continue
+            if out_flow is not None:
+                used = forest.used.get((f, f_pace), 0)
+                if copy and used:
+                    return [], (f, f_pace, 0)
+                if not copy and used >= self.stream_copies(f, f_pace):
+                    continue
             if pred == s:
                 # reached the chunk source node.
-                return [(f, f_pace)]
+                return [(f, f_pace)], None
             if pred not in self.topology.switch_indices:
+                held = forest.delivered.get((s, c, pred))
+                if held is not None:
+                    return [(f, f_pace)], held
                 # A GPU relays out of its buffer; the epoch it received the chunk is given by
                 # buffer. Without a buffer var this branch can't be continued -> try the next.
                 if (s, pred, c) not in buffers:
@@ -1083,18 +1115,52 @@ class AllGatherFormulation(BaseFormulation):
                 # get_viable_predecessors resolves the exact offset per incoming link type.
                 nk = f[4] - 1
             sub = self._dfs_trace_to_source(
-                flows, s, pred, c, nk, visited | {(pred, f[4])}, pred_memo, buffers, budget,
-                claims=claims,
+                flows, s, pred, c, nk, visited | {(pred, f[4])}, pred_memo, buffers, budget, forest,
                 out_flow=f if pred in self.topology.switch_indices else None, out_pace=f_pace)
             if sub is not None:
-                return [(f, f_pace)] + sub
+                return [(f, f_pace)] + sub[0], sub[1]
         return None
 
-    def _claimable(self, claims: Dict, in_flow: Tuple, out_flow: Tuple) -> bool:
-        """Whether a no-copy switch can feed out_flow from in_flow: it already does, or in_flow
-        carried a copy (flow_copies) that no committed path has claimed yet."""
-        taken = claims.get(in_flow, ())
-        return out_flow in taken or len(taken) < self.flow_copies(*in_flow)
+    def _commit(self, forest: SimpleNamespace, s: int, c: int, hops: List, anchor) -> None:
+        """Add a traced path's new streams to the forest, source side first."""
+        parent = anchor
+        for f, b in reversed(hops):
+            stream = (f, b, forest.used.get((f, b), 0))
+            forest.used[(f, b)] = stream[2] + 1
+            forest.parent[stream] = parent
+            if parent is not None:
+                forest.children[parent].append(stream)
+            if f[2] not in self.topology.switch_indices:
+                forest.delivered[(s, c, f[2])] = stream
+            parent = stream
+
+    def _sends_of_forest(self, forest: SimpleNamespace) -> List[Send]:
+        """One Send per committed stream leaving a non-switch node, with every stream it reaches
+        through switches as its tree. Under cut-through a switch forwards in the class it received,
+        so the whole tree is one class and one span; a store-and-forward fabric (switch_pipeline
+        off) holds each hop at its own beta and the send is charged its slowest."""
+        sends = []
+        for head in forest.parent:
+            f, b, _ = head
+            if f[1] in self.topology.switch_indices:
+                continue
+            branches, classes = [], set()
+            stack = [(head, ())]
+            while stack:
+                stream, via = stack.pop()
+                g, gb, _n = stream
+                classes.add(gb)
+                if g[2] in self.topology.switch_indices:
+                    stack.extend((child, via + (g[2],)) for child in forest.children[stream])
+                else:
+                    branches.append(Branch(g[2], via, g[4] + self.hop_timing(g[1], g[2], gb)[0]))
+            if self.user_input.instance.switch_pipeline and len(classes) != 1:
+                raise AssertionError(f"send {head} spans pace classes {classes}; a cut-through "
+                                     f"traversal keeps one class end to end")
+            sends.append(Send(identity=(f[0], f[3]), sender=f[1], epoch=f[4],
+                              fanout=tuple(branches), span=max(classes) + 1))
+        sends.sort(key=lambda x: (x.epoch, x.sender, x.identity, x.fanout))
+        return sends
 
     def chunk_flow_path_to_string(self, chunk_path: List[Tuple[int, int, int, int, int]]) -> Tuple[int, List[str]]:
         """
@@ -1160,14 +1226,18 @@ class AllGatherFormulation(BaseFormulation):
         # (s, d, c, k) -> [(s, i, d, c, k'), ...]. Memoizes the viable incoming flows that
         # could have delivered chunk (s, c) to d by epoch k (a pure function of `flows`).
         pred_memo = {}
-        # No-copy switches: flow into a switch -> the one flow out of it that it feeds on a
-        # committed path (see _dfs_trace_to_source). None under switch_copy, where a switch may
-        # fan a copy out to any number of receivers.
-        claims = None if self.user_input.instance.switch_copy else {}
+        # Every demand's trace is committed into ONE forest of streams (stream = (flow, pace class,
+        # copy), one physical transmission), so a later trace joins what is already there instead
+        # of describing the same transmission again: a GPU that holds the chunk, or -- under
+        # switch copy -- a switch input that is already being replicated.
+        #   parent:    stream -> the stream it continues (None when it leaves the source)
+        #   children:  the inverse, for grouping the forest into sends
+        #   used:      (flow, class) -> streams of it committed so far
+        #   delivered: (s, c, non-switch node) -> the stream that lands the chunk there
+        forest = SimpleNamespace(parent={}, children=defaultdict(list), used={}, delivered={})
         # The traced paths as flow tuples, keyed like the demand, and the demands no acyclic path
-        # was found for. Both are for consumers that need more than the strings below -- the
-        # hierarchical solver reads the routing off the paths, and must treat an untraced demand
-        # as a missing delivery rather than a warning.
+        # was found for. The paths are a per-demand VIEW of the forest (walk a demand's delivery
+        # up to the source); `self.sends` below is the forest itself.
         self.per_demand_paths = {}
         # (s, d, c) -> the pace class of each hop of per_demand_paths[(s, d, c)], aligned with it
         self.per_demand_classes = {}
@@ -1195,37 +1265,30 @@ class AllGatherFormulation(BaseFormulation):
             # A budget bounds the (worst-case exponential) search. This supersedes the earlier
             # unsound whole-cycle removal: with binary flows a legit forward edge and a wasteful
             # reverse edge form one 2-cycle, so removing the cycle would delete the legit edge.
-            budget = [50 * len(self.nodes) * (self.num_epochs + 1)]
-            traced = self._dfs_trace_to_source(
-                flows, s, d, c, demand_met_k, frozenset(), pred_memo, buffers, budget,
-                claims=claims)
-            if traced is None:
-                # No acyclic route to source: the solver delivers this demand only via a
-                # same-epoch circulation (a phantom cut-through switch cycle -- a formulation
-                # artifact), or the search budget was exhausted. Skip this demand instead of
-                # hanging/crashing; flows collected for other demands are unaffected.
-                logging.warning(
-                    f"Could not trace demand s_{s} d_{d} c_{c} back to source "
-                    f"(no acyclic path -- likely a same-epoch switch circulation); skipping.")
-                self.untraced_demands.append((s, d, c))
-                continue
-            my_path = [f for f, _pace in traced]
-            for f in my_path:
-                required_flows.add(f)
+            if (s, c, d) not in forest.delivered:
+                budget = [50 * len(self.nodes) * (self.num_epochs + 1)]
+                traced = self._dfs_trace_to_source(
+                    flows, s, d, c, demand_met_k, frozenset(), pred_memo, buffers, budget, forest)
+                if traced is None:
+                    # No acyclic route to source: the solver delivers this demand only via a
+                    # same-epoch circulation (a phantom cut-through switch cycle -- a formulation
+                    # artifact), or the search budget was exhausted. Skip this demand instead of
+                    # hanging/crashing; flows collected for other demands are unaffected.
+                    logging.warning(
+                        f"Could not trace demand s_{s} d_{d} c_{c} back to source "
+                        f"(no acyclic path -- likely a same-epoch switch circulation); skipping.")
+                    self.untraced_demands.append((s, d, c))
+                    continue
+                self._commit(forest, s, c, *traced)
+            my_path, classes = [], []
+            stream = forest.delivered[(s, c, d)]
+            while stream is not None:
+                my_path.append(stream[0])
+                classes.append(stream[1])
+                stream = forest.parent[stream]
+            required_flows.update(my_path)
             self.per_demand_paths[(s, d, c)] = my_path
-            self.per_demand_classes[(s, d, c)] = [pace for _f, pace in traced]
-            # No-copy: a switch relays a single copy, so a committed path CLAIMS each flow into a
-            # switch for the one outgoing flow it fed. Later traces may reuse the same in -> out
-            # pair (a shared prefix, e.g. through a relay GPU that also wants the chunk) but not
-            # branch the copy elsewhere. This used to delete the incoming flow outright, which
-            # also forbade the shared prefix and silently dropped every demand routed through a
-            # relay that had already been served. Claims do not change `flows`, so pred_memo
-            # stays valid.
-            if claims is not None:
-                for out_f, in_f in zip(my_path, my_path[1:]):
-                    if in_f[2] in self.topology.switch_indices:
-                        if self._claimable(claims, in_f, out_f):
-                            claims.setdefault(in_f, set()).add(out_f)
+            self.per_demand_classes[(s, d, c)] = classes
             chunk_str_path = self.chunk_flow_path_to_string(my_path)
             chunk_paths[f"Demand at {d} for chunk {c} from {s} met by epoch {demand_met_k}"] = [
                 x[1] for x in chunk_str_path]
@@ -1233,6 +1296,8 @@ class AllGatherFormulation(BaseFormulation):
                 required_flows_str.add(
                     (epoch, f"Chunk {c} from {s} traveled over {cpath}"))
 
+        # The authoritative result: one Send per physical transmission (teccl/sends.py).
+        self.sends = self._sends_of_forest(forest)
         logging.debug(f'Number of flows after pruning: {len(required_flows)}')
         required_flows = list(required_flows)
         required_flows.sort(key=lambda x: x[4])
@@ -1259,6 +1324,16 @@ class AllGatherFormulation(BaseFormulation):
         flows_str_info['7-Flows'] = [x[1] for x in required_flows_str]
         flows_str_info['8-Chunk paths'] = chunk_paths
         flows_str_info["9-Chunk_Size"] = self.topology.chunk_size
+        # The transmissions themselves (teccl_ncclize.parse_sends): a switch copy is ONE record
+        # with a branch per receiver, and each send is paced by its own pace class -- held for
+        # `span` epochs at chunk / (span * epoch) -- rather than at one rate for every op.
+        flows_str_info["10-Sends"] = [
+            {"chunk": x.identity[1], "from": x.identity[0], "sender": x.sender, "epoch": x.epoch,
+             "span": x.span, "rate": self.topology.chunk_size / (x.span * self.epoch_duration),
+             "volume": x.volume,
+             "branches": [{"to": b.receiver, "via": list(b.via), "ready": b.ready}
+                          for b in x.fanout]}
+            for x in self.sends]
         return required_flows, flows_str_info
 
     def find_demand_satisfied_k(self):

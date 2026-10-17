@@ -183,6 +183,12 @@ def resolve_formulation(instance: "InstanceParams", depth: int = 0) -> Optional[
     return Formulation(f)
 
 
+def resolve_switch_copy(instance: "InstanceParams", depth: int = 0) -> bool:
+    """Whether switches copy at hierarchy level `depth` (scalar or per-level list). A flat solve is
+    depth 0. See InstanceParams.switch_copy."""
+    return bool(_at_depth(instance.switch_copy, depth, "switch_copy"))
+
+
 MILP_CHUNKING_POLICIES = ("fine", "holder", "cell")
 
 
@@ -226,7 +232,12 @@ class InstanceParams:
     epsilon: float = pow(10, -1)
     alpha_threshold: float = 0.1 # Link alpha to epoch duration ratio threshold below which alpha is taken as 0
     alpha_epoch_duration_ratio_max: int = 200 # Maximum ratio of alpha to epoch duration (if exceeded, epoch duration is increased)
-    switch_copy: bool = True # If True, switch can copy the chunks
+    # Whether a switch can copy a chunk to several out-links (scalar or a per-level LIST, see
+    # resolve_switch_copy). Read at EVERY level that solves a switch fabric: a MILP level's network
+    # switches, and a bottom cell's NVSwitch (the crossbar row turns a fan-out into one multicast).
+    # The default copies at the root and nowhere below it: copying inside a cell needs NVSwitch
+    # multicast (NVLS-class hardware), so it is opt-in -- give a list, or a scalar for every level.
+    switch_copy: Union[bool, List[bool]] = (True, False)
     # Opt-in post-solve pass (LP only): average the finished solution over the topology's
     # symmetry group, projecting it onto the symmetric optimum. Default OFF because it changes
     # nothing about the makespan and is not always wanted -- it DENSIFIES the flow, which is how

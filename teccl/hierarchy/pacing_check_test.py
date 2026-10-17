@@ -15,7 +15,6 @@ Run from the repo root:
 import ast, types
 from collections import defaultdict
 from typing import Dict, Tuple, Optional, List
-from dataclasses import dataclass
 
 src = open('teccl/hierarchy/flat_schedule.py').read()
 fn = next(n for n in ast.parse(src).body
@@ -24,10 +23,11 @@ ns = dict(defaultdict=defaultdict, Dict=Dict, Tuple=Tuple, Optional=Optional, Li
 exec(compile(ast.Module(body=[fn], type_ignores=[]), '<fn>', 'exec'), ns)
 check = ns['check_network_pacing']
 
-@dataclass
-class P:
-    egress_gpu: int; ingress_gpu: int; via_switches: tuple
-    send_epoch: int; volume: float; rate: float
+def P(sender, receiver, via, epoch, volume, rate):
+    """A one-branch network send of `volume` at `rate`, i.e. held for volume / rate epochs."""
+    return types.SimpleNamespace(identity=(sender, 0), sender=sender, epoch=epoch,
+                                 span=round(volume / rate), volume=volume,
+                                 fanout=(types.SimpleNamespace(receiver=receiver, via=via),))
 class Res:
     def __init__(self, pieces):
         self.pieces = pieces
@@ -73,9 +73,18 @@ run('P2 same-epoch sends on two uplinks do not pin each other',
 
 run('epoch 0 is never a residual', [P(0,5,(9,),0,1,1)], [])
 
-run('unpaced flows supply no clock',
-    [P(0,5,(9,),0,1,1), P(0,5,(9,),2,1,1),
-     P(7,4,(9,),0,1,1), P(7,0,(9,),1,1,None)], [(0,2)])
+# A send's finish is its epoch + span: a 2-epoch send started at 0 pins the send at 2, not 1.
+run('a multi-epoch send pins the send that starts as it finishes',
+    [P(0,5,(9,),0,2,1), P(0,5,(9,),2,1,1)], [])
+
+# One transmission with two branches is ONE clock at its sender and an arrival at each receiver.
+def copy_send(epoch):
+    s = P(7, 0, (9,), epoch, 1, 1)
+    s.fanout = s.fanout + (types.SimpleNamespace(receiver=4, via=(9,)),)
+    return s
+
+run('a switch copy lands an arrival tick on every receiver',
+    [P(0,5,(9,),2,1,1), P(4,5,(9,),2,1,1), copy_send(1), P(7,6,(8,),0,1,1)], [])
 
 run('residual reported once per (gpu, epoch)',
     [P(0,5,(9,),0,1,1), P(0,5,(9,),2,1,1), P(0,6,(8,),2,1,1)], [(0,2)])

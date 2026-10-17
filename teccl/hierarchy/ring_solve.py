@@ -69,7 +69,7 @@ from teccl.hierarchy.cell import Cell
 # base-case solvers would put the same work in different coarse epochs -- the exact drift
 # teccl/hierarchy/bands.py exists to prevent. IntraFlow is likewise the one output type the stitch
 # reads, so re-declaring it here would fork the schedule format.
-from teccl.hierarchy.crossbar_solve import (IntraFlow, _Job, _assign_bands, band_rounds,
+from teccl.hierarchy.crossbar_solve import (IntraFlow, _Job, _assign_bands, band_rounds, unicast,
                                             is_crossbar, rounds_in)
 from teccl.hierarchy.reconstruct import Identity, IntraCellDemand
 
@@ -690,8 +690,8 @@ def _schedule_band(jobs: List[_Job], order: RingOrder, band: int, link_cap: floa
                 continue          # this edge is busy in one of the rounds the job would span
             for i in range(span):
                 link_used[(j.src, j.dst, r + i)] += needs[i]
-            flows.append(IntraFlow(cell=cell_id, identity=j.identity, sender=j.src, receiver=j.dst,
-                                   via_switch=order.via_switch, volume=j.volume, band=band,
+            flows.append(IntraFlow(cell=cell_id, identity=j.identity, sender=j.src,
+                                   fanout=unicast(j.dst, order.via_switch), volume=j.volume, band=band,
                                    local_round=r, span=span, kind=j.kind, hard=j.hard,
                                    identities=j.identities))
             j.remaining = 0.0

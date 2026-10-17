@@ -25,6 +25,8 @@ alltoall) instead of the LP. Branch `hierarchical-milp`, cut from
 >   `dfs_remove_unnecessary_flows` deleted a switch's in-flow after the first traced path, so every
 >   later demand sharing that prefix through a relay GPU was silently skipped. That is exactly the
 >   "cell wants and relays" case. It is now a claims map (in-flow → the one out-flow it feeds).
+  (Since 2026-10-13 the traces commit into one forest of streams instead; see
+  `switch_copy_design.md` §4.)
 >   A/B on identical solves: flat output unchanged wherever no demand had been skipped.
 > * **Leg epochs are normalized.** The MILP's cut-through credits a switch→GPU hop in the epoch
 >   the chunk is already buffered, so `arrival_epoch = landing − 1`
@@ -35,6 +37,10 @@ alltoall) instead of the LP. Branch `hierarchical-milp`, cut from
 >   `_place_downstream_legs`. The LP path stays untouched by construction. Shared legs are
 >   canonicalized in `extract_trees` (legs carry their route's origin, which otherwise made a
 >   shared leg compare unequal). Step B drops the duplicate pieces under `copy_aware=True`.
+>   **SUPERSEDED 2026-10-13** by `switch_copy_design.md`: the extraction outputs `Send`s (one per
+>   transmission, a switch copy being one send with several branches), and the level is placed
+>   by one walk over them (`milp_routing.lower_integral` / `_place_column`). `extract_trees`,
+>   `_place_tree_route`, `placed_legs`, `send_group` and `copy_aware` are gone.
 > * **One integral MIP per source cell** (scipy/HiGHS); cells are solved in order against a
 >   shared egress ledger.
 > * **The transit guard was narrowed.** `flat_schedule.assert_native_ownership` now accepts a

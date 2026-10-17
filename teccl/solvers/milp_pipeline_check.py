@@ -343,7 +343,7 @@ def solve(name):
         untraced=[list(x) for x in b.untraced_demands],
         paths=[[list(k), [list(h) for h in path]] for k, path in b.per_demand_paths.items()],
         met=[[list(k), v] for k, v in met.items()],
-        switch_copy=b.user_input.instance.switch_copy,
+        switch_copy=b.switch_copy,
         classes=([[list(k), v] for k, v in b.per_demand_classes.items()]
                  if hasattr(b, "per_demand_classes") else None),
         copies=([[list(h), b.flow_copies(*h)] for h in sorted(hops)]

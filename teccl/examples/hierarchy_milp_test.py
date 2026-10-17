@@ -3,8 +3,12 @@
 Gurobi-free:
   [1] the count demand: every milp_chunking policy's bundle size, column count and anchor
   [2] integral identity resolution UNCROSSES the MILP's arbitrary labels (the gpu0/gpu1 case)
-  [3] a tree's shared leg is placed once and emitted once; the level stays Q == 1
-  [4] occupancy pacing, and the rate check counting a multi-epoch piece in every epoch it covers
+  [3] a column's sends are each placed once (A -> B -> C: two sends, co-located forward); Q == 1
+  [4b] a transit cell lands where it can also forward
+  [4c] a switch copy is ONE fine send with two branches, one gateway, one uplink charge
+  [4d] a child level's switch copy stays one transfer through rebase and the stitch
+  [4e] with switch copy, a cell's NVSwitch fan-out is one multicast transfer
+  [4] occupancy pacing, and the rate check counting a multi-epoch send in every epoch it covers
   [5] a hierarchical level defaults to LP; per-level formulation / chunking lists resolve by depth
 
 Gurobi (size-limited license is enough; SKIPPED if the model does not fit):
@@ -20,12 +24,12 @@ import tempfile
 from types import SimpleNamespace
 
 from teccl.hierarchy.abstract import abstract, coarsify_demand
-from teccl.hierarchy.milp_routing import (MilpGroup, PreservingDemand, assign_identities_integral,
-                                          coarsify_demand_preserving)
-from teccl.hierarchy.reconstruct import (IdentityResolution, ResolvedPiece, _CoarsePiece,
-                                         _CoarseRoute, _assert_rate_within_capacity, _piece_rate,
-                                         build_child_problems)
+from teccl.hierarchy.milp_routing import (MilpGroup, PreservingDemand, _place_column,
+                                          coarsify_demand_preserving, lower_integral)
+from teccl.hierarchy.reconstruct import (IdentityResolution, _assert_rate_within_capacity,
+                                         snap_tolerance)
 from teccl.hierarchy.scale import ChunkScale
+from teccl.sends import Branch, Send, rate
 from teccl.input_data import (Collective, EpochType, Formulation, InstanceParams, ObjectiveType,
                               SolutionMethod, TopologyParams, UserInputParams,
                               resolve_milp_chunking)
@@ -85,50 +89,46 @@ def test_count_demand():
     print("  [1] count demand: fine/holder/cell/int bundle sizes, column counts and anchor OK")
 
 
-def _leg(src, dst, egress_nb, ingress_nb, via, epoch):
-    return _CoarsePiece(src_cell=src, dst_cell=dst, egress_neighbor=egress_nb,
-                        ingress_neighbor=ingress_nb, via_switches=via, volume=1.0,
-                        send_epoch=epoch, arrival_epoch=epoch, origin=(src, src))
+def _send(column, src, epoch, *branches):
+    """A coarse send from cell `src` in `epoch`; each branch is (dest cell, coarse switch path),
+    landing the epoch after (ready = epoch + 1)."""
+    return Send(identity=column, sender=src, epoch=epoch,
+                fanout=tuple(Branch(dst, via, epoch + 1) for dst, via in branches))
 
 
 def _crossed_fixture():
     """Host A of HeteroTaperedCluster: g0 owns the uplink to T0, g1 the one to T1, g2/g3 own none.
 
-    Four MILP columns, all of A's allgather data, each a tree to B and C. The MILP's labels make
-    column i carry identity (i, 0) -- and they are CROSSED: column 0 leaves on T1 (g1's uplink)
-    while identity (0, 0) lives on g0, and column 1 leaves on T0 (g0's) while (1, 0) lives on g1.
-    Read off the labels, that is two egress relays the coarse level cannot see. Columns 2 and 3 do
-    the same one epoch later.
+    Four MILP columns, all of A's allgather data, each one send that a switch copies to B and C. The
+    MILP's labels make column i carry identity (i, 0) -- and they are CROSSED: column 0 leaves on T1
+    (g1's uplink) while identity (0, 0) lives on g0, and column 1 leaves on T0 (g0's) while (1, 0)
+    lives on g1. Read off the labels, that is two egress relays the coarse level cannot see.
+    Columns 2 and 3 do the same one epoch later.
     """
     topo, _coarse, mapping = _hetero()
     A, B, C, T0, T1 = 0, 1, 2, 3, 4
-    t0, t1 = mapping.coarse_passthrough[T0], mapping.coarse_passthrough[T1]
-    trees = {}
+    columns = {}
     for col, (nb, epoch) in enumerate([(T1, 0), (T0, 0), (T1, 1), (T0, 1)]):
         if nb == T1:
-            to_c = _leg(A, C, T1, T1, (t1,), epoch)
-            to_b = _leg(A, B, T1, T0, (t1, t0), epoch)
+            columns[(A, col)] = [_send((A, col), A, epoch, (B, (T1, T0)), (C, (T1,)))]
         else:
-            to_c = _leg(A, C, T0, T0, (t0,), epoch)
-            to_b = _leg(A, B, T0, T0, (t0,), epoch)
-        trees[(A, col)] = {B: _CoarseRoute(origin=(A, B), legs=(to_b,), volume=1.0),
-                           C: _CoarseRoute(origin=(A, C), legs=(to_c,), volume=1.0)}
+            columns[(A, col)] = [_send((A, col), A, epoch, (B, (T0,)), (C, (T0,)))]
     ids = [(g, 0) for g in range(4)]
     demand = PreservingDemand(
         tensor=[], b=1, policy="fine",
         groups=[MilpGroup(cell=A, dest_cells=(B, C), identities=ids,
                           holders={d: d[0] for d in ids}, columns=[0, 1, 2, 3])])
-    return topo, mapping, trees, demand
+    return topo, mapping, columns, demand
 
 
 def test_uncrossed():
-    topo, mapping, trees, demand = _crossed_fixture()
+    topo, mapping, columns, demand = _crossed_fixture()
     fine = build_demand(Collective.ALLGATHER, topo, 1)
-    assignments, targets, epoch = assign_identities_integral(trees, demand, mapping, fine, topo,
-                                                             epoch_duration=0.04)
+    res = lower_integral(columns, demand, mapping, fine, topo, epoch_duration=0.04)
     egress = {}
-    for a in assignments:
-        egress.setdefault(a.identity, set()).add((a.egress_gpu, a.route.first.send_epoch))
+    for p in res.pieces:
+        if p.sender in range(4):                  # host A's sends
+            egress.setdefault(p.identity, set()).add((p.sender, p.epoch))
     assert egress[(0, 0)] == {(0, 0)}, f"g0's data must leave on g0's own uplink: {egress}"
     assert egress[(1, 0)] == {(1, 0)}, f"g1's data must leave on g1's own uplink: {egress}"
     # g2/g3 own no uplink, so they relay whatever they ride -- and the epoch tier puts the relayed
@@ -138,20 +138,14 @@ def test_uncrossed():
     assert relays == 2, (relays, egress)
     print(f"  [2] crossed MILP labels uncrossed: g0 -> T0, g1 -> T1 natively, only the 2 "
           f"uplink-less GPUs relay, and they take epoch 1")
-    return assignments, targets, mapping, fine, topo
 
 
 def test_shared_leg_once():
-    # One tree, A -> B and A -> B -> C (B wants AND forwards), through the bridged co-located host.
+    # One column, A -> B then B -> C (B wants AND forwards), through the bridged co-located host.
     topo = BridgedIslandsCluster(TopologyParams(name="BridgedIslandsCluster", chunk_size=1))
     _coarse, mapping = abstract(topo)
     A, B, C, T0, T1 = 0, 1, 2, 3, 4
-    t0, t1 = mapping.coarse_passthrough[T0], mapping.coarse_passthrough[T1]
-    ab = _leg(A, B, T0, T0, (t0,), 0)
-    bc = _leg(B, C, T1, T1, (t1,), 1)
-    trees = {(A, c): {B: _CoarseRoute(origin=(A, B), legs=(ab,), volume=1.0),
-                      C: _CoarseRoute(origin=(A, C), legs=(ab, bc), volume=1.0)}
-             for c in (0,)}
+    columns = {(A, 0): [_send((A, 0), A, 0, (B, (T0,))), _send((A, 0), B, 1, (C, (T1,)))]}
     ids = [(0, 0)]
     demand = PreservingDemand(tensor=[], b=1, policy="fine", groups=[
         MilpGroup(cell=A, dest_cells=(B, C), identities=ids, holders={(0, 0): 0}, columns=[0])])
@@ -160,21 +154,13 @@ def test_shared_leg_once():
     for s in range(len(fine)):
         if s != 0:
             fine[s] = fine[s] * 0
-    assignments, targets, epoch = assign_identities_integral(trees, demand, mapping, fine, topo,
-                                                             epoch_duration=0.02)
-    res = build_child_problems(assignments, targets, mapping, fine, topo, epoch, copy_aware=True)
-    legs = [(p.identity, p.src_cell, p.dst_cell, p.send_epoch) for p in res.pieces]
-    assert legs.count(((0, 0), A, B, 0)) == 1, f"the shared A -> B leg must ship once: {legs}"
-    assert len(legs) == 2 and res.subdivision == 1, (legs, res.subdivision)
+    res = lower_integral(columns, demand, mapping, fine, topo, epoch_duration=0.02)
+    assert len(res.pieces) == 2 and res.subdivision == 1, (res.pieces, res.subdivision)
+    first, second = sorted(res.pieces, key=lambda p: p.epoch)
     # the same GPU of B lands A's data and forwards it (co-located), so B needs no relay
-    landed = next(p.ingress_gpu for p in res.pieces if p.dst_cell == B)
-    sent = next(p.egress_gpu for p in res.pieces if p.src_cell == B)
-    assert landed == sent, (landed, sent)
-    # without copy_aware the LP semantics would keep both copies -- the dedup is MILP-only
-    res_lp = build_child_problems(assignments, targets, mapping, fine, topo, epoch)
-    assert len(res_lp.pieces) == 3, len(res_lp.pieces)
-    print("  [3] tree's shared leg placed once and shipped once (2 pieces, not 3), Q=1, "
-          "co-located forward")
+    assert first.fanout[0].receiver == second.sender, (first, second)
+    assert not [d for d in res.intra_demands if d.kind == "egress_stage" and d.cell == B]
+    print("  [3] a column's sends are placed once each (2 sends, not 3), Q=1, co-located forward")
 
 
 def test_transit_lands_where_it_can_forward():
@@ -187,7 +173,6 @@ def test_transit_lands_where_it_can_forward():
     the one-epoch dwell does not allow. The landing must be chosen JOINTLY with the outgoing room,
     exactly as the LP's _place_downstream_legs does with `room_limit`.
     """
-    from teccl.hierarchy.reconstruct import _place_tree_route, snap_tolerance
     from teccl.topologies.dsl_topology import DslTopology
 
     topo = DslTopology(TopologyParams(
@@ -195,78 +180,117 @@ def test_transit_lands_where_it_can_forward():
         topo_file="teccl/topologies/topology-dsl-frontend/examples/mini_2gpu_2nic.topo"))
     _coarse, mapping = abstract(topo)
     leaf0, leaf1, sp0 = 4, 5, 6
-    f = mapping.coarse_passthrough
     assert mapping.boundary_gpu[(3, leaf1)] == [6, 7], mapping.boundary_gpu
     # identity (0, 0): cell 0 -> leaf0 -> spine -> leaf1 -> cell 3, then cell 3 -> leaf1 -> cell 2
-    into3 = _leg(0, 3, leaf0, leaf1, (f[leaf0], f[sp0], f[leaf1]), 0)
-    out3 = _leg(3, 2, leaf1, leaf1, (f[leaf1],), 1)
-    route = _CoarseRoute(origin=(0, 2), legs=(into3, out3), volume=1.0)
+    into3 = _send((0, 0), 0, 0, (3, (leaf0, sp0, leaf1)))
+    out3 = _send((0, 0), 3, 1, (2, (leaf1,)))
     epoch = 0.16                                   # 12.5 GB/s fine uplink -> 2 chunks / epoch
     egress_ledger = {(6, leaf1, 1): 2.0}           # gpu 6's uplink is full in the forward epoch
-    placed = _place_tree_route(route, (0, 0), 0, 1.0, {4, 5}, mapping, topo, epoch, {},
-                               egress_ledger, tol=snap_tolerance(), placed_legs={})
-    assert placed[0] == (0, 7) and placed[1][0] == 7, (
-        f"must land on gpu 7, the bridging GPU with room to forward, and forward from it: {placed}")
+    res = IdentityResolution()
+    _place_column((0, 0), 0, [into3, out3], {into3: 0}, {((0, 0), 2): (4, 5)}, mapping, topo,
+                  epoch, {}, egress_ledger, snap_tolerance(), res)
+    landed = res.pieces[0].fanout[0].receiver
+    assert landed == 7 and res.pieces[1].sender == 7, (
+        f"must land on gpu 7, the bridging GPU with room to forward, and forward from it: "
+        f"{res.pieces}")
     assert egress_ledger[(7, leaf1, 1)] == 1.0, egress_ledger
     print("  [4b] transit landing chosen jointly with the forward's uplink room (gpu 7, not 6)")
 
 
 def test_switch_copy_send_charged_once():
-    """Under switch copy one send can start several legs of a tree (send_group): host B, whose
-    single uplink g4 -> T0 carries ONE chunk per epoch, sends each identity once and T0 copies it
-    to A and to C. Charged per leg, every epoch would need two chunks on g4 -- infeasible. Charged
-    per send it fits exactly, and the two legs share the gateway and the ledger entry.
+    """Under switch copy one send reaches several cells: host B, whose single uplink g4 -> T0
+    carries ONE chunk per epoch, sends each identity once and T0 copies it to A and to C. Charged
+    per branch, every epoch would need two chunks on g4 -- infeasible. As one send it fits
+    exactly: one gateway, one ledger entry, and one fine send with two branches.
     """
     topo, _coarse, mapping = _hetero()
     A, B, C, T0 = 0, 1, 2, 3
-    t0 = mapping.coarse_passthrough[T0]
-    trees = {(B, col): {A: _CoarseRoute(origin=(B, A), legs=(_leg(B, A, T0, T0, (t0,), col),),
-                                        volume=1.0),
-                        C: _CoarseRoute(origin=(B, C), legs=(_leg(B, C, T0, T0, (t0,), col),),
-                                        volume=1.0)}
-             for col in range(4)}
+    columns = {(B, col): [_send((B, col), B, col, (A, (T0,)), (C, (T0,)))] for col in range(4)}
     ids = [(g, 0) for g in range(4, 8)]
     demand = PreservingDemand(tensor=[], b=1, policy="fine", groups=[
         MilpGroup(cell=B, dest_cells=(A, C), identities=ids, holders={d: d[0] for d in ids},
                   columns=[0, 1, 2, 3])])
     fine = build_demand(Collective.ALLGATHER, topo, 1)
     epoch = 0.02                                   # g4's 50 GB/s uplink -> 1 chunk per epoch
-    assignments, targets, ep = assign_identities_integral(trees, demand, mapping, fine, topo,
-                                                          epoch_duration=epoch)
-    for d in ids:
-        gws = {a.egress_gpu for a in assignments if a.identity == d}
-        assert gws == {4}, f"{d}: both legs of one send leave through g4, got {gws}"
-    res = build_child_problems(assignments, targets, mapping, fine, topo, ep, copy_aware=True)
-    assert res.copy_aware and res.subdivision == 1
+    res = lower_integral(columns, demand, mapping, fine, topo, epoch_duration=epoch)
+    assert res.subdivision == 1
     for k in range(4):
-        sends = [p for p in res.pieces if p.egress_gpu == 4 and p.send_epoch == k]
-        assert len(sends) == 2 and len({p.identity for p in sends}) == 1, (
-            f"epoch {k}: one identity, two legs (to A and C) through T0: {sends}")
-    print("  [4c] switch copy: one send starts two legs -- one gateway, charged once (g4 at 100%)")
+        [send] = [p for p in res.pieces if p.sender == 4 and p.epoch == k]
+        assert len(send.fanout) == 2, f"epoch {k}: one send from g4, branches to A and C: {send}"
+    print("  [4c] switch copy: one fine send, two branches -- one gateway, charged once (g4 at 100%)")
+
+
+def test_multicast_survives_the_fold():
+    """A child level's switch copy is one transfer with several receivers ALL the way up: through
+    pieces_as_flows (one IntraFlow, whole fan-out), re-indexing into the parent's ids, rebase, and
+    the stitch -- where it becomes one record that back_trace delivers to both receivers, and that
+    the link check charges once."""
+    from teccl.hierarchy.flat_schedule import back_trace, build_records
+    from teccl.hierarchy.flatten import rebase
+    from teccl.hierarchy.problem import LevelSolution
+
+    # child ids 0..3 are GPUs, 4 a switch; the parent sees them as 10..14
+    child_send = Send((10, 0), 0, 1, (Branch(2, (4,), 2), Branch(3, (4,), 2)))
+    sol = LevelSolution(pieces=[child_send], rounds_per_epoch=4)
+    sub = SimpleNamespace(local_to_global={0: 10, 1: 11, 2: 12, 3: 13, 4: 14})
+    [flow] = rebase(sol, cell_id=7, band=2, sub_topology=sub)
+    assert flow.sender == 10 and [(b.receiver, b.via) for b in flow.fanout] == [
+        (12, (14,)), (13, (14,))], flow
+    assert flow.band == 2 and flow.local_round == (1 + 1) * 4, flow
+    try:
+        flow.receiver
+        raise AssertionError("a multicast flow has no single receiver")
+    except ValueError:
+        pass
+
+    res = IdentityResolution(scale=ChunkScale(bytes_per_chunk=1.0, num_chunks=1), subdivision=1)
+    records, _w = build_records(res, [flow], m=16)
+    [rec] = records
+    assert len(rec.fanout) == 2 and {b.ready for b in rec.fanout} == {rec.epoch + rec.span}, rec
+    demand = [[[0] for _ in range(15)] for _ in range(15)]
+    demand[10][12][0] = demand[10][13][0] = 1
+    paths = back_trace(records, demand, 1)
+    assert {t for (t, _i) in paths} == {12, 13} and all(len(c) == 1 for c in paths.values())
+    print("  [4d] a child's switch copy stays ONE transfer through rebase and the stitch, and "
+          "back_trace delivers both receivers off it")
+
+
+def test_crossbar_multicast():
+    """With switch copy, a cell's NVSwitch replicates: an ingress fan-out to five GPUs is ONE
+    transfer, one round, five branches -- where without it the source sends five times."""
+    from teccl.hierarchy.crossbar_solve import schedule_cell
+    from teccl.hierarchy.reconstruct import IntraCellDemand
+
+    _topo, _coarse, mapping = _hetero()
+    C = 2
+    cell = mapping.coarse_cells[C]
+    fan = IntraCellDemand(cell=C, kind="ingress_distribution", identity=(0, 0), src_gpu=8,
+                          dst_gpus=(9, 10, 11, 12, 13), volume=1.0, deadline_epoch=0)
+    [flow] = schedule_cell(C, cell, [fan], switch_copy=True)
+    assert flow.sender == 8 and sorted(b.receiver for b in flow.fanout) == [9, 10, 11, 12, 13]
+    unicast = schedule_cell(C, cell, [fan], switch_copy=False)
+    assert len(unicast) == 5 and all(len(f.fanout) == 1 for f in unicast), unicast
+    print("  [4e] NVSwitch copy: a 5-way fan-out is ONE transfer with five branches (5 without)")
 
 
 def test_occupancy_pacing():
+    assert rate(Send((0, 0), 0, 0, (Branch(1),)), 1.0, 0.01) == 100.0
+    assert rate(Send((0, 0), 0, 0, (Branch(1),), span=2), 1.0, 0.01) == 50.0
     scale = ChunkScale(bytes_per_chunk=1.0, num_chunks=1)
-    assert _piece_rate(1.0, scale, 0.01) == 100.0
-    assert _piece_rate(1.0, scale, 0.01, occupancy=2) == 50.0
     # gpu 0 -> switch 1 -> gpu 2, 60 GB/s each way
     topo = SimpleNamespace(capacity=[[0, 60.0, 0], [60.0, 0, 60.0], [0, 60.0, 0]])
-    # Two pieces on one 60 GB/s link, each a 2-epoch MILP leg at 50: alone fine, but the second
+    # Two sends on one 60 GB/s path, each a 2-epoch MILP send at 50: alone fine, but the second
     # starts while the first is still on the link, so epoch 1 carries 100 > 60.
-    p = dict(src_cell=0, dst_cell=1, identity=(0, 0), egress_gpu=0, ingress_gpu=2,
-             via_switches=(1,), volume=1.0, rate=50.0)
-    one = IdentityResolution(pieces=[ResolvedPiece(send_epoch=0, arrival_epoch=1, **p)],
-                             scale=scale)
-    _assert_rate_within_capacity(one, topo, 0.01)
-    two = IdentityResolution(pieces=[ResolvedPiece(send_epoch=0, arrival_epoch=1, **p),
-                                     ResolvedPiece(send_epoch=1, arrival_epoch=2, **p)],
-                             scale=scale)
+    def send(epoch):
+        return Send((0, 0), 0, epoch, (Branch(2, (1,), epoch + 2),), span=2)
+    _assert_rate_within_capacity(IdentityResolution(pieces=[send(0)], scale=scale), topo, 0.01)
     try:
-        _assert_rate_within_capacity(two, topo, 0.01)
-        raise AssertionError("overlapping multi-epoch pieces must exceed the link")
+        _assert_rate_within_capacity(IdentityResolution(pieces=[send(0), send(1)], scale=scale),
+                                     topo, 0.01)
+        raise AssertionError("overlapping multi-epoch sends must exceed the link")
     except AssertionError as e:
         assert "exceed fine link bandwidth" in str(e), e
-    print("  [4] occupancy pacing: rate spread over the leg's epochs, and checked in each of them")
+    print("  [4] occupancy pacing: rate spread over the send's epochs, and checked in each of them")
 
 
 def test_level_policy():
@@ -295,7 +319,7 @@ def _ui(coll, chunking, switch_copy=False):
     ui = UserInputParams()
     ui.instance = InstanceParams(
         collective=coll, formulation=Formulation.MILP, num_chunks=1,
-        epoch_type=EpochType.SLOWEST_LINK, objective_type=ObjectiveType.PAPER,
+        epoch_type=EpochType.SLOWEST_LINK, objective_type=ObjectiveType.LEXICOGRAPHIC,
         solution_method=SolutionMethod.ONE_SHOT, switch_copy=switch_copy, milp_chunking=chunking,
         schedule_output_file=os.path.join(tempfile.mkdtemp(), "coarse.json"))
     ui.gurobi.output_flag = 0
@@ -308,18 +332,21 @@ def test_end_to_end():
 
     # (topology, collective, policy, chunks per source per destination). The num_chunks=2 holder
     # case is the one whose bundle is b = 2, so it is what exercises the level RESCALE.
-    # The last case turns switch copy ON: HeteroTaperedCluster's T0/T1 can fan one send out to
-    # several hosts, which the assignment, the rate check and the stitch must charge once.
+    # The last two turn switch copy ON: HeteroTaperedCluster's T0/T1 can fan one send out to
+    # several hosts, which the assignment, the rate check and the stitch must charge once; the very
+    # last also copies inside every cell (NVSwitch multicast), so each fan-out is one transfer.
     for cls, coll, chunking, nc, copy in [
             (BridgedIslandsCluster, Collective.ALLGATHER, "holder", 1, False),
             (BridgedIslandsSplitCluster, Collective.ALLGATHER, "holder", 1, False),
             (BridgedIslandsSplitCluster, Collective.ALLGATHER, "holder", 2, False),
             (BridgedIslandsCluster, Collective.ALLTOALL, "cell", 1, False),
             (BridgedIslandsSplitCluster, Collective.ALLTOALL, "cell", 1, False),
+            (HeteroTaperedCluster, Collective.ALLGATHER, "cell", 1, [True, False]),
             (HeteroTaperedCluster, Collective.ALLGATHER, "cell", 1, True)]:
         topo = cls(TopologyParams(name=cls.__name__, chunk_size=1))
         n = len(topo.capacity) - len(topo.switch_indices)
-        tag = f"{cls.__name__}/{coll.name.lower()}/{chunking}/{nc}chunks" + ("/copy" if copy else "")
+        tag = f"{cls.__name__}/{coll.name.lower()}/{chunking}/{nc}chunks" + (
+            "" if copy is False else "/copy" if copy is True else "/copy-root")
         try:
             info, sol = solve_hierarchical(topo, _ui(coll, chunking, copy), coll,
                                            nc if coll == Collective.ALLGATHER else n * nc)
@@ -335,8 +362,8 @@ def test_end_to_end():
         if cls is BridgedIslandsSplitCluster:
             assert relayed, f"{tag}: the split bridge must forward through an NVSwitch relay"
             for d in relayed:
-                fed = [p for p in res.pieces if p.identity == d.identity and p.src_cell == d.cell]
-                assert all(p.send_epoch >= d.release_band + 1 for p in fed), (tag, d, fed)
+                fed = [p for p in res.pieces if p.identity == d.identity and p.sender in d.dst_gpus]
+                assert all(p.epoch >= d.release_band + 1 for p in fed), (tag, d, fed)
         verdict = _check_ncclize(info, tag)
         assert "check_implements OK" in verdict or verdict.startswith("SKIPPED"), verdict
         print(f"  [6] {tag}: Q=1, {len(res.pieces)} pieces, {len(relayed)} transit relays, "
@@ -350,6 +377,8 @@ if __name__ == "__main__":
     test_shared_leg_once()
     test_transit_lands_where_it_can_forward()
     test_switch_copy_send_charged_once()
+    test_multicast_survives_the_fold()
+    test_crossbar_multicast()
     test_occupancy_pacing()
     test_level_policy()
     if "--no-gurobi" not in sys.argv:

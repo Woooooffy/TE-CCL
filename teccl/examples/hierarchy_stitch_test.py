@@ -38,15 +38,15 @@ from math import inf
 import numpy as np
 
 from teccl.hierarchy.abstract import abstract
-from teccl.hierarchy.crossbar_solve import (PROLOGUE_BAND, IntraFlow, _assign_bands, _Job,
+from teccl.hierarchy.crossbar_solve import (PROLOGUE_BAND, IntraFlow, _assign_bands, _Job, unicast,
                                          schedule_cell)
-from teccl.hierarchy.reconstruct import (IdentityResolution, IntraCellDemand, ResolvedPiece,
-                                         resolve_identities)
+from teccl.hierarchy.reconstruct import IdentityResolution, IntraCellDemand, resolve_identities
 from teccl.hierarchy.scale import ChunkScale
-from teccl.hierarchy.flat_schedule import (NETWORK, PROLOGUE, DeliveryRecord, _chunk_label,
+from teccl.hierarchy.flat_schedule import (NETWORK, PROLOGUE, _chunk_label, _segment,
                                            back_trace, build_flat_schedule, build_records)
 from teccl.hierarchy.flatten import derive_grid
 from teccl.input_data import Collective, TopologyParams
+from teccl.sends import Branch, Send
 from teccl.solvers.demand import build_demand
 from teccl.topologies.hetero_tapered_cluster import HeteroTaperedCluster
 
@@ -77,7 +77,7 @@ SYNTHETIC_COARSE_EPOCH = 0.02
 
 
 def _flow(cell, identity, src, dst, band, rnd, kind, hard=False, switch=99):
-    return IntraFlow(cell=cell, identity=identity, sender=src, receiver=dst, via_switch=switch,
+    return IntraFlow(cell=cell, identity=identity, sender=src, fanout=unicast(dst, switch),
                      volume=1.0, band=band, local_round=rnd, kind=kind, hard=hard)
 
 
@@ -122,9 +122,7 @@ def test_epoch_layout_monotonicity():
     scale = ChunkScale(bytes_per_chunk=1.0, num_chunks=1)
     res = IdentityResolution(scale=scale, subdivision=1)
     # one piece leaving in coarse epoch 2, arriving in epoch 2
-    res.pieces.append(ResolvedPiece(
-        src_cell=0, dst_cell=1, identity=(0, 0), egress_gpu=1, ingress_gpu=4,
-        via_switches=(90,), volume=1.0, send_epoch=2, arrival_epoch=2, rate=50.0))
+    res.pieces.append(Send(identity=(0, 0), sender=1, epoch=2, fanout=(Branch(4, (90,), 3),)))
     flows = [
         # prologue: 2 rounds of work that must precede the first network send -> W = 2
         _flow(0, (3, 0), 3, 2, PROLOGUE_BAND, 0, "egress_stage", hard=True),
@@ -138,10 +136,11 @@ def test_epoch_layout_monotonicity():
     m = 8
     recs, W = build_records(res, flows, m)
     assert W == 2, W
-    net = next(r for r in recs if r.phase == NETWORK)
-    pro = sorted((r.epoch for r in recs if r.phase == PROLOGUE))
-    stage = next(r for r in recs if r.phase == "egress_stage")
-    fan = sorted(r.epoch for r in recs if r.phase == "ingress_distribution")
+    net = next(r for r in recs if r.kind == NETWORK)
+    pro = sorted((r.epoch for r in recs if r.kind == PROLOGUE))
+    stage = next(r for r in recs if r.kind == "egress_stage")
+    fan = sorted(r.epoch for r in recs if r.kind == "ingress_distribution")
+    held = net.fanout[0].ready
 
     # the prologue is [0, W) and everything else is after it
     assert pro == [0, 1], pro
@@ -150,10 +149,10 @@ def test_epoch_layout_monotonicity():
     assert stage.epoch == W and stage.epoch < net.epoch, (stage.epoch, net.epoch)
     # the piece is held at the leading edge of the band after its arrival epoch, and its fan-out
     # starts there -- at, not after, since "held at epoch E" means available from the start of E.
-    assert net.completion == W + m * 3, (net.completion, W, m)
-    assert fan == [net.completion, net.completion + 1], (fan, net.completion)
+    assert held == W + m * 3, (held, W, m)
+    assert fan == [held, held + 1], (fan, held)
     print(f"  [2] epoch layout: prologue{pro} < stage({stage.epoch}) < send({net.epoch}) "
-          f"-> held({net.completion}) <= fan-out{fan} OK")
+          f"-> held({held}) <= fan-out{fan} OK")
 
 
 # ------------------------------------------------------------------------------------------
@@ -178,9 +177,8 @@ def test_back_trace_rejects_violations():
     #     are therefore constructed directly -- back_trace has to stand on its own as the verifier,
     #     not lean on the schedule that feeds it, since a future level could get this wrong.
     def _rec(src, dst, epoch):
-        return DeliveryRecord(identity=(0, 0), sender=src, receiver=dst, via_switches=(99,),
-                              volume=1.0, epoch=epoch, completion=epoch + 1, rate=None,
-                              phase=PROLOGUE, cell=0, level=0)
+        return Send(identity=(0, 0), sender=src, epoch=epoch,
+                    fanout=(Branch(dst, (99,), epoch + 1),), kind=PROLOGUE)
 
     try:
         back_trace([_rec(0, 1, 1), _rec(1, 2, 0)], demand, 1)
@@ -289,12 +287,16 @@ def test_replay(tag, collective):
                - topo.chunk_size * fine_chunks) < 1e-9
     assert abs(info["4-Collective_Finish_Time"] - delta * info["3-Epochs_Required"]) < 1e-12
 
-    # Every network record carries this level's pacing; no intra record does.
-    net = [r for r in records if r.phase == NETWORK]
-    intra = [r for r in records if r.phase != NETWORK]
-    assert all(r.rate is not None for r in net), "a network send must be paced to the coarse epoch"
-    assert all(r.rate is None for r in intra), "intra flows are deliberately unpaced"
+    # Every network record carries this level's pacing (and only those: the serialized rate token
+    # is keyed on the kind); each resolved send is exactly one network record.
+    net = [r for r in records if r.kind == NETWORK]
+    intra = [r for r in records if r.kind != NETWORK]
+    assert all(r.span == m * p.span for r, p in zip(net, res.pieces)), \
+        "a network send holds its links for its level's span, on the fine axis"
     assert len(net) == len(res.pieces), (len(net), len(res.pieces))
+    for r in records:
+        paced = " at rate " in _segment(r, r.fanout[0], res.scale.bytes_per_chunk, delta)
+        assert paced == (r.kind == NETWORK), f"only network sends are paced: {r}"
     # One record per sub-chunk, but a coalesced flow carries several of them -- so records track
     # the sub-chunks moved, not the transfers, and the gap between the two is the merge that
     # ncclize turns into cnt=Q ops.
@@ -307,7 +309,7 @@ def test_replay(tag, collective):
     # Records grouped the way ncclize groups sends: one bucket per (step, edge).
     buckets = collections.defaultdict(set)
     for r in intra:
-        buckets[(r.epoch, r.sender, r.receiver)].add(r.identity)
+        buckets[(r.epoch, r.sender, r.fanout[0].receiver)].add(r.identity)
     for f in coalesced:
         labels = [ci for _s, ci in f.identities]
         assert labels == list(range(labels[0], labels[0] + len(labels))), (
@@ -335,7 +337,7 @@ def test_replay(tag, collective):
     finish_at = {}
     for factor in (1, 2, 4):
         recs_f, _ = build_records(res, flows, m * factor)
-        finish_at[factor] = (max(r.completion for r in recs_f) + 1) * (delta / factor)
+        finish_at[factor] = (max(b.ready for r in recs_f for b in r.fanout) + 1) * (delta / factor)
     assert finish_at[1] > finish_at[2] > finish_at[4], (
         f"a finer grid must not report MORE time: {finish_at}")
     r1, r2 = finish_at[1] - finish_at[2], finish_at[2] - finish_at[4]

@@ -164,8 +164,10 @@ def to_this_levels_indices(flows: Sequence[IntraFlow], sub_topology) -> List[Int
     l2g = getattr(sub_topology, "local_to_global", None)
     if l2g is None:
         return list(flows)
-    return [replace(f, sender=l2g[f.sender], receiver=l2g[f.receiver],
-                    via_switch=l2g[f.via_switch]) for f in flows]
+    return [replace(f, sender=l2g[f.sender],
+                    fanout=tuple(replace(b, receiver=l2g[b.receiver],
+                                         via=tuple(l2g[sw] for sw in b.via)) for b in f.fanout))
+            for f in flows]
 
 
 def rebase(sol, cell_id: int, band: int, sub_topology=None) -> List[IntraFlow]:

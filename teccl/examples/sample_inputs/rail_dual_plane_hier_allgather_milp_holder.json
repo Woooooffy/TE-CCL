@@ -29,7 +29,7 @@
         "switch_copy": false,
         "switch_pipeline": true,
         "symmetry": false,
-        "objective_type": 3,
+        "objective_type": 6,
         "solution_method": 1,
         "hierarchical": true,
         "hierarchy_prefix": "rail_dual_plane_hier_allgather_milp_holder",

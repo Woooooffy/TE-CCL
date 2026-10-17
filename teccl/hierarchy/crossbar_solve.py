@@ -62,6 +62,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from teccl.hierarchy.bands import PROLOGUE_BAND, band_of, is_hard, release_of
 from teccl.hierarchy.cell import Cell
 from teccl.hierarchy.reconstruct import Identity, IntraCellDemand
+from teccl.sends import Branch
 
 EPS = 1e-9
 
@@ -93,12 +94,17 @@ class IntraFlow:
 
     kind is provenance for debugging and the serialized schedule; hard records that a network send
     waited on this transfer. Neither is load-bearing downstream -- placement is fully decided here.
+
+    `fanout` is where the transfer lands, in the shared Send representation (teccl/sends.py): one
+    branch for a point-to-point hop, several for a multicast -- an NVSwitch copy, or a child level's
+    switch-copy send folded into this one. Every branch lands as the transfer finishes
+    (local_round + span), so a branch's `ready` is not used here. `receiver` / `via_switch` read a
+    point-to-point flow and refuse a multicast one.
     """
     cell: int
     identity: Identity
     sender: int                 # fine GPU id
-    receiver: int               # fine GPU id
-    via_switch: int             # the cell's internal NVSwitch id
+    fanout: Tuple[Branch, ...]  # the receivers (fine GPU ids) and the switches on the way to each
     volume: float
     band: int                   # coarse epoch this runs concurrently with (-1 == prologue)
     local_round: int            # fine-epoch offset within the band (its START)
@@ -114,6 +120,23 @@ class IntraFlow:
     def __post_init__(self):
         if not self.identities:
             object.__setattr__(self, "identities", (self.identity,))
+
+    @property
+    def receiver(self) -> int:
+        """The receiver of a point-to-point flow."""
+        (branch,) = self.fanout
+        return branch.receiver
+
+    @property
+    def via_switch(self) -> Optional[int]:
+        """The switch a point-to-point flow crosses (None over a direct link)."""
+        (branch,) = self.fanout
+        return branch.via[0] if branch.via else None
+
+
+def unicast(receiver: int, via_switch: Optional[int]) -> Tuple[Branch, ...]:
+    """The fanout of a point-to-point hop, optionally through one switch."""
+    return (Branch(receiver, () if via_switch is None else (via_switch,)),)
 
 
 def rounds_in(flows: Sequence[IntraFlow]) -> int:
@@ -139,7 +162,8 @@ def band_rounds(flows: Sequence[IntraFlow]) -> Dict[Tuple[int, int], int]:
 
 @dataclass
 class _Job:
-    """A single point-to-point transfer the scheduler must place into rounds.
+    """A transfer the scheduler must place into rounds: point-to-point, or -- with `copies_to` --
+    one NVSwitch multicast that lands on `dst` and every GPU in `copies_to` at once.
 
     remaining/ completion tracks mutate during scheduling. `predecessor` references another _Job
     that must complete in a strictly earlier round before this job becomes ready (used only by
@@ -165,12 +189,18 @@ class _Job:
     # _coalesce_subchunks it is the Q co-travelling sub-chunks of one refined chunk, which are one
     # physical transfer and have to be emitted as one.
     identities: Tuple[Identity, ...] = ()
+    # The other receivers of a multicast job (switch copy). Empty for a point-to-point transfer.
+    copies_to: Tuple[int, ...] = ()
 
     def __post_init__(self):
         if self.remaining is None:
             self.remaining = self.volume
         if not self.identities:
             self.identities = (self.identity,)
+
+    @property
+    def receivers(self) -> Tuple[int, ...]:
+        return (self.dst,) + self.copies_to
 
 
 # --------------------------------------------------------------------------------------------
@@ -264,7 +294,8 @@ def _coalesce_subchunks(jobs: List[_Job], subdivision: int, debug: bool = False)
             passthrough.append(j)
             continue
         s, ci = j.identity
-        groups[(s, ci // subdivision, j.src, j.dst, j.release_gap, j.deadline_gap, j.hard)].append(j)
+        groups[(s, ci // subdivision, j.src, j.receivers, j.release_gap, j.deadline_gap,
+                j.hard)].append(j)
 
     out: List[_Job] = list(passthrough)
     merged = 0
@@ -278,7 +309,7 @@ def _coalesce_subchunks(jobs: List[_Job], subdivision: int, debug: bool = False)
             identity=first.identity, src=first.src, dst=first.dst,
             volume=sum(j.volume for j in group),
             release_gap=first.release_gap, deadline_gap=first.deadline_gap, hard=first.hard,
-            kind=first.kind, predecessor=None,
+            kind=first.kind, predecessor=None, copies_to=first.copies_to,
             identities=tuple(j.identity for j in group)))
         merged += 1
         _p(debug, f"      coalesce {first.src}->{first.dst} chunk {key[0]},{key[1]}: "
@@ -299,10 +330,10 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
     ingress_distribution / self_distribution -> a fan-out, lowered by a density test that compares
     the source GPU's intra-cell SEND load to the cell's max intra-cell RECV load (both NVSwitch
     port loads -- a closed intra-cell comparison, nothing to do with the network link):
-        * recv-bound (send_load <= max_recv) or switch multicast -> N DIRECT edges (the dense
-          allgather/alltoall case; the scheduler edge-colors them into the ring). switch_copy keeps
-          it a single logical send only when we later model multicast at emit time; for now the
-          unicast direct edges are emitted and the ring absorbs them at no makespan cost.
+        * switch_copy -> ONE multicast job: the NVSwitch replicates, so the source sends once and
+          every wanter receives in the same round (NVLS-class hardware; InstanceParams.switch_copy).
+        * recv-bound (send_load <= max_recv) -> N DIRECT edges (the dense allgather/alltoall case;
+          the scheduler edge-colors them into the ring).
         * send-bound isolated fan-out (source is an intra send hotspot) -> a binomial broadcast
           TREE (spreads that source's send load), edges carry precedence so a child forwards only
           after it received.
@@ -323,6 +354,7 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
     # merged direct deliveries keyed by (identity, src, dst)
     direct: Dict[Tuple[Identity, int, int], Dict] = {}
     tree_jobs: List[_Job] = []
+    multicast: List[_Job] = []      # one job per fan-out under switch_copy
 
     def _add_direct(identity, src, dst, volume, release, deadline, hard, kind):
         key = (identity, src, dst)
@@ -362,10 +394,18 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
         # ingress demand may be promoted to hard by a caller (transit cell); default soft.
         hard = is_hard(d)
 
+        if switch_copy:
+            multicast.append(_Job(identity=d.identity, src=d.src_gpu, dst=wanters[0],
+                                  volume=d.volume, release_gap=release,
+                                  deadline_gap=d.deadline_epoch if hard else inf, hard=hard,
+                                  kind=d.kind, copies_to=tuple(wanters[1:])))
+            _p(debug, f"    fan-out id={d.identity} {d.kind} src={d.src_gpu} -> "
+                      f"{len(wanters)} wanters: ONE multicast (switch_copy)")
+            continue
         send_load = _intra_send_load(d.src_gpu, demands)
-        dense = switch_copy or send_load <= max_recv + EPS
+        dense = send_load <= max_recv + EPS
         if debug:
-            why = "switch_copy" if switch_copy else f"send={send_load:g} {'<=' if dense else '>'} max_recv={max_recv:g}"
+            why = f"send={send_load:g} {'<=' if dense else '>'} max_recv={max_recv:g}"
             _p(debug, f"    fan-out id={d.identity} {d.kind} src={d.src_gpu} -> "
                       f"{len(wanters)} wanters: {'DIRECT/ring' if dense else 'binomial TREE'} ({why})")
         if dense:
@@ -391,7 +431,7 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
                  release_gap=e["release"], deadline_gap=e["deadline"], hard=e["hard"],
                  kind=e["kind"])
             for k, e in direct.items()]
-    jobs += tree_jobs
+    jobs += tree_jobs + multicast
     jobs = _coalesce_subchunks(jobs, subdivision, debug=debug)
     if debug:
         nh = sum(1 for j in jobs if j.hard)
@@ -410,7 +450,8 @@ def _max_port_load(jobs: Sequence[_Job]) -> float:
     recv: Dict[int, float] = defaultdict(float)
     for j in jobs:
         send[j.src] += j.volume
-        recv[j.dst] += j.volume
+        for t in j.receivers:
+            recv[t] += j.volume
     return max([*send.values(), *recv.values()], default=0.0)
 
 
@@ -476,14 +517,17 @@ def _schedule_band(jobs: List[_Job], gpus: Sequence[int], switch: int, band: int
             span, = (_span(j.volume),)
             needs = _needs(j.volume, span)
             if not all(egress_used[(j.src, r + i)] + needs[i] <= port_cap + EPS
-                       and ingress_used[(j.dst, r + i)] + needs[i] <= port_cap + EPS
+                       and all(ingress_used[(t, r + i)] + needs[i] <= port_cap + EPS
+                               for t in j.receivers)
                        for i in range(span)):
                 continue      # a port is busy in one of the rounds this job would span
             for i in range(span):
                 egress_used[(j.src, r + i)] += needs[i]
-                ingress_used[(j.dst, r + i)] += needs[i]
-            flows.append(IntraFlow(cell=cell_id, identity=j.identity, sender=j.src, receiver=j.dst,
-                                   via_switch=switch, volume=j.volume, band=band, local_round=r,
+                for t in j.receivers:
+                    ingress_used[(t, r + i)] += needs[i]
+            flows.append(IntraFlow(cell=cell_id, identity=j.identity, sender=j.src,
+                                   fanout=tuple(Branch(t, (switch,)) for t in j.receivers),
+                                   volume=j.volume, band=band, local_round=r,
                                    span=span, kind=j.kind, hard=j.hard, identities=j.identities))
             j.remaining = 0.0
             j.completion_round = r + span - 1
@@ -492,7 +536,7 @@ def _schedule_band(jobs: List[_Job], gpus: Sequence[int], switch: int, band: int
                 tag = "H" if j.hard else " "
                 label = (f"id{j.identity[0]}x{len(j.identities)}" if len(j.identities) > 1
                          else f"id{j.identity[0]}")
-                matched.append(f"{j.src}->{j.dst}{tag}({label},{j.volume:g}"
+                matched.append(f"{j.src}->{'+'.join(map(str, j.receivers))}{tag}({label},{j.volume:g}"
                                f"{f',{span}rnds' if span > 1 else ''})")
         if debug and matched:
             _p(debug, f"      round {r}: " + "  ".join(matched))
@@ -517,7 +561,8 @@ def _assert_ports(flows: Sequence[IntraFlow], port_cap: float = 1.0) -> None:
         for i in range(f.span):
             share = min(port_cap, f.volume - i * port_cap)
             eg[(f.band, f.local_round + i, f.sender)] += share
-            ing[(f.band, f.local_round + i, f.receiver)] += share
+            for b in f.fanout:
+                ing[(f.band, f.local_round + i, b.receiver)] += share
     for k, v in eg.items():
         assert v <= port_cap + 1e-6, f"egress over-subscribed {k}: {v}"
     for k, v in ing.items():
