@@ -1,5 +1,5 @@
 {
-    "_comment": "Hierarchical MILP AllGather on mini_2gpu_2nic. 4 hosts x 2 GPUs, each GPU owns its own 100Gbps NIC (2 uplinks per host), 2 leaves / 2 spines. The only mini variant that can run hierarchically: mini_1gpu_1nic has no host tier to fold, and mini_2gpu_1nic's shared NIC hangs off the PCIe root complex, which cannot be a cell (see its .topo). milp_chunking='holder': one MILP chunk = one holder GPU's chunks for one destination-cell set (b = num_chunks for allgather). Keeps multipath across a host's uplinks. SLOWEST_LINK keeps every coarse link at >= 1 chunk/epoch (occupancy 1: no multi-epoch legs, no cut-through optimism). switch_copy is honored at MILP levels: a switch fan-out is one send, charged once to its uplink (ncclize still lowers each branch to its own send -- the multicast output representation is open, see milp_design.md). Outputs: Schedules/<prefix>_flat.json (+ _coarse/_identities/_intra side outputs). See teccl/hierarchy/milp_design.md.",
+    "_comment": "Flat MILP AllGather on mini_2gpu_2nic with switch copy. 4 hosts x 2 GPUs, each GPU with its own 100Gbps NIC (2 uplinks per host), 2 leaves / 2 spines. Flat solve; the hierarchical partners are mini_2gpu_2nic_hier_allgather_milp_{cell,holder}.json. switch_copy true: every switch may copy -- a fan-out is one Send, charged once on its uplink, and ncclize emits it as ONE multicast send threadblock (tb send=\"r1,r2\") with one mscclflowid, plus a switch-JSON (format 2) entry listing every out port. Pass --no-multicast to ncclize for the pre-multicast output (one unicast send per branch). SLOWEST_LINK epoch; objective_type 6 (LEXICOGRAPHIC) puts makespan first. Output: Schedules/<name>.json. See teccl/ncclize/multicast_output_design.md.",
     "TopologyParams": {
         "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_2gpu_2nic.topo",
         "name": "Mini2GPU2NIC",
@@ -10,7 +10,7 @@
         "time_limit": 1,
         "output_flag": 1,
         "log_to_console": 0,
-        "log_file": "_mini_2gpu_2nic_hier_allgather_milp_holder",
+        "log_file": "_mini_2gpu_2nic_allgather_milp",
         "mip_gap": 0.0001,
         "mip_focus": 0,
         "feasibility_tol": 0.0001,
@@ -29,9 +29,9 @@
         "switch_copy": true,
         "switch_pipeline": true,
         "symmetry": false,
-        "objective_type": 3,
+        "objective_type": 6,
         "solution_method": 1,
         "hierarchical": false,
-        "schedule_output_file": "Schedules/mini_2gpu_2nic_hier_allgather_milp_flat.json"
+        "schedule_output_file": "Schedules/mini_2gpu_2nic_allgather_milp.json"
     }
 }

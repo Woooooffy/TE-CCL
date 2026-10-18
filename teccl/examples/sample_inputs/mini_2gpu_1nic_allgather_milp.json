@@ -1,0 +1,37 @@
+{
+    "_comment": "Flat MILP AllGather on mini_2gpu_1nic with switch copy. 4 hosts x 2 NVLink-bridged GPUs behind ONE shared 100Gbps NIC on a PCIe root complex, 2 leaves / 2 spines. Flat only: the root complex cannot be a cell (see its .topo). CAUTION: a flat solve has one switch_copy for every switch, and the root complex is a self-routing (non-programmable) switch, so a copy there is not realizable as a switch entry. Measured 2026-10-18: the solve copies at the root complex (switch 9) and ncclize refuses ('flow 1 ... branches at switch 9, which takes no forwarding program'). Realizing this sample needs the flat MILP to copy only at programmable switches (not implemented). switch_copy true: every switch may copy -- a fan-out is one Send, charged once on its uplink, and ncclize emits it as ONE multicast send threadblock (tb send=\"r1,r2\") with one mscclflowid, plus a switch-JSON (format 2) entry listing every out port. Pass --no-multicast to ncclize for the pre-multicast output (one unicast send per branch). SLOWEST_LINK epoch; objective_type 6 (LEXICOGRAPHIC) puts makespan first. Output: Schedules/<name>.json. See teccl/ncclize/multicast_output_design.md.",
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_2gpu_1nic.topo",
+        "name": "Mini2GPU1NIC",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 1,
+        "output_flag": 1,
+        "log_to_console": 0,
+        "log_file": "_mini_2gpu_1nic_allgather_milp",
+        "mip_gap": 0.0001,
+        "mip_focus": 0,
+        "feasibility_tol": 0.0001,
+        "intfeas_tol": 0.0001,
+        "optimality_tol": 0.0001
+    },
+    "InstanceParams": {
+        "collective": 1,
+        "formulation": 1,
+        "num_chunks": 1,
+        "epoch_type": 2,
+        "epoch_multiplier": 1,
+        "epoch_duration": -1,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_copy": true,
+        "switch_pipeline": true,
+        "symmetry": false,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": false,
+        "schedule_output_file": "Schedules/mini_2gpu_1nic_allgather_milp.json"
+    }
+}

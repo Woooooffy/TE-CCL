@@ -1,5 +1,5 @@
 {
-    "_comment": "Hierarchical MILP AllGather on rail_dual_plane. 256-GPU rail-optimized dual-plane fabric. Every GPU has a port into both planes, so every host transit is co-located (forward dwell 1). milp_chunking='holder': one MILP chunk = one holder GPU's chunks for one destination-cell set (b = num_chunks for allgather). Keeps multipath across a host's uplinks. SLOWEST_LINK keeps every coarse link at >= 1 chunk/epoch (occupancy 1: no multi-epoch legs, no cut-through optimism). switch_copy is honored at MILP levels: a switch fan-out is one send, charged once to its uplink (ncclize still lowers each branch to its own send -- the multicast output representation is open, see milp_design.md). Outputs: Schedules/<prefix>_flat.json (+ _coarse/_identities/_intra side outputs). See teccl/hierarchy/milp_design.md.",
+    "_comment": "Hierarchical MILP AllGather on rail_optimized_256gpu_dual_plane with switch copy. 256-GPU rail-optimized dual-plane fabric. Every GPU has a port into both planes, so every host transit is co-located (forward dwell 1). Hierarchical only. milp_chunking='holder': one MILP chunk = one holder GPU's chunks for one destination-cell set (b = num_chunks for allgather). Keeps multipath across a host's uplinks. switch_copy [true, false]: the network switches of the coarse level copy -- a fan-out is one Send, charged once on its uplink, and ncclize emits it as ONE multicast send threadblock (tb send=\"r1,r2\") with one mscclflowid, plus a switch-JSON (format 2) entry listing every out port; the cell NVSwitches do not copy (multicast there needs NVLS). Pass --no-multicast to ncclize for the pre-multicast output (one unicast send per branch). SLOWEST_LINK keeps every coarse link at >= 1 chunk/epoch (occupancy 1: no multi-epoch legs). objective_type 6 (LEXICOGRAPHIC) puts makespan first; PAPER (3) ties on it. Outputs: Schedules/<prefix>_flat.json (+ _coarse/_identities/_intra side outputs). See teccl/hierarchy/milp_design.md and teccl/ncclize/multicast_output_design.md.",
     "TopologyParams": {
         "topo_file": "teccl/topologies/topology-dsl-frontend/examples/rail_optimized_256gpu_dual_plane.topo",
         "name": "RailOptimizedDualPlane",
@@ -26,7 +26,7 @@
         "epoch_duration": -1,
         "num_epochs": -1,
         "alpha_threshold": 0.1,
-        "switch_copy": false,
+        "switch_copy": [true, false],
         "switch_pipeline": true,
         "symmetry": false,
         "objective_type": 6,

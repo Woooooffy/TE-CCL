@@ -1,0 +1,37 @@
+{
+    "_comment": "Flat MILP AllGather on mini_1gpu_1nic with switch copy. 4 hosts x 1 GPU, 1 x 100Gbps NIC each, 2 leaves / 2 spines, 2:1 leaf taper. No host tier, so the only switches are the leaves and spines: a leaf or spine copy is exactly the network multicast this sample exercises (with copy, a leaf0-origin payload crosses the leaf cut once and the remote leaf fans it out). switch_copy true: every switch may copy -- a fan-out is one Send, charged once on its uplink, and ncclize emits it as ONE multicast send threadblock (tb send=\"r1,r2\") with one mscclflowid, plus a switch-JSON (format 2) entry listing every out port. Pass --no-multicast to ncclize for the pre-multicast output (one unicast send per branch). SLOWEST_LINK epoch; objective_type 6 (LEXICOGRAPHIC) puts makespan first. Output: Schedules/<name>.json. See teccl/ncclize/multicast_output_design.md.",
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_1gpu_1nic.topo",
+        "name": "Mini1GPU1NIC",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 1,
+        "output_flag": 1,
+        "log_to_console": 0,
+        "log_file": "_mini_1gpu_1nic_allgather_milp",
+        "mip_gap": 0.0001,
+        "mip_focus": 0,
+        "feasibility_tol": 0.0001,
+        "intfeas_tol": 0.0001,
+        "optimality_tol": 0.0001
+    },
+    "InstanceParams": {
+        "collective": 1,
+        "formulation": 1,
+        "num_chunks": 1,
+        "epoch_type": 2,
+        "epoch_multiplier": 1,
+        "epoch_duration": -1,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_copy": true,
+        "switch_pipeline": true,
+        "symmetry": false,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": false,
+        "schedule_output_file": "Schedules/mini_1gpu_1nic_allgather_milp.json"
+    }
+}
