@@ -14,6 +14,7 @@ rate in whichever units the holder works in.
 
 See teccl/hierarchy/switch_copy_design.md.
 """
+import json
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Set, Tuple
@@ -144,3 +145,42 @@ def delivery_index(sends: Iterable[Send]) -> Dict[Tuple[Identity, int], Tuple[Se
             if prev is None or (b.ready, s.epoch) < (prev[1].ready, prev[0].epoch):
                 index[key] = (s, b)
     return index
+
+
+# Field order of a "10-Sends" record and of its branches as written to a schedule file: who sends
+# what and when first, the fan-out last, so a record reads top-down.
+SEND_FIELDS = ("sender", "from", "chunk", "epoch", "span", "rate", "volume", "branches")
+BRANCH_FIELDS = ("to", "via", "ready")
+
+
+def schedule_json(info: Dict) -> str:
+    """A schedule dict as the text of a schedule file.
+
+    Top-level sections go in the numeric order of their prefix ("2-..." before "10-Sends"; unnumbered
+    ones such as Solver_Time last), where json's sort_keys would order them as strings. "10-Sends"
+    records and their branches follow SEND_FIELDS / BRANCH_FIELDS; every other section is sorted
+    recursively, exactly as sort_keys wrote it before."""
+    def section(key: str):
+        head = key.split("-", 1)[0]
+        return (int(head), key) if head.isdigit() else (float("inf"), key)
+
+    def ordered(record: Dict, fields: Tuple[str, ...]) -> Dict:
+        return {**{k: record[k] for k in fields if k in record},
+                **{k: record[k] for k in sorted(record) if k not in fields}}
+
+    def sort_all(x):
+        if isinstance(x, dict):
+            return {k: sort_all(x[k]) for k in sorted(x)}
+        if isinstance(x, list):
+            return [sort_all(v) for v in x]
+        return x
+
+    out = {}
+    for key in sorted(info, key=section):
+        if key == "10-Sends":
+            out[key] = [{**ordered(s, SEND_FIELDS),
+                         "branches": [ordered(b, BRANCH_FIELDS) for b in s["branches"]]}
+                        for s in info[key]]
+        else:
+            out[key] = sort_all(info[key])
+    return json.dumps(out, indent=2)

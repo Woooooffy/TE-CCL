@@ -1,5 +1,5 @@
 {
-    "_comment": "Flat MILP AllGather on mini_1gpu_1nic with switch copy. 4 hosts x 1 GPU, 1 x 100Gbps NIC each, 2 leaves / 2 spines, 2:1 leaf taper. No host tier, so the only switches are the leaves and spines: a leaf or spine copy is exactly the network multicast this sample exercises (with copy, a leaf0-origin payload crosses the leaf cut once and the remote leaf fans it out). switch_copy true: every switch may copy -- a fan-out is one Send, charged once on its uplink, and ncclize emits it as ONE multicast send threadblock (tb send=\"r1,r2\") with one mscclflowid, plus a switch-JSON (format 2) entry listing every out port. Pass --no-multicast to ncclize for the pre-multicast output (one unicast send per branch). SLOWEST_LINK epoch; objective_type 6 (LEXICOGRAPHIC) puts makespan first. Output: Schedules/<name>.json. See teccl/ncclize/multicast_output_design.md.",
+    "_comment": "Flat MILP AllGather on mini_1gpu_1nic with switch copy. 4 hosts x 1 GPU, 1 x 100Gbps NIC each, 2 leaves / 2 spines, 2:1 leaf taper. No host tier, so the only switches are the leaves and spines: a leaf or spine copy is exactly the network multicast this sample exercises (with copy, a leaf0-origin payload crosses the leaf cut once and the remote leaf fans it out). switch_copy true: every switch may copy -- a fan-out is one Send, charged once on its uplink, and ncclize emits it as ONE multicast send threadblock (tb send=\"r1,r2\") with one mscclflowid, plus a switch-JSON (format 2) entry listing every out port. Pass --no-multicast to ncclize for the pre-multicast output (one unicast send per branch). Epoch pinned to 0.08 s (epoch_duration), half the SLOWEST_LINK epoch of 0.16 s: at 0.16 s a GPU port carries 2 chunks per epoch against the 3 each GPU must receive, so the grid rounds the 0.24 s ingress floor up to 0.32 s; at 0.08 s the solve reaches 0.24 s (cross-leaf legs take 2 epochs as pace class 1). Splitting chunks instead (num_chunks 2, chunk_size 0.5, epoch kept at 0.16 s) stays at 0.32 s, so the gain is the epoch, not extra routing freedom. objective_type 6 (LEXICOGRAPHIC) puts makespan first. Output: Schedules/<name>.json. See teccl/ncclize/multicast_output_design.md.",
     "TopologyParams": {
         "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_1gpu_1nic.topo",
         "name": "Mini1GPU1NIC",
@@ -23,7 +23,7 @@
         "num_chunks": 1,
         "epoch_type": 2,
         "epoch_multiplier": 1,
-        "epoch_duration": -1,
+        "epoch_duration": 0.08,
         "num_epochs": -1,
         "alpha_threshold": 0.1,
         "switch_copy": true,

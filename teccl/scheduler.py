@@ -8,6 +8,7 @@ from typing import Dict, Tuple, Union
 
 from gurobipy import GRB
 from teccl.input_data import *
+from teccl.sends import schedule_json
 from teccl.solvers.allgather import AllGatherFormulation
 from teccl.solvers.allgather_astar import AStarFormulation
 from teccl.solvers.lp_formulation import LPFormulation
@@ -380,7 +381,7 @@ class TECCLSolver(object):
         info["Solver_Time"] = time() - start
         pathlib.Path(output_file).parent.mkdir(parents=True, exist_ok=True)
         with open(output_file, 'w+') as f:
-            f.write(json.dumps(info, indent=2, sort_keys=True))
+            f.write(schedule_json(info))
         print(f'Schedule written to {output_file}')
         return info
 
@@ -429,9 +430,7 @@ class TECCLSolver(object):
             ) - start
             pathlib.Path(output_file).parent.mkdir(parents=True, exist_ok=True)
             with open(output_file, 'w+') as f:
-                json_obj = json.dumps(
-                    epoch_result_schedule_solver[best_epochs]["schedule"][1], indent=2, sort_keys=True)
-                f.write(json_obj)
+                f.write(schedule_json(epoch_result_schedule_solver[best_epochs]["schedule"][1]))
             print(f'Schedule written to {output_file}')
 
 

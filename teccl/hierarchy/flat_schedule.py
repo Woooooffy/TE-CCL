@@ -335,7 +335,10 @@ def serialize(records: Sequence[Send],
               "branches": [{"to": b.receiver, "via": list(b.via), "ready": b.ready} for b in bs]}
              for r, bs in used.items()]
 
-    epochs_required = max((b.ready for r in records for b in r.fanout), default=0) + 1
+    # A branch's ready is the first epoch its receiver HOLDS the data, i.e. the count of epochs
+    # elapsed when the last delivery lands -- already the epoch count, with no +1 (the flat MILP's
+    # find_demand_satisfied_k() + 1 adds one because its k is the last epoch of the transfer).
+    epochs_required = max((b.ready for r in records for b in r.fanout), default=0)
     finish = delta * epochs_required
     info: Dict = {
         "0-Collective": collective,

@@ -102,7 +102,10 @@ def derive_grid(scale: ChunkScale, fine_topology: Topology, coarse_epoch: float,
             f"cumulative chunk refinement {scale.refinement_from_root} exceeds the budget "
             f"{max_refinement}: ncclize's chunk_up() would have to expand every chunk that finely. "
             f"The budget is shared by every level of the recursion.")
-    natural = scale.epoch_duration(intra_link_bandwidth(fine_topology))
+    # Topology capacity is in chunks/s at the topology's own chunk_size; bytes_per_chunk is in bytes,
+    # so the bandwidth goes back to bytes/s first. The two agree only when chunk_size == 1, which hid
+    # this: at chunk_size 0.5 the fine epoch came out half the real NVLink crossing time.
+    natural = scale.epoch_duration(intra_link_bandwidth(fine_topology) * fine_topology.chunk_size)
     m = int(math.floor(coarse_epoch / natural + 1e-9))
     if m < 1:
         raise AssertionError(

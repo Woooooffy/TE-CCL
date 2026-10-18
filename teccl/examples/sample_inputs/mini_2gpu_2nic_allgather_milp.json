@@ -1,5 +1,5 @@
 {
-    "_comment": "Flat MILP AllGather on mini_2gpu_2nic with switch copy. 4 hosts x 2 GPUs, each GPU with its own 100Gbps NIC (2 uplinks per host), 2 leaves / 2 spines. Flat solve; the hierarchical partners are mini_2gpu_2nic_hier_allgather_milp_{cell,holder}.json. switch_copy true: every switch may copy -- a fan-out is one Send, charged once on its uplink, and ncclize emits it as ONE multicast send threadblock (tb send=\"r1,r2\") with one mscclflowid, plus a switch-JSON (format 2) entry listing every out port. Pass --no-multicast to ncclize for the pre-multicast output (one unicast send per branch). SLOWEST_LINK epoch; objective_type 6 (LEXICOGRAPHIC) puts makespan first. Output: Schedules/<name>.json. See teccl/ncclize/multicast_output_design.md.",
+    "_comment": "Flat MILP AllGather on mini_2gpu_2nic with switch copy. 4 hosts x 2 GPUs, each GPU with its own 100Gbps NIC (2 uplinks per host), 2 leaves / 2 spines. Flat solve; the hierarchical partners are mini_2gpu_2nic_hier_allgather_milp_{cell,holder}.json. switch_copy true: every switch may copy -- a fan-out is one Send, charged once on its uplink, and ncclize emits it as ONE multicast send threadblock (tb send=\"r1,r2\") with one mscclflowid, plus a switch-JSON (format 2) entry listing every out port. Pass --no-multicast to ncclize for the pre-multicast output (one unicast send per branch). Epoch pinned to 0.04 s (epoch_duration), half the SLOWEST_LINK epoch of 0.08 s. A flat solve charges a GPU-to-peer NVLink forward one whole epoch (it really takes 1/900 s), so it finishes at the 0.24 s ingress floor plus one epoch: 0.32 s at 0.08 s, 0.28 s at 0.04 s. Splitting chunks instead (num_chunks 2, chunk_size 0.5, epoch kept at 0.08 s) stays at 0.32 s. 0.04 s solves in ~500 s against ~30 s at 0.08 s; 0.02 s would give 0.26 s at a much larger cost. The hierarchical partners price that forward at 1/900 s and reach 0.2411 s. objective_type 6 (LEXICOGRAPHIC) puts makespan first. Output: Schedules/<name>.json. See teccl/ncclize/multicast_output_design.md.",
     "TopologyParams": {
         "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_2gpu_2nic.topo",
         "name": "Mini2GPU2NIC",
@@ -23,7 +23,7 @@
         "num_chunks": 1,
         "epoch_type": 2,
         "epoch_multiplier": 1,
-        "epoch_duration": -1,
+        "epoch_duration": 0.04,
         "num_epochs": -1,
         "alpha_threshold": 0.1,
         "switch_copy": true,

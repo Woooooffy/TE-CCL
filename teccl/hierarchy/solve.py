@@ -720,9 +720,9 @@ def solve_hierarchical(topology: Topology, user_input, collective, num_chunks: i
         getattr(collective, "name", str(collective)).lower(),
         grid=(solution.delta, solution.rounds_per_epoch))
     if write_outputs:
-        import json
+        from teccl.sends import schedule_json
         with open(f"Schedules/{prefix}_flat.json", "w") as f:
-            json.dump(info, f, indent=2, sort_keys=True)
+            f.write(schedule_json(info))
         print(f"[hierarchy] flat schedule written to Schedules/{prefix}_flat.json")
     if ctx.memo_hits:
         print(f"[hierarchy] {ctx.memo_hits} sub-problem(s) served from the memo table "
