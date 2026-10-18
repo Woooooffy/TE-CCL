@@ -1,0 +1,31 @@
+{
+    "_comment": "Hierarchical LP AllGather on the SINGLE-PLANE rail-optimized 256-GPU cluster (300 fine nodes -> 44 coarse: 32 host cells + 8 leaves + 4 spines), 2:1 leaf taper. Topology comes from teccl/topologies/topology-dsl-frontend/examples/rail_optimized_256gpu.topo (it replaces the stale RailOptimizedSpineLeaf class, which modeled a non-blocking leaf-spine tier); the path is relative to the repo root. Single-plane counterpart of rail_optimized_256gpu_dual_plane_hierarchical_allgather.json.",
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/rail_optimized_256gpu.topo",
+        "name": "RailOptimizedSinglePlane",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 2,
+        "output_flag": 1,
+        "log_to_console": 0,
+        "mip_gap": 0.0001,
+        "log_file": "_rail_sp_allgather"
+    },
+    "InstanceParams": {
+        "collective": 1,
+        "formulation": 2,
+        "num_chunks": 1,
+        "epoch_type": 2,
+        "epoch_multiplier": 1,
+        "switch_copy": false,
+        "symmetry": true,
+        "objective_type": 3,
+        "solution_method": 1,
+        "hierarchical": true,
+        "hierarchy_prefix": "rail_sp_allgather_epochs",
+        "hierarchy_side_outputs": true,
+        "schedule_output_file": "Schedules/rail_optimized_256gpu_allgather_flat.json"
+    }
+}

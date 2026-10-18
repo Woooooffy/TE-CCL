@@ -10,7 +10,7 @@
         "time_limit": 4,
         "output_flag": 1,
         "log_to_console": 0,
-        "log_file": "_rail_single_plane_hier_allgather_milp_cell",
+        "log_file": "_rail_optimized_256gpu_hierarchical_allgather_milp_cell",
         "mip_gap": 0.0001,
         "mip_focus": 1,
         "feasibility_tol": 0.0001,
@@ -32,9 +32,9 @@
         "objective_type": 6,
         "solution_method": 1,
         "hierarchical": true,
-        "hierarchy_prefix": "rail_single_plane_hier_allgather_milp_cell",
+        "hierarchy_prefix": "rail_optimized_256gpu_hierarchical_allgather_milp_cell",
         "hierarchy_side_outputs": true,
-        "schedule_output_file": "Schedules/rail_single_plane_hier_allgather_milp_cell_flat.json",
+        "schedule_output_file": "Schedules/rail_optimized_256gpu_hierarchical_allgather_milp_cell_flat.json",
         "milp_chunking": "cell"
     }
 }

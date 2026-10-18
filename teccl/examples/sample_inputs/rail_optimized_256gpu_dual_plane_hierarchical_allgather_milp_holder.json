@@ -10,7 +10,7 @@
         "time_limit": 4,
         "output_flag": 1,
         "log_to_console": 0,
-        "log_file": "_rail_dual_plane_hier_allgather_milp_holder",
+        "log_file": "_rail_optimized_256gpu_dual_plane_hierarchical_allgather_milp_holder",
         "mip_gap": 0.0001,
         "mip_focus": 1,
         "feasibility_tol": 0.0001,
@@ -32,9 +32,9 @@
         "objective_type": 6,
         "solution_method": 1,
         "hierarchical": true,
-        "hierarchy_prefix": "rail_dual_plane_hier_allgather_milp_holder",
+        "hierarchy_prefix": "rail_optimized_256gpu_dual_plane_hierarchical_allgather_milp_holder",
         "hierarchy_side_outputs": true,
-        "schedule_output_file": "Schedules/rail_dual_plane_hier_allgather_milp_holder_flat.json",
+        "schedule_output_file": "Schedules/rail_optimized_256gpu_dual_plane_hierarchical_allgather_milp_holder_flat.json",
         "milp_chunking": "holder"
     }
 }

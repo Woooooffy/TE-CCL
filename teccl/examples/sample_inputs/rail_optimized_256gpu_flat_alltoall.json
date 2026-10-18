@@ -1,0 +1,39 @@
+{
+    "_comment": "Flat AllToAll (default formulation) on the SINGLE-PLANE rail-optimized 256-GPU cluster, 2:1 leaf taper. Topology comes from teccl/topologies/topology-dsl-frontend/examples/rail_optimized_256gpu.topo; it replaces the stale RailOptimizedSpineLeaf class (non-blocking leaf-spine tier), so teccl/examples/schedules/rail_optimized_spine_leaf_schedule_alltoall_long.json, solved on the class, is NOT this problem's answer. Hierarchical counterpart: rail_optimized_256gpu_hierarchical_alltoall.json.",
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/rail_optimized_256gpu.topo",
+        "name": "RailOptimizedSinglePlane",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 3,
+        "feasibility_tol": 0.0001,
+        "intfeas_tol": 0.0001,
+        "optimality_tol": 0.0001,
+        "output_flag": 1,
+        "log_file": "",
+        "log_to_console": 1,
+        "mip_gap": 0.001,
+        "mip_focus": 1,
+        "crossover": -1,
+        "method": -1,
+        "heuristics": 0.05
+    },
+    "InstanceParams": {
+        "collective": 2,
+        "num_chunks": 1,
+        "epoch_type": 3,
+        "epoch_duration": 1.28,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_copy": false,
+        "switch_pipeline": true,
+        "debug": false,
+        "debug_output_file": "",
+        "objective_type": 6,
+        "solution_method": 1,
+        "symmetry": true,
+        "schedule_output_file": "Schedules/rail_optimized_256gpu_flat_alltoall.json"
+    }
+}
