@@ -24,7 +24,7 @@
         "epoch_type": 2,
         "epoch_multiplier": 1,
         "epoch_duration": -1,
-        "num_epochs": -1,
+        "num_epochs": 35,
         "alpha_threshold": 0.1,
         "switch_copy": [true, false],
         "switch_pipeline": true,
