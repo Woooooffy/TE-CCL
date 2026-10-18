@@ -28,7 +28,7 @@
         "alpha_threshold": 0.1,
         "switch_copy": true,
         "switch_pipeline": true,
-        "symmetry": false,
+        "symmetry": true,
         "objective_type": 6,
         "solution_method": 1,
         "hierarchical": false,
