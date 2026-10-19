@@ -7,7 +7,7 @@
         "chunk_size": 1
     },
     "GurobiParams": {
-        "time_limit": 4,
+        "time_limit": 6,
         "output_flag": 1,
         "log_to_console": 0,
         "log_file": "_rail_optimized_256gpu_hierarchical_allgather_milp_holder",
