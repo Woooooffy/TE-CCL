@@ -88,7 +88,8 @@ def coarsify_demand_preserving(fine_demand, mapping: HierarchyMapping,
         "fine"    b = 1
         "holder"  key (holder node, dest-cell set); b = the class size, their gcd if they differ
         "cell"    key (holder cell, dest-cell set); b likewise
-        int       key (holder node, dest-cell set); b as given, which must divide every class
+        int       key (holder node, dest-cell set); b as given, which must divide every class --
+                  or, between "holder" and "cell", every (cell, dest-cell set) class instead
 
     The key only decides `b`. Columns are counted per (cell, dest-cell set) GROUP, because that is
     all the coarse level can tell apart; bundle composition is left to the resolution, whose egress
@@ -119,10 +120,19 @@ def coarsify_demand_preserving(fine_demand, mapping: HierarchyMapping,
         b = policy
         bad = {k: n for k, n in class_sizes.items() if n % b}
         if bad:
-            raise ValueError(
-                f"milp_chunking={b} does not divide every holder's class size; classes "
-                f"(holder, dest cells) -> size: {dict(list(bad.items())[:6])}. Pick a common "
-                f"divisor of {sizes}, or a named policy.")
+            # Past a holder's class, b can still divide every CELL class -- the range between
+            # "holder" and "cell". Bundles then span holders, exactly as under "cell", which the
+            # resolution already handles: columns are per group either way, only b changes.
+            cell_bad = {k: len(g.identities) for k, g in groups.items() if len(g.identities) % b}
+            if cell_bad:
+                raise ValueError(
+                    f"milp_chunking={b} divides neither every holder's class size nor every "
+                    f"cell's; classes (holder, dest cells) -> size: {dict(list(bad.items())[:6])}, "
+                    f"(cell, dest cells) -> size: {dict(list(cell_bad.items())[:6])}. Pick a "
+                    f"common divisor of either, or a named policy.")
+            logger.warning(
+                "milp_chunking=%d exceeds a holder's class (sizes %s), so bundles span holders "
+                "within a cell, as under 'cell'", b, sizes)
     else:
         b = 0
         for n in sizes:

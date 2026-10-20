@@ -1,0 +1,40 @@
+{
+    "_comment": "Hierarchical MILP AllGather on rail_optimized_256gpu with switch copy. 256 GPUs (32 hosts x 8), rail-optimized single plane: 8 leaves (one per rail) / 4 spines, 2:1 leaf taper, each leaf-spine edge 4 x 400Gbps cables. Hierarchical only. milp_chunking=2: one MILP chunk = 2 of a host's 8 identities for one destination-cell set, so 4 chunks per host -- between 'holder' (8, intractable here) and 'cell' (1, voids multipath across the 8 uplinks). Bundles span holder GPUs, so one GPU of each pair stages through the NVSwitch. switch_copy [true, false]: the network switches of the coarse level copy -- a fan-out is one Send, charged once on its uplink, and ncclize emits it as ONE multicast send threadblock (tb send=\"r1,r2\") with one mscclflowid, plus a switch-JSON (format 2) entry listing every out port; the cell NVSwitches do not copy (multicast there needs NVLS). Pass --no-multicast to ncclize for the pre-multicast output (one unicast send per branch). SLOWEST_LINK keeps every coarse link at >= 1 chunk/epoch (occupancy 1: no multi-epoch legs). objective_type 6 (LEXICOGRAPHIC) puts makespan first; PAPER (3) ties on it. Outputs: Schedules/<prefix>_flat.json (+ _coarse/_identities/_intra side outputs). See teccl/hierarchy/milp_design.md and teccl/ncclize/multicast_output_design.md.",
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/rail_optimized_256gpu.topo",
+        "name": "RailOptimizedSinglePlane",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 4,
+        "output_flag": 1,
+        "log_to_console": 0,
+        "log_file": "_rail_optimized_256gpu_hierarchical_allgather_milp_b2",
+        "mip_gap": 0.0001,
+        "mip_focus": 1,
+        "feasibility_tol": 0.0001,
+        "intfeas_tol": 0.0001,
+        "optimality_tol": 0.0001
+    },
+    "InstanceParams": {
+        "collective": 1,
+        "formulation": 1,
+        "num_chunks": 1,
+        "epoch_type": 2,
+        "epoch_multiplier": 1,
+        "epoch_duration": -1,
+        "num_epochs": 19,
+        "alpha_threshold": 0.1,
+        "switch_copy": [true, false],
+        "switch_pipeline": true,
+        "symmetry": false,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": true,
+        "hierarchy_prefix": "rail_optimized_256gpu_hierarchical_allgather_milp_b2",
+        "hierarchy_side_outputs": true,
+        "schedule_output_file": "Schedules/rail_optimized_256gpu_hierarchical_allgather_milp_b2_flat.json",
+        "milp_chunking": 2
+    }
+}

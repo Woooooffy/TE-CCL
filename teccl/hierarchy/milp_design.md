@@ -144,12 +144,14 @@ depth:
 | `"fine"` | one fine identity | 1 | never |
 | `"holder"` (default) | one holder GPU's identities for one destination-cell set | that class's size (allgather: `num_chunks`; alltoall: `\|V\|·num_chunks`) | when `b > 1` |
 | `"cell"` | one cell's identities for one destination-cell set | that class's size | when `b > 1` |
-| `int` | `b` identities of one holder GPU | as given | when `b > 1` |
+| `int` | `b` identities of one holder GPU (or, past a holder's class, of one cell) | as given | when `b > 1` |
 
 `"cell"` is rarely the right choice, because it voids multipath on any cell
 with more than one uplink. It is there for tractability on large coarse graphs.
 The integer form is the custom spec, and it covers everything between `"fine"`
-and `"holder"`, such as half a GPU's payload for more pipelining. A callable
+and `"cell"`: below `"holder"`, such as half a GPU's payload for more
+pipelining, and above it, such as 4 bundles per 8-GPU cell on a rail fabric
+where `"holder"` is intractable and `"cell"` gives up multipath. A callable
 key (identity, holder, dest cells → class) is easy to expose through the
 Python API later, but not through JSON.
 
@@ -159,8 +161,10 @@ is `(holder GPU, dest-cell set)` for everything except `"cell"`, which uses
 asserted. Where a policy names "one class = one chunk" but the class sizes
 differ, `b = gcd(class sizes)`, and a warning names how many chunks each class
 got. Example: hetero alltoall under `"holder"`, whose classes are `4·nc` and
-`6·nc`. The integer form is checked, not adjusted: a `b` that does not divide
-a holder class fails loud and lists the class.
+`6·nc`. The integer form is checked, not adjusted: a `b` that divides every
+holder class keeps the holder key. Otherwise it must divide every cell class,
+and it then bundles across the cell's holders as `"cell"` does, with a
+warning. A `b` that divides neither fails loud and lists both.
 
 **The MILP sees COUNTS, not bundles.** The coarse level cannot tell two chunks
 apart if they share a source cell and a destination-cell set. So the tensor is

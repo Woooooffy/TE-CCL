@@ -312,7 +312,9 @@ class InstanceParams:
     #             gcd when sizes differ). Keeps multipath across a cell's uplinks.
     #   "cell"    one cell's identities for one destination-cell set. Smallest model, but voids
     #             multipath on any cell with more than one uplink -- rarely the right choice.
-    #   int       b identities of one holder GPU; must divide every holder's class size.
+    #   int       b identities of one holder GPU; must divide every holder's class size. A b past
+    #             the holder class (between "holder" and "cell") must divide every cell's class
+    #             instead, and its bundles span the cell's holders as under "cell".
     # See teccl/hierarchy/milp_design.md §2.1 and hierarchy.milp_routing.
     milp_chunking: Union[str, int, List] = "holder"
     

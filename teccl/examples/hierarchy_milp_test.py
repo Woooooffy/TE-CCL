@@ -76,12 +76,22 @@ def test_count_demand():
         raise AssertionError("b=3 does not divide a holder's 4 chunks and must be refused")
     except ValueError:
         pass
+    # Between "holder" and "cell": at num_chunks=1 a holder's class is 1, but b=2 divides every
+    # cell's (4, 4, 6), so the bundles span holders -- half as many columns as "holder".
+    span = coarsify_demand_preserving(ag1, mapping, 2)
+    assert span.b == 2 and _columns(span) == {0: 2, 1: 2, 2: 3}, (span.b, _columns(span))
+    try:
+        coarsify_demand_preserving(ag1, mapping, 4)
+        raise AssertionError("b=4 divides neither a holder's 1 chunk nor host C's 6 and must be "
+                             "refused")
+    except ValueError:
+        pass
     # alltoall: a holder's class toward cell V has |V| identities, and |V| differs (4, 4, 6), so
     # "holder" falls back to their gcd (2) rather than one chunk per class.
     h2 = coarsify_demand_preserving(a2a, mapping, "holder")
     assert h2.b == 2, h2.b
     # The tensor is binary and each column is wanted by exactly its group's destination cells.
-    for d in (fine, holder4, cell, two, h2):
+    for d in (fine, holder4, cell, two, span, h2):
         for g in d.groups:
             for c in g.columns:
                 wanted = {v for v in range(mapping.num_coarse) if d.tensor[g.cell][v][c]}
