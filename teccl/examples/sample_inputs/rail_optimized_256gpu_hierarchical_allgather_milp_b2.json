@@ -7,7 +7,7 @@
         "chunk_size": 1
     },
     "GurobiParams": {
-        "time_limit": 4,
+        "time_limit": 6,
         "output_flag": 1,
         "log_to_console": 0,
         "log_file": "_rail_optimized_256gpu_hierarchical_allgather_milp_b2",
@@ -28,13 +28,13 @@
         "alpha_threshold": 0.1,
         "switch_copy": [true, false],
         "switch_pipeline": true,
-        "symmetry": false,
+        "symmetry": true,
         "objective_type": 6,
         "solution_method": 1,
         "hierarchical": true,
-        "hierarchy_prefix": "rail_optimized_256gpu_hierarchical_allgather_milp_b2",
+        "hierarchy_prefix": "rail_optimized_256gpu_hierarchical_allgather_milp_b4",
         "hierarchy_side_outputs": true,
-        "schedule_output_file": "Schedules/rail_optimized_256gpu_hierarchical_allgather_milp_b2_flat.json",
-        "milp_chunking": 2
+        "schedule_output_file": "Schedules/rail_optimized_256gpu_hierarchical_allgather_milp_b4_flat.json",
+        "milp_chunking": 4
     }
 }
