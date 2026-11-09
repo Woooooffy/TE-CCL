@@ -23,7 +23,7 @@ every bound, integrality, linear row and max_() constraint against it, and write
 Point InstanceParams.warmstart at the file (read in AllGatherFormulation.encode_problem, ONE_SHOT).
 
     PYTHONPATH=. python teccl/examples/hierarchy_leaf_broadcast_warmstart.py \
-        -i teccl/examples/sample_inputs/rail_optimized_256gpu_hierarchical_allgather_milp_b2.json
+        -i teccl/examples/sample_inputs/rail_optimized_256gpu_hierarchical_allgather_milp_b2_ws.json
 
 Writes warmstarts/<hierarchy_prefix>.mst unless -o is given. Regenerate it whenever the model
 changes (input, num_epochs, formulation code): a start whose names no longer match is ignored.
