@@ -322,6 +322,26 @@ class BaseFormulation(ABC):
         # self.model.Params.Cuts = 1
         # self.model_.Params.RINS = 5000
         # self.model_.Params.Threads = 80
+        self._set_tier_time_limits()
+
+    def _set_tier_time_limits(self) -> None:
+        """InstanceParams.objective_tier_time_limit, one Gurobi multi-objective pass per tier.
+
+        Pass i is tier i: apply_objective gives tier i priority len(tiers) - i, and Gurobi runs the
+        passes in decreasing priority. Called last in set_gurobi_params because a pass environment
+        is a copy of the model's settings at the time it is created -- created any earlier, it would
+        miss the tolerances and limits set above.
+        """
+        limits = self.user_input.instance.objective_tier_time_limit
+        if not limits or self.user_input.instance.objective_type != ObjectiveType.LEXICOGRAPHIC:
+            return
+        self.model.update()       # NumObj, set in apply_objective, reads 1 until the update
+        if len(limits) > self.model.NumObj:
+            raise ValueError(f"objective_tier_time_limit has {len(limits)} entries but the "
+                             f"lexicographic objective has {self.model.NumObj} tiers")
+        for index, hours in enumerate(limits):
+            if hours is not None:
+                self.model.getMultiobjEnv(index).setParam("TimeLimit", hours * 60 * 60)
 
     @abstractmethod
     def get_schedule(self) -> None:

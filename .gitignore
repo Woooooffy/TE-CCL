@@ -170,3 +170,6 @@ cython_debug/
 # 191 MB flat solve: over GitHub's 100 MB per-file limit, so a push that includes it is rejected
 Schedules/dual_plane_clustered_allgather_flat.json
 logs/hetero_allgather_epochs.txt
+
+# MIP starts (teccl/examples/hierarchy_leaf_broadcast_warmstart.py), ~35 MB each; regenerate per run
+warmstarts/

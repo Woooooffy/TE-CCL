@@ -237,6 +237,11 @@ class InstanceParams:
     # switches, and a bottom cell's NVSwitch (the crossbar row turns a fan-out into one multicast).
     # The default copies at the root and nowhere below it: copying inside a cell needs NVSwitch
     # multicast (NVLS-class hardware), so it is opt-in -- give a list, or a scalar for every level.
+    # Even where it is on, only PROGRAMMABLE switches copy (Topology.programmable_switch_indices,
+    # the set ncclize writes a forwarding program for): a copy is a forwarding decision, so a
+    # self-routing switch -- a PCIe root complex, or an NVSwitch a topology declares self-routing --
+    # forwards one copy per copy received (AllGatherFormulation.copy_switches,
+    # hierarchy.solve.cell_switch_copy).
     switch_copy: Union[bool, List[bool]] = (True, False)
     # Opt-in post-solve pass (LP only): average the finished solution over the topology's
     # symmetry group, projecting it onto the symmetric optimum. Default OFF because it changes
@@ -259,12 +264,24 @@ class InstanceParams:
     objective_makespan_rel_tol: float = 0.0  # slack on tier 0 (makespan, MILP only) for tiers 1-3
     objective_latency_rel_tol: float = 0.0   # slack on tier 1 (latency) for tiers 2-3
     objective_relay_rel_tol: float = 0.0     # slack on tier 2 (host relay) for tier 3
+    # Only used by ObjectiveType.LEXICOGRAPHIC: a time limit in HOURS (like GurobiParams.time_limit)
+    # per tier, highest priority first; None (or a None entry) leaves that tier to the global
+    # limit. A tier that hits its limit keeps its incumbent's value and the next tier starts. For a
+    # tier whose relaxation is too weak to ever close -- the MILP makespan on a large coarse level,
+    # where the incumbent is already provably optimal (e.g. at an ingress bound) -- this is what
+    # lets the lower tiers get any time at all.
+    objective_tier_time_limit: List[Optional[float]] = None
     solution_method: SolutionMethod = SolutionMethod.ONE_SHOT
     schedule_output_file: str = "" # If not empty, the schedule is written to this file. Default is "Topology-Chunks-chunksize-timestamp.json"
     lower: bool = False # If true will use the lowering code from Meghan to lower the input.
     lower_xml: str = "" # If not empty, the XML is written to this file. Default is "Topology-Chunks-chunksize-timestamp.xml"
     warmstart: str = "" # If not empty, the warmstart file is used to warmstart the optimization.
     symmetry: bool = False # If true, nodes that are given as symmetric are constrainted to have same number of total flows.
+    # MILP only: order a source's interchangeable chunks (identical demand columns) by delivery,
+    # so the solver does not search every relabeling of one schedule. Exact -- any solution can be
+    # relabeled to satisfy it -- but it may return a different one of several tied optima, and a
+    # user MIP start (warmstart) must follow the same order or Gurobi rejects it.
+    chunk_symmetry_breaking: bool = True
     # --- Hierarchical solve (teccl.hierarchy.solve.solve_hierarchical) -------------------------
     # If True, the topology is solved LEVEL BY LEVEL (abstract -> solve -> lower -> recurse) instead
     # of as one flat problem. Requires a topology that declares cells (Topology.build_hierarchy).

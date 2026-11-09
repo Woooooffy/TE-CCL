@@ -279,6 +279,27 @@ def level_switch_copy(ctx: LevelContext, depth: int) -> bool:
     return resolve_switch_copy(instance or InstanceParams(), depth)
 
 
+def cell_switch_copy(ctx: LevelContext, problem: "Subproblem") -> bool:
+    """Whether a bottom cell's internal switch may multicast: the level copies
+    (level_switch_copy) AND the switch is programmable. A copy is a forwarding decision -- the
+    switch must be told to replicate -- so a self-routing NVSwitch cannot make one, which is the
+    same rule the MILP applies to network switches (AllGatherFormulation.copy_switches). Dropping
+    a requested copy is said once, so a per-level `switch_copy` list asking for NVSwitch multicast
+    on a topology that declares its NVSwitches self-routing does not silently do something else."""
+    if not level_switch_copy(ctx, problem.depth):
+        return False
+    topo = problem.topology
+    if set(getattr(topo, "programmable_switch_indices", topo.switch_indices)):
+        return True
+    if not getattr(ctx, "warned_switch_copy", False):
+        ctx.warned_switch_copy = True
+        logger.warning(
+            "level depth=%d: switch_copy is on but cell %s's switch(es) %s are not programmable "
+            "(Topology.programmable_switch_indices), so they cannot replicate; the cell schedules "
+            "without multicast", problem.depth, problem.cell_id, list(topo.switch_indices))
+    return False
+
+
 def level_milp_chunking(ctx: LevelContext, depth: int):
     """The MILP chunking policy at `depth` (InstanceParams.milp_chunking), "holder" without input."""
     from teccl.input_data import resolve_milp_chunking
@@ -410,7 +431,7 @@ def _solve_base(problem: Subproblem, ctx: LevelContext) -> LevelSolution:
         ctx.warn_unmodelled_deadlines(problem, hard)
 
     flows = row.schedule_cell(problem.cell_id, cell, problem.demands,
-                              switch_copy=level_switch_copy(ctx, problem.depth), debug=ctx.debug,
+                              switch_copy=cell_switch_copy(ctx, problem), debug=ctx.debug,
                               subdivision=_subdivision_of(problem.scale),
                               topology=problem.topology)
     ctx.memo[key] = flows
@@ -621,6 +642,11 @@ class _CellView:
         self.capacity = [[parent.capacity[i][j] if (i in members and j in members) else 0.0
                           for j in range(n)] for i in range(n)]
         self.switch_indices = list(cell.internal_switches)
+        # Which of the cell's switches take a forwarding program -- and so may copy (see
+        # cell_switch_copy). None on the parent means every switch, the Topology default.
+        declared = getattr(parent, "programmable_switch_indices", None)
+        self.programmable_switch_indices = [
+            sw for sw in self.switch_indices if declared is None or sw in set(declared)]
         self.passive_indices = [i for i in range(n) if i not in members]
         self.chunk_size = parent.chunk_size
         self.cells = []

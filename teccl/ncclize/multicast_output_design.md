@@ -244,7 +244,10 @@ values. Flow 0 is the §1 copy, with its real ports; flow 1 is an illustrative u
   entry (`src_gpu`, `dst_gpu`) now live once in `flows`.
 - Non-programmable (self-routing) switches are still skipped, with the existing chain-past check.
   It is extended with one new rule: a tree may not BRANCH at a skipped switch, because nothing
-  would tell that switch to replicate. Fail at generation. Inter-cell trees branch only at network
+  would tell that switch to replicate. Fail at generation. *(2026-11-06: the solver now enforces this at the
+  source -- `AllGatherFormulation.copy_switches` lets only programmable switches copy, and
+  `hierarchy.solve.cell_switch_copy` does the same for a cell's NVSwitch -- so this check is a
+  backstop. The flat mini_2gpu_1nic schedule that tripped it multicast through a PCIe root complex.)* Inter-cell trees branch only at network
   switches today, and intra-cell (NVSwitch) multicasts are unpaced, so they get no flow id and no
   entry at all.
 - Port-split (multi-port) links: a multicast route over a link with `port_count > 1` is refused for

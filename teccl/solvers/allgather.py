@@ -27,6 +27,16 @@ class AllGatherFormulation(BaseFormulation):
         self.collective_name = user_input.instance.collective.name.lower()
         # Whether this level's switches copy (InstanceParams.switch_copy may be per level).
         self.switch_copy = resolve_switch_copy(user_input.instance, user_input.instance.level_depth)
+        # WHICH switches may copy: only the programmable ones (Topology.programmable_switch_indices),
+        # the same set ncclize writes a forwarding program for. A copy is a forwarding decision --
+        # the switch must be told to replicate a flow to several ports -- so a self-routing switch
+        # (an intra-host NVSwitch, a PCIe root complex) cannot do one, and a schedule that copied
+        # there would be refused when the switch table is built ("branches at switch ..., which
+        # takes no forwarding program"). Every other switch forwards one copy per copy received.
+        programmable = getattr(topology, "programmable_switch_indices", None)
+        self.copy_switches = frozenset(
+            (topology.switch_indices if programmable is None else programmable)
+            if self.switch_copy else ())
         self.solver_name = f"{user_input.instance.collective.name.title()}_MILP"
         self.required_flows = []
         self.flows_str_info = {}
@@ -134,12 +144,22 @@ class AllGatherFormulation(BaseFormulation):
         capped at 1, so those models are unchanged."""
         return max(1, int(sum(1 for d in self.nodes if self.demand[s][d][c])))
 
-    def class_copies(self, s: int, c: int) -> int:
-        """Copies of chunk (s, c) one paced send may carry in ONE pace class. With switch copy it
-        is 1: a same-class copy downstream of a copying switch is that switch's job, and a GPU
-        needs a chunk once, so a second same-class copy on one link only spends its capacity.
-        Concurrent copies then exist only across classes. Without switch copy, max_copies."""
-        return 1 if self.switch_copy else self.max_copies(s, c)
+    def copies_at(self, switch: int) -> bool:
+        """Whether `switch` may replicate a chunk to several out-links: switch copy is on at this
+        level AND the switch is programmable (see copy_switches in __init__)."""
+        return switch in self.copy_switches
+
+    def class_copies(self, s: int, c: int, j: int) -> int:
+        """Copies of chunk (s, c) one paced send on a link INTO node `j` may carry in ONE pace
+        class. With switch copy it is 1: a same-class copy downstream of a copying switch is that
+        switch's job, and a GPU needs a chunk once, so a second same-class copy on one link only
+        spends its capacity. Concurrent copies then exist only across classes. The exception is a
+        link into a switch that cannot copy (copy off, or not programmable): it forwards one copy
+        per copy received, so several receivers behind it need several copies -- max_copies, as
+        when switch copy is off."""
+        if self.switch_copy and not (j in self._switches and not self.copies_at(j)):
+            return 1
+        return self.max_copies(s, c)
 
     def send_bound(self, s: int, i: int, j: int, c: int, k: int) -> int:
         """Upper bound of flow[s][i][j][c][k]: how many copies that send may carry (1 if none)."""
@@ -162,7 +182,7 @@ class AllGatherFormulation(BaseFormulation):
             live = [b for b in classes if k + alpha + b <= self.num_epochs - 1]
             if not live:
                 continue
-            per_class = self.class_copies(s, c)
+            per_class = self.class_copies(s, c, j)
             copies = min(self.max_copies(s, c), per_class * len(live))
             flow = self.model.addVar(
                 0, copies, vtype=GRB.INTEGER, name='flow_%d_%d_%d_%d_%d' % (s, i, j, c, k))
@@ -389,30 +409,23 @@ class AllGatherFormulation(BaseFormulation):
         if i not in self.topology.switch_indices:
             # For non-switch nodes, the buffer already acounts for previous rounds and flows.
             # A node can send in an epoch what is in the buffer at the start of the epoch.
-            # Since a node can (copy) send the chunk from its buffer to multiple neighbors, we account for that
-            #  using the max_ function. The maximum that a node can send to any of its neighbors is the buffer.
+            # Since a node can (copy) send the chunk from its buffer to multiple neighbors, each
+            # send is bounded by the buffer on its own: flow_v <= buffer for every v, i.e.
+            # buffer >= max_v flow_v written out row by row. (This used to be aux == gp.max_(flows)
+            # with buffer >= aux. aux appeared nowhere else, so both allow exactly the same flows
+            # and buffers; the max_ only made presolve add a binary and a big-M row per operand.)
             # A send that may carry several copies at once (send_bound > 1, paced links only) is
             # bounded by copies * buffer instead: one held chunk feeds any number of copies.
-            single = []
             for v in range(self.num_nodes):
                 if self.topology.capacity[i][v] <= 0:
                     continue
+                flow = self.flow[s][i][v][c][k]
+                if not isinstance(flow, gp.Var):
+                    continue          # a skipped send is 0, and 0 <= buffer is the buffer's bound
                 copies = self.send_bound(s, i, v, c, k)
-                if copies > 1:
-                    self.model.addConstr(
-                        self.flow[s][i][v][c][k] <= copies * self.buffer[s][i][c][k],
-                        name="node_copies_s_%d_i_%d_v_%d_c_%d_k_%d" % (s, i, v, c, k))
-                    continue
-                single.append(self.flow[s][i][v][c][k])
-            if single:
-                self.aux_var.append(self.model.addVar(
-                    0, GRB.INFINITY, vtype=GRB.CONTINUOUS, name='aux_var_%d_%d_%d_%d' % (s, i, c, k)))
-                self.model.addConstr(self.aux_var[len(self.aux_var) - 1] == gp.max_(single), name="node_aux_flow_s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
-
-                node_constr = gp.LinExpr(0.0)
-                node_constr.add(self.buffer[s][i][c][k])
-                self.model.addConstr(node_constr >= self.aux_var[
-                    len(self.aux_var) - 1], name="node_flow_s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
+                self.model.addConstr(
+                    flow <= copies * self.buffer[s][i][c][k],
+                    name="node_flow_s_%d_i_%d_v_%d_c_%d_k_%d" % (s, i, v, c, k))
         elif self.user_input.instance.switch_pipeline:
             # Cut-through switch: it forwards, in the SAME class, what reaches it in this epoch.
             # Conservation per pace class is what keeps a traversal at one class end to end, and
@@ -433,7 +446,8 @@ class AllGatherFormulation(BaseFormulation):
                     for b, var in self._pace(s, i, v, c, k).items():
                         outflow[b].append(var)
             for b, outs in sorted(outflow.items()):
-                self._switch_egress_constr(inflow[b], outs, "s_%d_i_%d_c_%d_k_%d_b_%d" % (s, i, c, k, b))
+                self._switch_egress_constr(inflow[b], outs, "s_%d_i_%d_c_%d_k_%d_b_%d" % (s, i, c, k, b),
+                                           switch=i)
         else:
             # Store-and-forward switch: it sends what fully arrived in earlier epochs and rounds.
             switch_node_constr = gp.LinExpr(0.0)
@@ -452,11 +466,12 @@ class AllGatherFormulation(BaseFormulation):
             self._switch_egress_constr(
                 switch_node_constr,
                 [self.flow[s][i][v][c][k] for v in range(self.num_nodes) if self.topology.capacity[i][v] > 0],
-                "s_%d_i_%d_c_%d_k_%d" % (s, i, c, k))
+                "s_%d_i_%d_c_%d_k_%d" % (s, i, c, k), switch=i)
 
-    def _switch_egress_constr(self, inflow: gp.LinExpr, outs: List, tag: str) -> None:
-        """What a switch may send in one epoch given what reaches it (`inflow`)."""
-        if not self.switch_copy:
+    def _switch_egress_constr(self, inflow: gp.LinExpr, outs: List, tag: str, switch: int) -> None:
+        """What `switch` may send in one epoch given what reaches it (`inflow`): conservation, or
+        a copy to every out-link when the switch may copy (copies_at)."""
+        if not self.copies_at(switch):
             '''
                 switch no-copy version. For every outgoing chunk there has to be a corresponding incoming chunk.
             '''
@@ -470,18 +485,23 @@ class AllGatherFormulation(BaseFormulation):
             '''
                 switch copy version. The switch can copy the incoming chunk to multiple outgoing links.
             '''
-            self.aux_var.append(self.model.addVar(
-                0, GRB.INFINITY, vtype=GRB.CONTINUOUS, name='aux_var_switch_' + tag))
-            self.model.addConstr(self.aux_var[len(self.aux_var) - 1] == gp.max_(outs),
-                                 name="node_switch_flow_" + tag)
             # We allow the switch to drop the chunks with ">=" as we found it to be faster.
             # If we use "==" then in allgather case, it will result in no unnecessary flows, which is necessary for the symmetric case.
             if self.user_input.instance.symmetry:
+                # inflow == max(outs) needs the max itself
+                self.aux_var.append(self.model.addVar(
+                    0, GRB.INFINITY, vtype=GRB.CONTINUOUS, name='aux_var_switch_' + tag))
+                self.model.addConstr(self.aux_var[len(self.aux_var) - 1] == gp.max_(outs),
+                                     name="node_switch_flow_" + tag)
                 self.model.addConstr(inflow == self.aux_var[len(self.aux_var) - 1],
                                      name="switch_flow_" + tag)
             else:
-                self.model.addConstr(inflow >= self.aux_var[len(self.aux_var) - 1],
-                                     name="switch_flow_" + tag)
+                # inflow >= max(outs), written out one row per out-link: the same feasible set
+                # without an aux var or a max_ for presolve to linearize. A skipped out-link is 0,
+                # and inflow (a sum of nonnegative vars) is >= 0 already.
+                for n, out in enumerate(outs):
+                    if isinstance(out, gp.Var):
+                        self.model.addConstr(inflow >= out, name="switch_flow_%s_%d" % (tag, n))
 
     def node_constraints(self, previous_buffers=None) -> None:
         logging.debug(f'Adding node buffer and flow constraints')
@@ -619,7 +639,10 @@ class AllGatherFormulation(BaseFormulation):
         #    (and prunes) -- no constraint required.
         # Only the copy (max-egress) case lets a circulation manufacture an ungrounded
         # delivery, which is the physically-unrealizable phantom this constraint forbids.
-        if not (self.user_input.instance.switch_pipeline and self.switch_copy):
+        # A phantom needs a COPYING switch on the loop; with none (copy off, or no programmable
+        # switch) there is nothing to forbid. When some switch copies, the ordering covers the
+        # whole switch fabric, which is conservative and cheap.
+        if not (self.user_input.instance.switch_pipeline and self.copy_switches):
             return
         switches = set(self.topology.switch_indices)
         ss_links = [(a, b) for a in switches for b in switches
@@ -661,6 +684,46 @@ class AllGatherFormulation(BaseFormulation):
                     name="switch_acyc_s_%d_a_%d_b_%d_c_%d_k_%d" % (s, a, b, c, k))
         logging.debug(
             f'Finished adding switch acyclicity constraints in {time.time() - start}')
+
+    def chunk_symmetry_constraints(self) -> None:
+        """
+            Order a source's interchangeable chunks by delivery (InstanceParams.chunk_symmetry_breaking).
+
+            Two chunks c, c' of one source s with the same demand column (the same destinations)
+            enter the model identically: same initial buffer, same max_copies, and every other row
+            and objective tier either is per chunk or sums over chunks. Swapping their labels in a
+            solution therefore gives another solution with the same objective, so a source with n
+            such chunks has n! copies of every schedule for the branch-and-bound to tell apart.
+            (In a hierarchical level, these are the columns of one (cell, dest-cell set) group,
+            whose labels milp_routing already treats as arbitrary.)
+
+            Requiring the per-chunk delivery score
+                score(c) = sum over (d, k) of total_demand_sat[s][d][c][k]
+            to be non-increasing in c within each group keeps one representative of every relabeling:
+            sorting any solution's chunks by score is such a relabeling, so no objective value is
+            lost. Ties are allowed (>=).
+        """
+        if not self.user_input.instance.chunk_symmetry_breaking:
+            return
+        start = time.time()
+        added = 0
+        for s in self.sources:
+            groups = defaultdict(list)
+            for c in self.chunks:
+                column = tuple(int(self.demand[s][d][c]) for d in self.nodes)
+                if any(column):
+                    groups[column].append(c)
+            for column, members in groups.items():
+                wanters = [d for d, want in enumerate(column) if want]
+                scores = [gp.quicksum(self.total_demand_sat[s][d][c][k]
+                                      for d in wanters for k in self.epochs)
+                          for c in members]
+                for (c, score), (c_next, score_next) in zip(
+                        zip(members, scores), zip(members[1:], scores[1:])):
+                    self.model.addConstr(score >= score_next,
+                                         name="chunk_order_s_%d_c_%d_%d" % (s, c, c_next))
+                    added += 1
+        logging.debug(f'Added {added} chunk symmetry-breaking constraints in {time.time() - start}')
 
     def use_one_less_epoch(self) -> None:
         """
@@ -884,6 +947,7 @@ class AllGatherFormulation(BaseFormulation):
         self.forward_dwell_constraints()
         self.capacity_constraints()
         self.switch_acyclicity_constraints()
+        self.chunk_symmetry_constraints()
         if use_one_less_epoch:
             self.use_one_less_epoch()
         if self.user_input.instance.symmetry:
@@ -1082,7 +1146,9 @@ class AllGatherFormulation(BaseFormulation):
         if budget[0] <= 0:
             return None
         budget[0] -= 1
-        copy = self.switch_copy
+        # `node` is a switch whenever out_flow is set: it joins an already-traced input only if it
+        # can replicate it (copies_at); a switch that cannot copy forwards each input once.
+        copy = self.copies_at(node)
         pace = out_pace if out_flow is not None and self._paced(out_flow[1], out_flow[2]) else None
         candidates = self.get_viable_predecessors(flows, s, node, c, k, pred_memo, pace)
         if out_flow is not None and copy:
