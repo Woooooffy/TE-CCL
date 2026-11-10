@@ -59,7 +59,7 @@ from dataclasses import dataclass, field
 from math import inf
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from teccl.hierarchy.bands import PROLOGUE_BAND, band_of, is_hard, release_of
+from teccl.hierarchy.bands import PROLOGUE_BAND, assign_bands, band_of, is_hard, release_of
 from teccl.hierarchy.cell import Cell
 from teccl.hierarchy.reconstruct import Identity, IntraCellDemand
 from teccl.sends import Branch
@@ -343,14 +343,25 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
     internal-allgather self_distribution 5->4 are the same send). The merged delivery takes the max
     volume, the earliest release, and -- if any contributor is hard -- the tightest hard deadline.
     Tree-edge jobs are not deduped (they carry a precedence chain and only arise for isolated
-    fan-outs where no overlapping direct delivery exists)."""
-    max_recv = _max_intra_recv_load(demands)
+    fan-outs where no overlapping direct delivery exists).
+
+    The density test is PER BAND: both loads count only the demands that share the fan-out's band
+    (bands.assign_bands, the same policy _assign_bands applies to the jobs). Each band is scheduled
+    on its own and must fit its own m rounds, so a load in another band cannot make this one
+    send-bound. Whole-run totals did exactly that on rail_optimized_256gpu_dual_plane at
+    milp_chunking=4: band 0's uneven egress staging put six GPUs at 263 against a max recv of 255,
+    their fan-outs in bands 1-7 (28 send = 28 recv on every GPU) all became trees, every tree
+    relayed through the lowest-index GPU, and those bands needed 76 rounds against m = 72. Direct,
+    they take 28, the bound."""
+    band_demands = assign_bands(demands)
+    band_of_demand = {id(d): b for b, ds in band_demands.items() for d in ds}
+    max_recv = {b: _max_intra_recv_load(ds) for b, ds in band_demands.items()}
     if debug:
         by_kind = defaultdict(int)
         for d in demands:
             by_kind[d.kind] += 1
         _p(debug, f"  [_to_jobs] {len(demands)} demands "
-                  f"({dict(by_kind)}), max intra-recv load = {max_recv:g}")
+                  f"({dict(by_kind)}), max intra-recv load per band = {max_recv}")
     # merged direct deliveries keyed by (identity, src, dst)
     direct: Dict[Tuple[Identity, int, int], Dict] = {}
     tree_jobs: List[_Job] = []
@@ -402,10 +413,12 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
             _p(debug, f"    fan-out id={d.identity} {d.kind} src={d.src_gpu} -> "
                       f"{len(wanters)} wanters: ONE multicast (switch_copy)")
             continue
-        send_load = _intra_send_load(d.src_gpu, demands)
-        dense = send_load <= max_recv + EPS
+        band = band_of_demand[id(d)]
+        send_load = _intra_send_load(d.src_gpu, band_demands[band])
+        dense = send_load <= max_recv[band] + EPS
         if debug:
-            why = f"send={send_load:g} {'<=' if dense else '>'} max_recv={max_recv:g}"
+            why = (f"band {band}: send={send_load:g} {'<=' if dense else '>'} "
+                   f"max_recv={max_recv[band]:g}")
             _p(debug, f"    fan-out id={d.identity} {d.kind} src={d.src_gpu} -> "
                       f"{len(wanters)} wanters: {'DIRECT/ring' if dense else 'binomial TREE'} ({why})")
         if dense:
