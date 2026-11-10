@@ -57,7 +57,12 @@ def build_root_model(input_path: str):
     def capture(ui, topo):
         solver = TECCLSolver.__new__(TECCLSolver)
         solver.user_input, solver.topology_obj = ui, topo
-        formulation = solver.get_solver(copy.deepcopy(ui), topo)
+        ui = copy.deepcopy(ui)
+        # The input names the .mst this script is about to write; encode_problem would try to read
+        # it (and fail on a fresh checkout) before optimize. The start does not change variable
+        # names, so the model built without it is the one the run builds.
+        ui.instance.warmstart = ""
+        formulation = solver.get_solver(ui, topo)
 
         def stop(_model):
             raise _Built(formulation)
