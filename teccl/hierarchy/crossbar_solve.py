@@ -352,7 +352,16 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
     milp_chunking=4: band 0's uneven egress staging put six GPUs at 263 against a max recv of 255,
     their fan-outs in bands 1-7 (28 send = 28 recv on every GPU) all became trees, every tree
     relayed through the lowest-index GPU, and those bands needed 76 rounds against m = 72. Direct,
-    they take 28, the bound."""
+    they take 28, the bound.
+
+    Trees are LOAD-BALANCED across the band. A binomial tree's relay work follows the order of its
+    wanters (the first child relays most, the last ones not at all), and every tree used to take
+    them in GPU-index order, so all of a band's trees relayed through the same lowest-index GPUs:
+    52 sends against a max recv of 24 in the dual-plane b4 epilogue. Trees are now built after every
+    direct delivery is known, one band at a time in a fixed order, each taking its wanters
+    least-sent-so-far first (ties by ring distance from the root) and charging its edges to their
+    senders. A band's recv load and total send count do not depend on the tree shapes, so this only
+    moves sends toward the port bound; edge count, depth and precedence are unchanged."""
     band_demands = assign_bands(demands)
     band_of_demand = {id(d): b for b, ds in band_demands.items() for d in ds}
     max_recv = {b: _max_intra_recv_load(ds) for b, ds in band_demands.items()}
@@ -366,6 +375,7 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
     direct: Dict[Tuple[Identity, int, int], Dict] = {}
     tree_jobs: List[_Job] = []
     multicast: List[_Job] = []      # one job per fan-out under switch_copy
+    trees: List[Tuple[int, IntraCellDemand, List[int], int, bool]] = []  # built after the loop
 
     def _add_direct(identity, src, dst, volume, release, deadline, hard, kind):
         key = (identity, src, dst)
@@ -426,19 +436,32 @@ def _to_jobs(demands: Sequence[IntraCellDemand], cell: Cell,
                 _add_direct(d.identity, d.src_gpu, w, d.volume, release, d.deadline_epoch,
                             hard, d.kind)
         else:
-            deadline = d.deadline_epoch if hard else inf
-            # tree edges reference the delivering job for precedence (a child forwards only after
-            # it received).
-            deliver_job: Dict[int, _Job] = {}   # child gpu -> the job that delivered to it
-            for (parent, child, birth) in _binomial_tree_edges(d.src_gpu, wanters):
-                pred = deliver_job.get(parent)   # None if parent is the root (has data at start)
-                job = _Job(identity=d.identity, src=parent, dst=child, volume=d.volume,
-                           release_gap=release, deadline_gap=deadline, hard=hard,
-                           kind=d.kind, predecessor=pred)
-                tree_jobs.append(job)
-                deliver_job[child] = job
-                _p(debug, f"        tree edge r{birth}: {parent}->{child}"
-                          f"{'' if pred is None else f' (after {parent} receives)'}")
+            trees.append((band, d, wanters, release, hard))
+
+    # Trees are built only now, once every direct delivery is known, so each can relay through the
+    # GPUs least loaded in its band (see the docstring).
+    send_load_in_band: Dict[int, Dict[int, float]] = defaultdict(lambda: defaultdict(float))
+    for (_identity, src, _dst), e in direct.items():
+        b = band_of(e["release"], e["deadline"], e["hard"], f"direct {src}->{_dst}")
+        send_load_in_band[b][src] += e["volume"]
+    for band, d, wanters, release, hard in sorted(trees, key=lambda t: (t[0], t[1].identity,
+                                                                        t[1].src_gpu)):
+        load = send_load_in_band[band]
+        order = sorted(wanters, key=lambda w: (load[w], _ring_distance(d.src_gpu, w, cell.gpus)))
+        deadline = d.deadline_epoch if hard else inf
+        # tree edges reference the delivering job for precedence (a child forwards only after
+        # it received).
+        deliver_job: Dict[int, _Job] = {}   # child gpu -> the job that delivered to it
+        for (parent, child, birth) in _binomial_tree_edges(d.src_gpu, order):
+            pred = deliver_job.get(parent)   # None if parent is the root (has data at start)
+            job = _Job(identity=d.identity, src=parent, dst=child, volume=d.volume,
+                       release_gap=release, deadline_gap=deadline, hard=hard,
+                       kind=d.kind, predecessor=pred)
+            tree_jobs.append(job)
+            deliver_job[child] = job
+            load[parent] += d.volume
+            _p(debug, f"        tree edge r{birth}: {parent}->{child}"
+                      f"{'' if pred is None else f' (after {parent} receives)'}")
 
     jobs = [_Job(identity=k[0], src=k[1], dst=k[2], volume=e["volume"],
                  release_gap=e["release"], deadline_gap=e["deadline"], hard=e["hard"],
