@@ -56,7 +56,7 @@ def build_topology(cls, passive=()):
 
 
 def solve(topology, objective_type, formulation=Formulation.MILP,
-          latency_rel_tol=0.0, relay_rel_tol=0.0):
+          latency_rel_tol=0.0, relay_rel_tol=0.0, merge_forwarding_tiers=False):
     """Solve AllGather on `topology` with the given objective and return the solved formulation."""
     user_input = UserInputParams()
     user_input.topology = TopologyParams(name=type(topology).__name__, chunk_size=1)
@@ -70,6 +70,7 @@ def solve(topology, objective_type, formulation=Formulation.MILP,
         objective_type=objective_type,
         objective_latency_rel_tol=latency_rel_tol,
         objective_relay_rel_tol=relay_rel_tol,
+        merge_forwarding_tiers=merge_forwarding_tiers,
         # The LP aggregates flow per source and has no notion of copy; AllGather on it is only
         # meaningful with switch replication off (see TECCLSolver.get_solver).
         switch_copy=(formulation != Formulation.LP),
@@ -158,6 +159,7 @@ def metrics(solver):
         "epochs": solver.find_demand_satisfied_k() + 1,
         "switch_hops": switch_hops,
         "host_relay": relay if relay > TOL else 0.0,
+        "traffic": sum(volume.values()),
         "volume": volume,
         "num_obj": report["num_obj"],
         "tiers": report["tiers"],
@@ -270,7 +272,72 @@ def test_slow_switch_vs_relay(formulation=Formulation.MILP):
     return {"slow": slow, "fast": fast}
 
 
-TESTS = [test_direct_vs_switch, test_one_vs_two_switch, test_slow_switch_vs_relay]
+def assert_merged_hierarchy_installed(m):
+    """merge_forwarding_tiers: makespan > latency > traffic, and Gurobi's traffic value is the
+    number of link traversals measured off the solution."""
+    names = [name for name, _ in m["tiers"]]
+    assert names == ["makespan", "latency", "traffic"], f"merged tiers installed as {names}"
+    by_name = dict(m["tiers"])
+    assert abs(by_name["traffic"] - m["traffic"]) <= TOL, \
+        f"Gurobi's traffic tier ({by_name['traffic']:g}) disagrees with the flows ({m['traffic']:g})"
+
+
+def test_merged_forwarding_tiers(formulation=Formulation.MILP):
+    """
+    [4] InstanceParams.merge_forwarding_tiers (MILP only): one traffic tier in place of
+    host_relay and switch_chain.
+
+    (a) direct link vs one-switch path: 1 traversal per chunk against 2 -> the direct link.
+    (b) one-switch vs two-switch path: 2 against 3 -> the shorter chain.
+    (c) latency still outranks it: the relay through the passive GPU is used when it is strictly
+        faster than the slow switch path.
+    (d) with the switch path as fast as the relay, the two cost the SAME traffic (2 traversals
+        per chunk either way), so -- unlike the split tiers -- nothing prefers dropping the relay.
+        Only the traffic total (the minimum, 4) and the finish are asserted. The split tiers can
+        end with more traffic than that: they leave a dead origin -> host send uncharged.
+    """
+    if formulation != Formulation.MILP:
+        return None
+
+    def run(cls, passive=()):
+        m = metrics(solve(build_topology(cls, passive=passive), ObjectiveType.LEXICOGRAPHIC,
+                          formulation, merge_forwarding_tiers=True))
+        assert_merged_hierarchy_installed(m)
+        return m
+
+    direct = run(DirectVsSwitch)
+    assert direct["switch_hops"] <= TOL and abs(direct["traffic"] - 2) <= TOL, \
+        f"two chunks over the direct link = 2 traversals: {direct['volume']}"
+
+    chain = run(OneVsTwoSwitch)
+    assert abs(chain["switch_hops"] - 2) <= TOL and abs(chain["traffic"] - 4) <= TOL, \
+        f"two chunks over the one-switch path = 4 traversals: {chain['volume']}"
+
+    passive = SlowSwitchVsRelay.PASSIVE
+    slow = run(SlowSwitchVsRelay, passive)
+    assert slow["host_relay"] > TOL and slow["epochs"] <= 3, \
+        f"the strictly faster relay path must still win on latency: {slow['volume']}"
+
+    fast = run(FastSwitchVsRelay, passive)
+    split = metrics(solve(build_topology(FastSwitchVsRelay, passive=passive),
+                          ObjectiveType.LEXICOGRAPHIC, formulation))
+    assert fast["epochs"] == split["epochs"], \
+        f"merging the tiers must not change the finish: {fast['epochs']} vs {split['epochs']}"
+    assert abs(fast["traffic"] - 4) <= TOL, \
+        f"either route is 2 traversals per chunk, 4 in all, got {fast['traffic']:g}: {fast['volume']}"
+    # The split tiers may carry MORE: a send from its origin to a host that never forwards it is
+    # neither a relay nor a switch hop, so neither tier charges for it. Traffic does.
+    assert fast["traffic"] <= split["traffic"] + TOL, \
+        f"the traffic tier cannot do worse on traffic: {fast['traffic']:g} vs {split['traffic']:g}"
+    print(f"    [4] merged_forwarding     OK  direct traffic={direct['traffic']:g} | one-switch "
+          f"traffic={chain['traffic']:g} | slow: relay={slow['host_relay']:g} | fast: "
+          f"traffic={fast['traffic']:g} relay={fast['host_relay']:g} (split tiers: traffic="
+          f"{split['traffic']:g} relay={split['host_relay']:g})")
+    return {"direct": direct, "chain": chain, "slow": slow, "fast": fast}
+
+
+TESTS = [test_direct_vs_switch, test_one_vs_two_switch, test_slow_switch_vs_relay,
+         test_merged_forwarding_tiers]
 
 
 def run_all(formulation):
@@ -282,8 +349,8 @@ def run_all(formulation):
 def main():
     for formulation in FORMULATIONS:
         run_all(formulation)
-    print(f"\nAll {len(TESTS) * len(FORMULATIONS)} lexicographic-objective behavior tests passed "
-          f"({', '.join(f.name for f in FORMULATIONS)}).")
+    print(f"\nAll lexicographic-objective behavior tests passed "
+          f"({', '.join(f.name for f in FORMULATIONS)}; [4] is MILP only).")
 
 
 if __name__ == "__main__":
