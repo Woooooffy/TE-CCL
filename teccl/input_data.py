@@ -282,6 +282,18 @@ class InstanceParams:
     # relabeled to satisfy it -- but it may return a different one of several tied optima, and a
     # user MIP start (warmstart) must follow the same order or Gurobi rejects it.
     chunk_symmetry_breaking: bool = True
+    # MILP only: a switch must forward everything that reaches it ("==" in place of ">=" in the
+    # switch rule), so the model itself holds no dead flow -- a send into a switch that the switch
+    # drops. Off (the default), a switch may drop: that was found faster to solve, and the dead
+    # flows are pruned after the solve (dfs_remove_unnecessary_flows). But no objective tier above
+    # switch_chain charges for them, so that tier inherits an incumbent full of them. Exact for
+    # every objective that does not reward dead flow: deleting a dead flow from a solution leaves
+    # a solution with the same deliveries. See AllGatherFormulation._switch_egress_constr.
+    # Complete (no dead flow left) for cut-through switches that copy, where the acyclicity rows
+    # exist. NOT covered: a same-epoch circulation among cut-through switches that cannot copy
+    # (it conserves flow, and those switches get no acyclicity rows), and store-and-forward
+    # sends too late to be forwarded or to land inside the horizon.
+    switch_no_drop: bool = False
     # --- Hierarchical solve (teccl.hierarchy.solve.solve_hierarchical) -------------------------
     # If True, the topology is solved LEVEL BY LEVEL (abstract -> solve -> lower -> recurse) instead
     # of as one flat problem. Requires a topology that declares cells (Topology.build_hierarchy).

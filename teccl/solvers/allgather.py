@@ -445,9 +445,21 @@ class AllGatherFormulation(BaseFormulation):
                 if self.topology.capacity[i][v] > 0:
                     for b, var in self._pace(s, i, v, c, k).items():
                         outflow[b].append(var)
-            for b, outs in sorted(outflow.items()):
-                self._switch_egress_constr(inflow[b], outs, "s_%d_i_%d_c_%d_k_%d_b_%d" % (s, i, c, k, b),
-                                           switch=i)
+            classes = sorted(outflow)
+            out_bound = {}
+            if self.user_input.instance.switch_no_drop:
+                # A class that reaches the switch but has no out-link left in the horizon is dead
+                # flow too: give it a row (inflow == 0) instead of leaving it unconstrained.
+                classes = sorted(set(outflow) | {b for b, expr in inflow.items() if expr.size()})
+                if self.copies_at(i):
+                    for v in self.nodes:
+                        if self.topology.capacity[i][v] > 0:
+                            for b in self._pace(s, i, v, c, k):
+                                out_bound[b] = max(out_bound.get(b, 1), self.class_copies(s, c, v))
+            for b in classes:
+                self._switch_egress_constr(inflow[b], outflow.get(b, []),
+                                           "s_%d_i_%d_c_%d_k_%d_b_%d" % (s, i, c, k, b),
+                                           switch=i, out_bound=out_bound.get(b, 1))
         else:
             # Store-and-forward switch: it sends what fully arrived in earlier epochs and rounds.
             switch_node_constr = gp.LinExpr(0.0)
@@ -468,9 +480,28 @@ class AllGatherFormulation(BaseFormulation):
                 [self.flow[s][i][v][c][k] for v in range(self.num_nodes) if self.topology.capacity[i][v] > 0],
                 "s_%d_i_%d_c_%d_k_%d" % (s, i, c, k), switch=i)
 
-    def _switch_egress_constr(self, inflow: gp.LinExpr, outs: List, tag: str, switch: int) -> None:
+    def _switch_egress_constr(self, inflow: gp.LinExpr, outs: List, tag: str, switch: int,
+                              out_bound: int = 1) -> None:
         """What `switch` may send in one epoch given what reaches it (`inflow`): conservation, or
-        a copy to every out-link when the switch may copy (copies_at)."""
+        a copy to every out-link when the switch may copy (copies_at).
+
+        By default a switch may DROP what reaches it (">="): found faster to solve, with the dead
+        flows pruned after the solve. InstanceParams.switch_no_drop makes it forward everything
+        ("=="), so the model holds no dead flow at a switch:
+
+          no copy   inflow == sum(outs)
+          copy      inflow == max(outs). With every out-link carrying at most one copy
+                    (`out_bound` 1, the usual case: class_copies is 1 into a GPU or a copying
+                    switch) that is, without a max_ for presolve to linearize,
+                        out <= inflow  per out-link   (the default rows)
+                        inflow <= sum(outs)           (what arrives leaves on some link)
+                        inflow <= 1                   (a second copy arriving in the same epoch
+                                                       and class could feed no out-link the
+                                                       first does not: it is dead flow as well)
+                    An out-link into a switch that cannot copy may carry several copies
+                    (`out_bound` > 1); then the max_ itself is used, as under `symmetry`.
+        """
+        no_drop = self.user_input.instance.switch_no_drop
         if not self.copies_at(switch):
             '''
                 switch no-copy version. For every outgoing chunk there has to be a corresponding incoming chunk.
@@ -478,16 +509,19 @@ class AllGatherFormulation(BaseFormulation):
             switch_outgoing_links = gp.LinExpr(0.0)
             for out in outs:
                 switch_outgoing_links.add(out)
-            # We allow the switch to drop the chunks with ">=" as we found it to be faster.
-            # If we use "==" then in allgather case, it will result in no unnecessary flows.
-            self.model.addConstr(inflow >= switch_outgoing_links, name="switch_flow_" + tag)
+            if no_drop:
+                self.model.addConstr(inflow == switch_outgoing_links, name="switch_flow_" + tag)
+            else:
+                # We allow the switch to drop the chunks with ">=" as we found it to be faster.
+                # If we use "==" then in allgather case, it will result in no unnecessary flows.
+                self.model.addConstr(inflow >= switch_outgoing_links, name="switch_flow_" + tag)
         else:
             '''
                 switch copy version. The switch can copy the incoming chunk to multiple outgoing links.
             '''
             # We allow the switch to drop the chunks with ">=" as we found it to be faster.
             # If we use "==" then in allgather case, it will result in no unnecessary flows, which is necessary for the symmetric case.
-            if self.user_input.instance.symmetry:
+            if self.user_input.instance.symmetry or (no_drop and out_bound > 1):
                 # inflow == max(outs) needs the max itself
                 self.aux_var.append(self.model.addVar(
                     0, GRB.INFINITY, vtype=GRB.CONTINUOUS, name='aux_var_switch_' + tag))
@@ -499,9 +533,15 @@ class AllGatherFormulation(BaseFormulation):
                 # inflow >= max(outs), written out one row per out-link: the same feasible set
                 # without an aux var or a max_ for presolve to linearize. A skipped out-link is 0,
                 # and inflow (a sum of nonnegative vars) is >= 0 already.
+                sent = []
                 for n, out in enumerate(outs):
                     if isinstance(out, gp.Var):
                         self.model.addConstr(inflow >= out, name="switch_flow_%s_%d" % (tag, n))
+                        sent.append(out)
+                if no_drop and (inflow.size() or inflow.getConstant()):
+                    self.model.addConstr(inflow <= gp.quicksum(sent), name="switch_nodrop_" + tag)
+                    if inflow.size() != 1 or inflow.getConstant():
+                        self.model.addConstr(inflow <= 1, name="switch_single_" + tag)
 
     def node_constraints(self, previous_buffers=None) -> None:
         logging.debug(f'Adding node buffer and flow constraints')
