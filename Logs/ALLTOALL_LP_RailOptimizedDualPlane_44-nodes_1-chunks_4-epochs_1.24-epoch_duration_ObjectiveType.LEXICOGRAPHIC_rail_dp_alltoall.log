@@ -1,0 +1,109 @@
+
+Gurobi 13.0.2 (linux64) logging started Sun Nov 15 15:08:35 2026
+
+Set parameter LogFile to value "Logs/ALLTOALL_LP_RailOptimizedDualPlane_44-nodes_1-chunks_4-epochs_1.24-epoch_duration_ObjectiveType.LEXICOGRAPHIC_rail_dp_alltoall.log"
+Set parameter LogToConsole to value 0
+Set parameter OutputFlag to value 1
+Set parameter TimeLimit to value 18000
+Set parameter FeasibilityTol to value 1e-05
+Set parameter IntFeasTol to value 0.0001
+Set parameter OptimalityTol to value 1e-05
+Set parameter MIPGap to value 0.0001
+Set parameter Crossover to value -1
+Set parameter MIPFocus to value 0
+Set parameter Method to value -1
+Set parameter Heuristics to value 0.05
+Set parameter Presolve to value -1
+Set parameter SolutionLimit to value 2000000
+Set parameter PreSOS1BigM to value 1000000
+Gurobi Optimizer version 13.0.2 build v13.0.2rc1 (linux64 - "Ubuntu 22.04.5 LTS")
+
+CPU model: Intel(R) Xeon(R) Platinum 8180 CPU @ 2.50GHz, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 112 physical cores, 224 logical processors, using up to 32 threads
+
+Non-default parameters:
+SolutionLimit  2000000
+TimeLimit  18000
+FeasibilityTol  1e-05
+IntFeasTol  0.0001
+OptimalityTol  1e-05
+LogToConsole  0
+PreSOS1BigM  1000000
+
+Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
+Optimize a model with 75904 rows, 86528 columns and 355584 nonzeros (Min)
+Model fingerprint: 0x281c33e7
+Model has 5632 linear objective coefficients
+Variable types: 86528 continuous, 0 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 1e+03]
+  RHS range        [1e+00, 3e+01]
+
+
+---------------------------------------------------------------------------
+Multi-objectives: starting optimization (min) with 3 objectives... 
+---------------------------------------------------------------------------
+
+Multi-objectives: applying initial presolve...
+---------------------------------------------------------------------------
+
+Presolve removed 67856 rows and 64576 columns
+Presolved: 8048 rows, 21952 columns, 62720 nonzeros
+---------------------------------------------------------------------------
+
+Multi-objectives: optimize objective 1 (latency) ...
+---------------------------------------------------------------------------
+
+Presolve removed 304 rows and 1600 columns
+Presolve time: 0.17s
+Presolved: 7744 rows, 20352 columns, 59936 nonzeros
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0   -3.9680000e+03   3.931500e+00   0.000000e+00      0s
+       4   -3.4720000e+03   0.000000e+00   0.000000e+00      0s
+
+Use crossover to convert LP symmetric solution to basic solution...
+Crossover log...
+
+    3906 PPushes remaining with PInf 0.0000000e+00                 0s
+       0 PPushes remaining with PInf 0.0000000e+00                 0s
+
+  Push phase complete: Pinf 0.0000000e+00, Dinf 0.0000000e+00      0s
+
+Crossover time: 0.03 seconds (0.03 work units)
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+    3913   -3.4720000e+03   0.000000e+00   0.000000e+00      0s
+
+Solved in 3913 iterations and 0.22 seconds (0.21 work units)
+Optimal objective -3.472000000e+03
+---------------------------------------------------------------------------
+
+Multi-objectives: optimize objective 2 (host_relay) ...
+---------------------------------------------------------------------------
+
+LP warm-start: use basis
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0    0.0000000e+00   0.000000e+00   0.000000e+00      0s
+
+Solved in 0 iterations and 0.23 seconds (0.21 work units)
+Optimal objective  0.000000000e+00
+---------------------------------------------------------------------------
+
+Multi-objectives: optimize objective 3 (switch_chain) ...
+---------------------------------------------------------------------------
+
+LP warm-start: use basis
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0    9.9200000e+02   0.000000e+00   3.200000e+01      0s
+      41    9.9200000e+02   0.000000e+00   0.000000e+00      0s
+
+Solved in 41 iterations and 0.24 seconds (0.22 work units)
+Optimal objective  9.920000000e+02
+
+---------------------------------------------------------------------------
+Multi-objectives: solved in 0.25 seconds (0.22 work units), solution count 1
+
