@@ -294,16 +294,6 @@ class InstanceParams:
     # (it conserves flow, and those switches get no acyclicity rows), and store-and-forward
     # sends too late to be forwarded or to land inside the horizon.
     switch_no_drop: bool = False
-    # MILP only, ObjectiveType.LEXICOGRAPHIC: replace the host_relay and switch_chain tiers by ONE
-    # tier, `traffic` -- every unit of flow on every link, i.e. the number of link traversals the
-    # schedule makes (tiers become makespan > latency > traffic). A spine detour, a relay through a
-    # host and a redundant send each add traversals, so one count charges for all of them, and one
-    # solve replaces two. What it gives up: host relay is no longer driven to its minimum BEFORE
-    # anything else is considered -- a relayed send costs what any other send costs -- so a relay
-    # may appear wherever it adds no traffic. objective_relay_rel_tol is unused, and
-    # objective_tier_time_limit takes three entries. See
-    # AllGatherFormulation.hierarchical_objective_tiers.
-    merge_forwarding_tiers: bool = False
     # --- Hierarchical solve (teccl.hierarchy.solve.solve_hierarchical) -------------------------
     # If True, the topology is solved LEVEL BY LEVEL (abstract -> solve -> lower -> recurse) instead
     # of as one flat problem. Requires a topology that declares cells (Topology.build_hierarchy).

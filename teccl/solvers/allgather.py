@@ -938,9 +938,6 @@ class AllGatherFormulation(BaseFormulation):
                                 length of the switch chain a unit traverses: 0 for a direct
                                 link, 1 for gpu->switch->gpu, 3 for leaf->spine->leaf.
 
-        With InstanceParams.merge_forwarding_tiers, tiers 2 and 3 are replaced by one tier,
-        traffic (traffic_tier): makespan > latency > traffic.
-
         Only variables that were actually created are read; the sparse flow container returns
         0.0 for the (s, i, j, c, k) combinations initialize_variables skipped, which add into
         a LinExpr as a constant exactly as the single-objective code above does.
@@ -957,13 +954,6 @@ class AllGatherFormulation(BaseFormulation):
             if not self.demand[s][d][c]:
                 continue
             latency.add(self.total_demand_sat[s][d][c][k], -1.0)
-
-        if instance.merge_forwarding_tiers:
-            return [
-                ("makespan", makespan, instance.objective_makespan_rel_tol),
-                ("latency", latency, instance.objective_latency_rel_tol),
-                ("traffic", self.traffic_tier(), 0.0),
-            ]
 
         relay = gp.LinExpr(0.0)
         for n in self.host_indices():
@@ -987,28 +977,6 @@ class AllGatherFormulation(BaseFormulation):
             ("host_relay", relay, instance.objective_relay_rel_tol),
             ("switch_chain", switch_chain, 0.0),
         ]
-
-    def traffic_tier(self) -> gp.LinExpr:
-        """
-        The single forwarding tier of InstanceParams.merge_forwarding_tiers: flow on EVERY link,
-        summed over sources, chunks and epochs -- the number of link traversals (a send carrying
-        several copies counts each copy).
-
-        It takes the place of host_relay and switch_chain. Each thing those two charge for is a
-        traversal: a send out of a host, relayed or not, is one; every further switch on its way
-        is one more; and so is each delivery. Where every host link enters a switch and every
-        host wants every chunk (an allgather level of the hierarchy) the deliveries are a
-        constant, so this is switch_chain plus that constant, with the relay tier dropped.
-        Elsewhere it also counts what switch_chain does not: a direct host -> host send, and a
-        delivery to a host that only relays the chunk.
-        """
-        traffic = gp.LinExpr(0.0)
-        for i, j in product(self.nodes, self.nodes):
-            if self.topology.capacity[i][j] <= 0:
-                continue
-            for s, c, k in product(self.sources, self.chunks, self.epochs):
-                traffic.add(self.flow[s][i][j][c][k], 1.0)
-        return traffic
 
     def encode_problem(self, use_one_less_epoch: bool = False, previous_buffers: List[List[int]] = []) -> int:
         setup_start = time.time()
