@@ -1,0 +1,245 @@
+
+Gurobi 13.0.2 (linux64) logging started Sun Nov 15 16:14:44 2026
+
+Set parameter LogFile to value "Logs/Allgather_MILP_RailOptimizedDualPlane_44-nodes_2-chunks_8-epochs_0.04-epochduration_ObjectiveType.LEXICOGRAPHIC_rail_optimized_256gpu_dual_plane_hierarchical_allgather_milp_b4_nows_nodrop_traffic.log"
+Set parameter LogToConsole to value 0
+Set parameter OutputFlag to value 1
+Set parameter TimeLimit to value 21600
+Set parameter FeasibilityTol to value 0.0001
+Set parameter IntFeasTol to value 0.0001
+Set parameter OptimalityTol to value 0.0001
+Set parameter MIPGap to value 0.0001
+Set parameter Crossover to value -1
+Set parameter MIPFocus to value 1
+Set parameter Method to value -1
+Set parameter Heuristics to value 0.05
+Set parameter Presolve to value -1
+Set parameter SolutionLimit to value 2000000
+Set parameter PreSOS1BigM to value 1000000
+Gurobi Optimizer version 13.0.2 build v13.0.2rc1 (linux64 - "Ubuntu 22.04.5 LTS")
+
+CPU model: Intel(R) Xeon(R) Platinum 8180 CPU @ 2.50GHz, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 112 physical cores, 224 logical processors, using up to 32 threads
+
+Non-default parameters:
+SolutionLimit  2000000
+TimeLimit  21600
+FeasibilityTol  0.0001
+IntFeasTol  0.0001
+OptimalityTol  0.0001
+MIPFocus  1
+LogToConsole  0
+PreSOS1BigM  1000000
+
+Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
+Optimize a model with 474848 rows, 318984 columns and 6485440 nonzeros (Min)
+Model fingerprint: 0xbd69bba2
+Model has 8 linear objective coefficients
+Variable types: 6152 continuous, 312832 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+01]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 1e+01]
+  RHS range        [1e+00, 1e+01]
+
+
+---------------------------------------------------------------------------
+Multi-objectives: starting optimization (min) with 3 objectives... 
+---------------------------------------------------------------------------
+
+Multi-objectives: applying initial presolve...
+---------------------------------------------------------------------------
+
+Presolve removed 46464 rows and 40384 columns (presolve time = 5s)...
+Presolve removed 50048 rows and 40384 columns (presolve time = 10s)...
+Presolve removed 46464 rows and 36800 columns
+Presolve time: 12.56s
+Presolved: 428384 rows, 282184 columns, 1791808 nonzeros
+---------------------------------------------------------------------------
+
+Multi-objectives: optimize objective 1 (makespan) ...
+---------------------------------------------------------------------------
+
+Presolve removed 0 rows and 1 columns
+Presolve time: 4.88s
+Presolved: 428384 rows, 282183 columns, 1791808 nonzeros
+Variable types: 6144 continuous, 276039 integer (276039 binary)
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0   -7.2593226e+00   1.235688e+01   0.000000e+00     20s
+      40   -4.6129032e+00   0.000000e+00   0.000000e+00     20s
+      40   -4.6129032e+00   0.000000e+00   0.000000e+00     20s
+
+Use crossover to convert LP symmetric solution to basic solution...
+
+Root crossover log...
+
+     217 DPushes remaining with DInf 0.0000000e+00                22s
+       0 DPushes remaining with DInf 0.0000000e+00                22s
+
+  113632 PPushes remaining with PInf 0.0000000e+00                23s
+   60739 PPushes remaining with PInf 0.0000000e+00                25s
+   36323 PPushes remaining with PInf 0.0000000e+00                30s
+   28082 PPushes remaining with PInf 0.0000000e+00                35s
+   22251 PPushes remaining with PInf 0.0000000e+00                40s
+   16652 PPushes remaining with PInf 0.0000000e+00                45s
+   10091 PPushes remaining with PInf 0.0000000e+00                50s
+    5331 PPushes remaining with PInf 0.0000000e+00                55s
+     872 PPushes remaining with PInf 0.0000000e+00                60s
+       0 PPushes remaining with PInf 0.0000000e+00                61s
+
+  Push phase complete: Pinf 0.0000000e+00, Dinf 4.6622428e-14     61s
+
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+  113892   -4.6129032e+00   0.000000e+00   0.000000e+00     62s
+Crossover time: 41.47 seconds (34.44 work units)
+
+Root relaxation: objective -4.612903e+00, 113892 iterations, 42.75 seconds (35.25 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0   -4.61290    0 77560          -   -4.61290      -     -  338s
+H    0     0                      -1.0000000   -4.61290   361%     -  340s
+
+Cutting planes:
+  Zero half: 36
+
+Explored 1 nodes (127518 simplex iterations) in 381.24 seconds (271.36 work units)
+Thread count was 32 (of 224 available processors)
+
+Solution count 1: -1 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective -1.000000000000e+00, best bound -1.000000000000e+00, gap 0.0000%
+---------------------------------------------------------------------------
+
+Multi-objectives: optimize objective 2 (latency) ...
+---------------------------------------------------------------------------
+
+Loaded user MIP start with objective -9149
+
+Presolve removed 13889 rows and 8 columns
+Presolve time: 4.57s
+Presolved: 414496 rows, 282176 columns, 1764032 nonzeros
+Variable types: 6144 continuous, 276032 integer (276032 binary)
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0   -1.4144000e+04   1.573395e+00   0.000000e+00    387s
+      34   -9.1520000e+03   0.000000e+00   0.000000e+00    387s
+      34   -9.1520000e+03   0.000000e+00   0.000000e+00    387s
+
+Use crossover to convert LP symmetric solution to basic solution...
+
+Root crossover log...
+
+   79249 PPushes remaining with PInf 0.0000000e+00               388s
+   60496 PPushes remaining with PInf 0.0000000e+00               390s
+   47855 PPushes remaining with PInf 0.0000000e+00               395s
+   41063 PPushes remaining with PInf 0.0000000e+00               400s
+   34880 PPushes remaining with PInf 0.0000000e+00               405s
+   29661 PPushes remaining with PInf 0.0000000e+00               410s
+   23614 PPushes remaining with PInf 0.0000000e+00               415s
+   18022 PPushes remaining with PInf 0.0000000e+00               420s
+   12170 PPushes remaining with PInf 0.0000000e+00               425s
+    7738 PPushes remaining with PInf 0.0000000e+00               430s
+    3642 PPushes remaining with PInf 0.0000000e+00               436s
+    2290 PPushes remaining with PInf 0.0000000e+00               441s
+     938 PPushes remaining with PInf 0.0000000e+00               446s
+       0 PPushes remaining with PInf 0.0000000e+00               450s
+
+  Push phase complete: Pinf 0.0000000e+00, Dinf 2.2149064e-09    450s
+
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+   79286   -9.1520000e+03   0.000000e+00   0.000000e+00    450s
+Crossover time: 62.61 seconds (64.38 work units)
+
+Root relaxation: objective -9.152000e+03, 79286 iterations, 63.72 seconds (65.18 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0 -9152.0000    0 68232 -9149.0000 -9152.0000  0.03%     -  881s
+H    0     0                    -9152.000000 -9152.0000  0.00%     -  909s
+     0     0 -9152.0000    0 68232 -9152.0000 -9152.0000  0.00%     -  909s
+
+Explored 1 nodes (98131 simplex iterations) in 910.00 seconds (703.54 work units)
+Thread count was 32 (of 224 available processors)
+
+Solution count 2: -9152 -9149 
+No other solutions better than -9152
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective -9.152000000000e+03, best bound -9.152000000000e+03, gap 0.0000%
+---------------------------------------------------------------------------
+
+Multi-objectives: optimize objective 3 (traffic) ...
+---------------------------------------------------------------------------
+
+Loaded user MIP start with objective 2926
+
+Presolve removed 13889 rows and 8 columns
+Presolve time: 4.73s
+Presolved: 414497 rows, 282176 columns, 1777920 nonzeros
+Variable types: 6144 continuous, 276032 integer (276032 binary)
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0    0.0000000e+00   1.630000e+02   0.000000e+00    916s
+      64    2.0480000e+03   0.000000e+00   0.000000e+00    916s
+      64    2.0480000e+03   0.000000e+00   0.000000e+00    916s
+
+Use crossover to convert LP symmetric solution to basic solution...
+
+Root crossover log...
+
+       0 DPushes remaining with DInf 0.0000000e+00               917s
+
+    4013 PPushes remaining with PInf 0.0000000e+00               917s
+       0 PPushes remaining with PInf 0.0000000e+00               920s
+
+  Push phase complete: Pinf 0.0000000e+00, Dinf 3.9257486e-12    920s
+
+
+Root simplex log...
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+    6153    2.0480000e+03   0.000000e+00   0.000000e+00    920s
+Crossover time: 3.96 seconds (3.18 work units)
+
+Root relaxation: objective 2.048000e+03, 6153 iterations, 5.07 seconds (3.98 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0 2048.00000    0 71939 2926.00000 2048.00000  30.0%     -  950s
+H    0     0                    2924.0000000 2048.00000  30.0%     -  952s
+H    0     0                    2916.0000000 2048.00000  29.8%     -  992s
+     0     0          -    0      2916.00000 2048.00000  29.8%     - 4510s
+
+Cutting planes:
+  RLT: 757
+
+Explored 1 nodes (317567 simplex iterations) in 4510.08 seconds (3997.88 work units)
+Thread count was 32 (of 224 available processors)
+
+Solution count 3: 2916 2924 2926 
+
+Time limit reached
+Best objective 2.916000000000e+03, best bound 2.048000000000e+03, gap 29.7668%
+
+---------------------------------------------------------------------------
+Multi-objectives: stopped in 4510.23 seconds (3997.88 work units), solution count 4
+Sub-optimal termination for some objective, not solved to optimality
+
