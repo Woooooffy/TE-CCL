@@ -765,6 +765,77 @@ class AllGatherFormulation(BaseFormulation):
                     added += 1
         logging.debug(f'Added {added} chunk symmetry-breaking constraints in {time.time() - start}')
 
+    def switch_fanout_cuts(self) -> None:
+        """
+            Fan-out cuts at copying switches (InstanceParams.switch_fanout_cuts): valid
+            inequalities, i.e. rows every INTEGER schedule already satisfies, that cut off
+            fractional points of the LP relaxation.
+
+            At copying switch v in epoch k let
+                E  = the chunk copies entering v (the inflow the switch rule forwards in k),
+                X  = the deliveries v makes on its HOST downlinks in k,
+                F  = the most host downlinks one entering copy can feed (the downlinks whose host
+                     is not the chunk's source, each counted at its copy bound), maximized over
+                     chunks,
+                m  = how many deliveries those downlinks can carry in one epoch.
+            The model already has X <= F * E (out <= inflow, per link) and X <= m (capacity). With
+            E integer, X is at most min(F * E, m); that set's convex hull adds, with
+            q = floor(m / F) and r = m - q * F,
+                X <= r * E + q * (F - r),
+            the line through (q, q*F) and (q+1, m). Valid for every integer E: for E <= q it is
+            at least F * E because F >= r, and for E >= q + 1 it is at least m.
+
+            The relaxation needs it because E may be fractional there: on the rail b4 leaves
+            (F = 31, m = 32) slivers of many chunks fill a leaf with E = 32/31, and the switch_chain
+            tier's bound is exactly deliveries / 31. The cut makes a full leaf cost E = 2.
+
+            Restricted to cut-through switches whose incident links all carry the single pace
+            class 0 (every send starts and lands in one epoch, as under SLOWEST_LINK epochs), where
+            X and E are plain sums of the epoch's sends. Skipped where r == 0 (F divides m and
+            the row is implied).
+        """
+        if not self.user_input.instance.switch_fanout_cuts or not self.user_input.instance.switch_pipeline:
+            return
+        start = time.time()
+        added = 0
+        switches = self._switches
+        for v in sorted(self.copy_switches):
+            in_links = [j for j in self.nodes if self.topology.capacity[j][v] > 0]
+            hosts = [d for d in self.nodes if d not in switches and self.topology.capacity[v][d] > 0]
+            if not hosts:
+                continue
+            incident = [(j, v) for j in in_links] + \
+                [(v, d) for d in self.nodes if self.topology.capacity[v][d] > 0]
+            if any(self.pace_classes(i, j) != [0] for i, j in incident):
+                continue
+            m = sum(int(math.floor(self.topology.capacity[v][d] * self.epoch_duration + 1e-9))
+                    for d in hosts)
+            for k in self.epochs:
+                deliveries = gp.LinExpr(0.0)
+                entries = gp.LinExpr(0.0)
+                fan_out = 0
+                for s, c in product(self.sources, self.chunks):
+                    reach = 0
+                    for d in hosts:
+                        var = self._pace(s, v, d, c, k).get(0)
+                        if var is not None:
+                            deliveries.add(var)
+                            reach += self.send_bound(s, v, d, c, k)
+                    fan_out = max(fan_out, reach)
+                    for j in in_links:
+                        var = self._pace(s, j, v, c, k - self.get_alpha_num_back(j, v)).get(0)
+                        if var is not None:
+                            entries.add(var)
+                if fan_out == 0 or entries.size() == 0:
+                    continue
+                q, r = divmod(m, fan_out)
+                if r == 0:
+                    continue
+                self.model.addConstr(deliveries <= r * entries + q * (fan_out - r),
+                                     name="fanout_cut_v_%d_k_%d" % (v, k))
+                added += 1
+        logging.debug(f'Added {added} switch fan-out cuts in {time.time() - start}')
+
     def use_one_less_epoch(self) -> None:
         """
            No-op, kept for the iterative driver (scheduler.get_schedules) that asks for it.
@@ -988,6 +1059,7 @@ class AllGatherFormulation(BaseFormulation):
         self.capacity_constraints()
         self.switch_acyclicity_constraints()
         self.chunk_symmetry_constraints()
+        self.switch_fanout_cuts()
         if use_one_less_epoch:
             self.use_one_less_epoch()
         if self.user_input.instance.symmetry:

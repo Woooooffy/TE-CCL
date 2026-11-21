@@ -294,6 +294,12 @@ class InstanceParams:
     # (it conserves flow, and those switches get no acyclicity rows), and store-and-forward
     # sends too late to be forwarded or to land inside the horizon.
     switch_no_drop: bool = False
+    # MILP only: add the switch fan-out cuts (AllGatherFormulation.switch_fanout_cuts). One row per
+    # (copying switch, epoch) that no integer schedule can violate, so the schedules and every
+    # tier's optimum are unchanged; what changes is the LP relaxation, which today fills a switch
+    # with slivers of many chunks (about 1 entry per full switch instead of 2 on the rail b4
+    # leaves) and so bounds the switch_chain tier far below any real schedule.
+    switch_fanout_cuts: bool = False
     # --- Hierarchical solve (teccl.hierarchy.solve.solve_hierarchical) -------------------------
     # If True, the topology is solved LEVEL BY LEVEL (abstract -> solve -> lower -> recurse) instead
     # of as one flat problem. Requires a topology that declares cells (Topology.build_hierarchy).
