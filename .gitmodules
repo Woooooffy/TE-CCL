@@ -1,0 +1,3 @@
+[submodule "teccl/topologies/topology-dsl-frontend"]
+	path = teccl/topologies/topology-dsl-frontend
+	url = git@github.com:Woooooffy/topology-dsl-frontend

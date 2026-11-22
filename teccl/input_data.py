@@ -10,6 +10,18 @@ class TopologyParams:
     alpha: tuple = (0 ,0) # (link alpha, switch alpha)
     side_length: int = 4 # Only for Mesh and Torus topology
     passive_node_indices: tuple = ()  # GPU indices present (can forward) but excluded from this collective's demand
+    # Path to a `.topo` file in the topology DSL (teccl/topologies/topology-dsl-frontend), read by
+    # DslTopology (teccl/topologies/dsl_topology.py). On this branch only ncclize's
+    # load_topology builds one; the solver's get_topology still picks a class by `name`, which
+    # stays a free-form label (it is what output filenames are built from).
+    topo_file: str = ""
+    # Switch indices whose forwarding is externally programmable, i.e. the switches ncclize is
+    # allowed to emit a routing table for. None => use the topology class's default (see
+    # Topology.default_programmable_switch_indices, which permits every switch). Set it to
+    # restrict emission to e.g. the network switches only, leaving self-routing fabrics such as
+    # intra-node NVSwitches out of the table. Does NOT affect the solve -- routing/capacity still
+    # use every switch; it only scopes the emitted switch program.
+    programmable_switch_indices: tuple = None
 
 @dataclass
 class GurobiParams:
