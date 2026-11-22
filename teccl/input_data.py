@@ -300,6 +300,12 @@ class InstanceParams:
     # with slivers of many chunks (about 1 entry per full switch instead of 2 on the rail b4
     # leaves) and so bounds the switch_chain tier far below any real schedule.
     switch_fanout_cuts: bool = False
+    # How the fan-out cuts enter the model. "rows": ordinary rows, present in every tier's LP (the
+    # 2026-11-21 b4 run spent its whole 6 h in tier 1's crossover with them). "lazy": the same rows
+    # with Gurobi's Lazy = 3, so each tier's root LP is solved without them and a cut is pulled in
+    # only when that tier's relaxation violates it. "callback": not rows at all; a MIPNODE callback
+    # adds the violated ones as user cuts, and only while the switch_chain tier is being optimized.
+    switch_fanout_cut_mode: str = "rows"
     # --- Hierarchical solve (teccl.hierarchy.solve.solve_hierarchical) -------------------------
     # If True, the topology is solved LEVEL BY LEVEL (abstract -> solve -> lower -> recurse) instead
     # of as one flat problem. Requires a topology that declares cells (Topology.build_hierarchy).

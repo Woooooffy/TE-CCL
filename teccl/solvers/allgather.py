@@ -794,8 +794,12 @@ class AllGatherFormulation(BaseFormulation):
             X and E are plain sums of the epoch's sends. Skipped where r == 0 (F divides m and
             the row is implied).
         """
+        self._fanout_cut_pool = []
         if not self.user_input.instance.switch_fanout_cuts or not self.user_input.instance.switch_pipeline:
             return
+        mode = self.user_input.instance.switch_fanout_cut_mode
+        if mode not in ("rows", "lazy", "callback"):
+            raise ValueError(f"unknown switch_fanout_cut_mode {mode!r}")
         start = time.time()
         added = 0
         switches = self._switches
@@ -831,10 +835,69 @@ class AllGatherFormulation(BaseFormulation):
                 q, r = divmod(m, fan_out)
                 if r == 0:
                     continue
-                self.model.addConstr(deliveries <= r * entries + q * (fan_out - r),
-                                     name="fanout_cut_v_%d_k_%d" % (v, k))
+                if mode == "callback":
+                    self._fanout_cut_pool.append((deliveries, entries, r, q * (fan_out - r)))
+                    added += 1
+                    continue
+                row = self.model.addConstr(deliveries <= r * entries + q * (fan_out - r),
+                                           name="fanout_cut_v_%d_k_%d" % (v, k))
+                if mode == "lazy":
+                    row.Lazy = 3
                 added += 1
-        logging.debug(f'Added {added} switch fan-out cuts in {time.time() - start}')
+        logging.debug(f'Added {added} switch fan-out cuts ({mode}) in {time.time() - start}')
+
+    def _fanout_cut_tier(self) -> int:
+        """The multi-objective pass the callback-mode fan-out cuts are separated in: the
+        switch_chain tier under LEXICOGRAPHIC (the only tier whose bound they lift), else the
+        single pass 0."""
+        if self.user_input.instance.objective_type != ObjectiveType.LEXICOGRAPHIC:
+            return 0
+        return self.objective_tier_names.index("switch_chain")
+
+    def _prepare_fanout_callback(self):
+        """switch_fanout_cut_mode "callback": the cuts as user cuts, separated at the ROOT of the
+        switch_chain pass only, so tiers 1-3 solve the model without them (the rows-mode b4 run spent
+        6 h in tier 1's crossover). Returns the optimize() callback, or None when there are no cuts.
+
+        Gurobi fires where == MULTIOBJ after each pass with MULTIOBJ_OBJCNT = passes finished, so
+        the pass running is the count of MULTIOBJ events so far. A cut added at the root goes into
+        the global cut pool, so separating there is enough. PreCrush = 1 (needed for cbCut on the
+        presolved model) is set on that pass's environment alone."""
+        if not self._fanout_cut_pool:
+            return None
+        self.model.update()
+        tier = self._fanout_cut_tier()
+        if self.user_input.instance.objective_type == ObjectiveType.LEXICOGRAPHIC:
+            self.model.getMultiobjEnv(tier).setParam("PreCrush", 1)
+        else:
+            self.model.Params.PreCrush = 1
+        # One flat list of every variable the cuts read, and per cut the slices of it.
+        flat, cuts = [], []
+        for deliveries, entries, r, rhs in self._fanout_cut_pool:
+            d = [deliveries.getVar(t) for t in range(deliveries.size())]
+            e = [entries.getVar(t) for t in range(entries.size())]
+            cuts.append((len(flat), len(flat) + len(d), len(flat) + len(d) + len(e), r, rhs, d, e))
+            flat.extend(d)
+            flat.extend(e)
+        state = {"pass": 0, "added": 0, "rounds": 0}
+        self._fanout_cut_stats = state
+
+        def callback(model, where):
+            if where == GRB.Callback.MULTIOBJ:
+                state["pass"] = model.cbGet(GRB.Callback.MULTIOBJ_OBJCNT)
+                return
+            if where != GRB.Callback.MIPNODE or state["pass"] != tier:
+                return
+            if model.cbGet(GRB.Callback.MIPNODE_NODCNT) > 0 or \
+                    model.cbGet(GRB.Callback.MIPNODE_STATUS) != GRB.OPTIMAL:
+                return
+            vals = np.asarray(model.cbGetNodeRel(flat))
+            state["rounds"] += 1
+            for a, b, c, r, rhs, d, e in cuts:
+                if vals[a:b].sum() - r * vals[b:c].sum() > rhs + 1e-6:
+                    model.cbCut(gp.quicksum(d) <= r * gp.quicksum(e) + rhs)
+                    state["added"] += 1
+        return callback
 
     def use_one_less_epoch(self) -> None:
         """
@@ -1092,8 +1155,14 @@ class AllGatherFormulation(BaseFormulation):
             self.model.update()
             self.model.read(self.user_input.instance.warmstart)
 
+        fanout_callback = self._prepare_fanout_callback()
         solve_start = time.time()
-        self.model.optimize()
+        if fanout_callback is None:
+            self.model.optimize()
+        else:
+            self.model.optimize(fanout_callback)
+            logging.info(f"fan-out user cuts: {self._fanout_cut_stats['added']} added over "
+                         f"{self._fanout_cut_stats['rounds']} root separation rounds")
         solve_end = time.time()
         logging.debug(
             f'Finished model optimization {log_file} in {solve_end - solve_start} ')

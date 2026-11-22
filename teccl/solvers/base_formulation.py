@@ -293,6 +293,9 @@ class BaseFormulation(ABC):
             return
 
         tiers = self.hierarchical_objective_tiers()
+        # Tier names in pass order, for code that needs a tier's index after the fact: calling
+        # hierarchical_objective_tiers() again would rebuild its auxiliaries (makespan_met_*).
+        self.objective_tier_names = [name for name, _, _ in tiers]
         self.model.ModelSense = GRB.MINIMIZE
         self.model.NumObj = len(tiers)
         for index, (name, expr, rel_tol) in enumerate(tiers):
