@@ -765,140 +765,6 @@ class AllGatherFormulation(BaseFormulation):
                     added += 1
         logging.debug(f'Added {added} chunk symmetry-breaking constraints in {time.time() - start}')
 
-    def switch_fanout_cuts(self) -> None:
-        """
-            Fan-out cuts at copying switches (InstanceParams.switch_fanout_cuts): valid
-            inequalities, i.e. rows every INTEGER schedule already satisfies, that cut off
-            fractional points of the LP relaxation.
-
-            At copying switch v in epoch k let
-                E  = the chunk copies entering v (the inflow the switch rule forwards in k),
-                X  = the deliveries v makes on its HOST downlinks in k,
-                F  = the most host downlinks one entering copy can feed (the downlinks whose host
-                     is not the chunk's source, each counted at its copy bound), maximized over
-                     chunks,
-                m  = how many deliveries those downlinks can carry in one epoch.
-            The model already has X <= F * E (out <= inflow, per link) and X <= m (capacity). With
-            E integer, X is at most min(F * E, m); that set's convex hull adds, with
-            q = floor(m / F) and r = m - q * F,
-                X <= r * E + q * (F - r),
-            the line through (q, q*F) and (q+1, m). Valid for every integer E: for E <= q it is
-            at least F * E because F >= r, and for E >= q + 1 it is at least m.
-
-            The relaxation needs it because E may be fractional there: on the rail b4 leaves
-            (F = 31, m = 32) slivers of many chunks fill a leaf with E = 32/31, and the switch_chain
-            tier's bound is exactly deliveries / 31. The cut makes a full leaf cost E = 2.
-
-            Restricted to cut-through switches whose incident links all carry the single pace
-            class 0 (every send starts and lands in one epoch, as under SLOWEST_LINK epochs), where
-            X and E are plain sums of the epoch's sends. Skipped where r == 0 (F divides m and
-            the row is implied).
-        """
-        self._fanout_cut_pool = []
-        if not self.user_input.instance.switch_fanout_cuts or not self.user_input.instance.switch_pipeline:
-            return
-        mode = self.user_input.instance.switch_fanout_cut_mode
-        if mode not in ("rows", "lazy", "callback"):
-            raise ValueError(f"unknown switch_fanout_cut_mode {mode!r}")
-        start = time.time()
-        added = 0
-        switches = self._switches
-        for v in sorted(self.copy_switches):
-            in_links = [j for j in self.nodes if self.topology.capacity[j][v] > 0]
-            hosts = [d for d in self.nodes if d not in switches and self.topology.capacity[v][d] > 0]
-            if not hosts:
-                continue
-            incident = [(j, v) for j in in_links] + \
-                [(v, d) for d in self.nodes if self.topology.capacity[v][d] > 0]
-            if any(self.pace_classes(i, j) != [0] for i, j in incident):
-                continue
-            m = sum(int(math.floor(self.topology.capacity[v][d] * self.epoch_duration + 1e-9))
-                    for d in hosts)
-            for k in self.epochs:
-                deliveries = gp.LinExpr(0.0)
-                entries = gp.LinExpr(0.0)
-                fan_out = 0
-                for s, c in product(self.sources, self.chunks):
-                    reach = 0
-                    for d in hosts:
-                        var = self._pace(s, v, d, c, k).get(0)
-                        if var is not None:
-                            deliveries.add(var)
-                            reach += self.send_bound(s, v, d, c, k)
-                    fan_out = max(fan_out, reach)
-                    for j in in_links:
-                        var = self._pace(s, j, v, c, k - self.get_alpha_num_back(j, v)).get(0)
-                        if var is not None:
-                            entries.add(var)
-                if fan_out == 0 or entries.size() == 0:
-                    continue
-                q, r = divmod(m, fan_out)
-                if r == 0:
-                    continue
-                if mode == "callback":
-                    self._fanout_cut_pool.append((deliveries, entries, r, q * (fan_out - r)))
-                    added += 1
-                    continue
-                row = self.model.addConstr(deliveries <= r * entries + q * (fan_out - r),
-                                           name="fanout_cut_v_%d_k_%d" % (v, k))
-                if mode == "lazy":
-                    row.Lazy = 3
-                added += 1
-        logging.debug(f'Added {added} switch fan-out cuts ({mode}) in {time.time() - start}')
-
-    def _fanout_cut_tier(self) -> int:
-        """The multi-objective pass the callback-mode fan-out cuts are separated in: the
-        switch_chain tier under LEXICOGRAPHIC (the only tier whose bound they lift), else the
-        single pass 0."""
-        if self.user_input.instance.objective_type != ObjectiveType.LEXICOGRAPHIC:
-            return 0
-        return self.objective_tier_names.index("switch_chain")
-
-    def _prepare_fanout_callback(self):
-        """switch_fanout_cut_mode "callback": the cuts as user cuts, separated at the ROOT of the
-        switch_chain pass only, so tiers 1-3 solve the model without them (the rows-mode b4 run spent
-        6 h in tier 1's crossover). Returns the optimize() callback, or None when there are no cuts.
-
-        Gurobi fires where == MULTIOBJ after each pass with MULTIOBJ_OBJCNT = passes finished, so
-        the pass running is the count of MULTIOBJ events so far. A cut added at the root goes into
-        the global cut pool, so separating there is enough. PreCrush = 1 (needed for cbCut on the
-        presolved model) is set on that pass's environment alone."""
-        if not self._fanout_cut_pool:
-            return None
-        self.model.update()
-        tier = self._fanout_cut_tier()
-        if self.user_input.instance.objective_type == ObjectiveType.LEXICOGRAPHIC:
-            self.model.getMultiobjEnv(tier).setParam("PreCrush", 1)
-        else:
-            self.model.Params.PreCrush = 1
-        # One flat list of every variable the cuts read, and per cut the slices of it.
-        flat, cuts = [], []
-        for deliveries, entries, r, rhs in self._fanout_cut_pool:
-            d = [deliveries.getVar(t) for t in range(deliveries.size())]
-            e = [entries.getVar(t) for t in range(entries.size())]
-            cuts.append((len(flat), len(flat) + len(d), len(flat) + len(d) + len(e), r, rhs, d, e))
-            flat.extend(d)
-            flat.extend(e)
-        state = {"pass": 0, "added": 0, "rounds": 0}
-        self._fanout_cut_stats = state
-
-        def callback(model, where):
-            if where == GRB.Callback.MULTIOBJ:
-                state["pass"] = model.cbGet(GRB.Callback.MULTIOBJ_OBJCNT)
-                return
-            if where != GRB.Callback.MIPNODE or state["pass"] != tier:
-                return
-            if model.cbGet(GRB.Callback.MIPNODE_NODCNT) > 0 or \
-                    model.cbGet(GRB.Callback.MIPNODE_STATUS) != GRB.OPTIMAL:
-                return
-            vals = np.asarray(model.cbGetNodeRel(flat))
-            state["rounds"] += 1
-            for a, b, c, r, rhs, d, e in cuts:
-                if vals[a:b].sum() - r * vals[b:c].sum() > rhs + 1e-6:
-                    model.cbCut(gp.quicksum(d) <= r * gp.quicksum(e) + rhs)
-                    state["added"] += 1
-        return callback
-
     def use_one_less_epoch(self) -> None:
         """
            No-op, kept for the iterative driver (scheduler.get_schedules) that asks for it.
@@ -1122,7 +988,6 @@ class AllGatherFormulation(BaseFormulation):
         self.capacity_constraints()
         self.switch_acyclicity_constraints()
         self.chunk_symmetry_constraints()
-        self.switch_fanout_cuts()
         if use_one_less_epoch:
             self.use_one_less_epoch()
         if self.user_input.instance.symmetry:
@@ -1155,17 +1020,8 @@ class AllGatherFormulation(BaseFormulation):
             self.model.update()
             self.model.read(self.user_input.instance.warmstart)
 
-        fanout_callback = self._prepare_fanout_callback()
         solve_start = time.time()
-        if fanout_callback is None:
-            self.model.optimize()
-        else:
-            self.model.optimize(fanout_callback)
-            # print + the Gurobi log, not logging.info: the CLI configures logging only under debug.
-            report = (f"fan-out user cuts: {self._fanout_cut_stats['added']} added over "
-                      f"{self._fanout_cut_stats['rounds']} root separation rounds")
-            print(report)
-            self.model.message(report)
+        self.model.optimize()
         solve_end = time.time()
         logging.debug(
             f'Finished model optimization {log_file} in {solve_end - solve_start} ')

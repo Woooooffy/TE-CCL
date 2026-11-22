@@ -329,8 +329,7 @@ class BaseFormulation(ABC):
 
     def _set_tier_params(self) -> None:
         """Per-tier Gurobi settings, one multi-objective pass per tier: the automatic cost-tier
-        stops (_set_cost_tier_stops), then InstanceParams.objective_tier_time_limit and
-        objective_tier_params, which override them.
+        stops (_set_cost_tier_stops) and InstanceParams.objective_tier_time_limit.
 
         Pass i is tier i: apply_objective gives tier i priority len(tiers) - i, and Gurobi runs the
         passes in decreasing priority. Called last in set_gurobi_params because a pass environment
@@ -343,18 +342,12 @@ class BaseFormulation(ABC):
         self.model.update()       # NumObj, set in apply_objective, reads 1 until the update
         self._set_cost_tier_stops()
         limits = instance.objective_tier_time_limit or []
-        params = instance.objective_tier_params or []
-        for field_name, entries in (("objective_tier_time_limit", limits),
-                                    ("objective_tier_params", params)):
-            if len(entries) > self.model.NumObj:
-                raise ValueError(f"{field_name} has {len(entries)} entries but the "
-                                 f"lexicographic objective has {self.model.NumObj} tiers")
+        if len(limits) > self.model.NumObj:
+            raise ValueError(f"objective_tier_time_limit has {len(limits)} entries but the "
+                             f"lexicographic objective has {self.model.NumObj} tiers")
         for index, hours in enumerate(limits):
             if hours is not None:
                 self.model.getMultiobjEnv(index).setParam("TimeLimit", hours * 60 * 60)
-        for index, tier_params in enumerate(params):
-            for name, value in (tier_params or {}).items():
-                self.model.getMultiobjEnv(index).setParam(name, value)
 
     # Pre-root heuristic budget of a cost tier (_set_cost_tier_stops): seconds per model nonzero,
     # capped. Scaled to the model because the search runs its whole budget whenever it does not
@@ -385,7 +378,6 @@ class BaseFormulation(ABC):
                                      BEFORE the root LP, searches from the previous tier's solution.
         If the search misses the floor the pass falls back to the root LP as before, and the budget
         is the only cost. The first tier is left alone: it has no previous solution to start from.
-        objective_tier_params entries are applied after these, so they override them.
         """
         if not self.model.IsMIP:
             return

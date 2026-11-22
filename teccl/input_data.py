@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 
 @dataclass
@@ -271,11 +271,6 @@ class InstanceParams:
     # where the incumbent is already provably optimal (e.g. at an ingress bound) -- this is what
     # lets the lower tiers get any time at all.
     objective_tier_time_limit: List[Optional[float]] = None
-    # Only used by ObjectiveType.LEXICOGRAPHIC: extra Gurobi parameters per tier, highest priority
-    # first, e.g. [null, null, {"Symmetry": 0}, {"DegenMoves": 0, "NoRelHeurTime": 600}]. Each dict
-    # is set on that tier's multi-objective pass environment (Model.getMultiobjEnv), so it applies
-    # to that pass alone; None (or a None entry) leaves the pass on the model's parameters.
-    objective_tier_params: List[Optional[Dict[str, Any]]] = None
     solution_method: SolutionMethod = SolutionMethod.ONE_SHOT
     schedule_output_file: str = "" # If not empty, the schedule is written to this file. Default is "Topology-Chunks-chunksize-timestamp.json"
     lower: bool = False # If true will use the lowering code from Meghan to lower the input.
@@ -299,18 +294,6 @@ class InstanceParams:
     # (it conserves flow, and those switches get no acyclicity rows), and store-and-forward
     # sends too late to be forwarded or to land inside the horizon.
     switch_no_drop: bool = False
-    # MILP only: add the switch fan-out cuts (AllGatherFormulation.switch_fanout_cuts). One row per
-    # (copying switch, epoch) that no integer schedule can violate, so the schedules and every
-    # tier's optimum are unchanged; what changes is the LP relaxation, which today fills a switch
-    # with slivers of many chunks (about 1 entry per full switch instead of 2 on the rail b4
-    # leaves) and so bounds the switch_chain tier far below any real schedule.
-    switch_fanout_cuts: bool = False
-    # How the fan-out cuts enter the model. "rows": ordinary rows, present in every tier's LP (the
-    # 2026-11-21 b4 run spent its whole 6 h in tier 1's crossover with them). "lazy": the same rows
-    # with Gurobi's Lazy = 3, so each tier's root LP is solved without them and a cut is pulled in
-    # only when that tier's relaxation violates it. "callback": not rows at all; a MIPNODE callback
-    # adds the violated ones as user cuts, and only while the switch_chain tier is being optimized.
-    switch_fanout_cut_mode: str = "rows"
     # --- Hierarchical solve (teccl.hierarchy.solve.solve_hierarchical) -------------------------
     # If True, the topology is solved LEVEL BY LEVEL (abstract -> solve -> lower -> recurse) instead
     # of as one flat problem. Requires a topology that declares cells (Topology.build_hierarchy).
