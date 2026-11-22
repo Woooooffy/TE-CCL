@@ -1161,8 +1161,11 @@ class AllGatherFormulation(BaseFormulation):
             self.model.optimize()
         else:
             self.model.optimize(fanout_callback)
-            logging.info(f"fan-out user cuts: {self._fanout_cut_stats['added']} added over "
-                         f"{self._fanout_cut_stats['rounds']} root separation rounds")
+            # print + the Gurobi log, not logging.info: the CLI configures logging only under debug.
+            report = (f"fan-out user cuts: {self._fanout_cut_stats['added']} added over "
+                      f"{self._fanout_cut_stats['rounds']} root separation rounds")
+            print(report)
+            self.model.message(report)
         solve_end = time.time()
         logging.debug(
             f'Finished model optimization {log_file} in {solve_end - solve_start} ')

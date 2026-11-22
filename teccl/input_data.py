@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 @dataclass
@@ -271,6 +271,11 @@ class InstanceParams:
     # where the incumbent is already provably optimal (e.g. at an ingress bound) -- this is what
     # lets the lower tiers get any time at all.
     objective_tier_time_limit: List[Optional[float]] = None
+    # Only used by ObjectiveType.LEXICOGRAPHIC: extra Gurobi parameters per tier, highest priority
+    # first, e.g. [null, null, {"Symmetry": 0}, {"DegenMoves": 0, "NoRelHeurTime": 600}]. Each dict
+    # is set on that tier's multi-objective pass environment (Model.getMultiobjEnv), so it applies
+    # to that pass alone; None (or a None entry) leaves the pass on the model's parameters.
+    objective_tier_params: List[Optional[Dict[str, Any]]] = None
     solution_method: SolutionMethod = SolutionMethod.ONE_SHOT
     schedule_output_file: str = "" # If not empty, the schedule is written to this file. Default is "Topology-Chunks-chunksize-timestamp.json"
     lower: bool = False # If true will use the lowering code from Meghan to lower the input.
