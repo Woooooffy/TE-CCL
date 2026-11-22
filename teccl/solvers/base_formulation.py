@@ -328,8 +328,9 @@ class BaseFormulation(ABC):
         self._set_tier_params()
 
     def _set_tier_params(self) -> None:
-        """InstanceParams.objective_tier_time_limit and objective_tier_params, one Gurobi
-        multi-objective pass per tier.
+        """Per-tier Gurobi settings, one multi-objective pass per tier: the automatic cost-tier
+        stops (_set_cost_tier_stops), then InstanceParams.objective_tier_time_limit and
+        objective_tier_params, which override them.
 
         Pass i is tier i: apply_objective gives tier i priority len(tiers) - i, and Gurobi runs the
         passes in decreasing priority. Called last in set_gurobi_params because a pass environment
@@ -337,11 +338,12 @@ class BaseFormulation(ABC):
         miss the tolerances and limits set above.
         """
         instance = self.user_input.instance
-        limits = instance.objective_tier_time_limit or []
-        params = instance.objective_tier_params or []
-        if not (limits or params) or instance.objective_type != ObjectiveType.LEXICOGRAPHIC:
+        if instance.objective_type != ObjectiveType.LEXICOGRAPHIC:
             return
         self.model.update()       # NumObj, set in apply_objective, reads 1 until the update
+        self._set_cost_tier_stops()
+        limits = instance.objective_tier_time_limit or []
+        params = instance.objective_tier_params or []
         for field_name, entries in (("objective_tier_time_limit", limits),
                                     ("objective_tier_params", params)):
             if len(entries) > self.model.NumObj:
@@ -353,6 +355,67 @@ class BaseFormulation(ABC):
         for index, tier_params in enumerate(params):
             for name, value in (tier_params or {}).items():
                 self.model.getMultiobjEnv(index).setParam(name, value)
+
+    # Pre-root heuristic budget of a cost tier (_set_cost_tier_stops): seconds per model nonzero,
+    # capped. Scaled to the model because the search runs its whole budget whenever it does not
+    # reach the floor, and that loss has to stay small next to the root LP it is racing -- ~0.5 s
+    # on a few-thousand-nonzero test model, the cap on rail_optimized_256gpu_dual_plane b4
+    # (6.5M nonzeros), whose host_relay root LP took 7000 s.
+    COST_TIER_NOREL_SECONDS_PER_NZ = 1e-4
+    COST_TIER_NOREL_MAX_SECONDS = 600.0
+
+    def _set_cost_tier_stops(self) -> None:
+        """Let a MIP cost tier stop the moment it reaches its floor, without a root LP.
+
+        A COST tier is one whose objective has no negative coefficient on a variable with a
+        finite lower bound: every term only charges activity, so its floor -- the value with every
+        variable at its lower bound -- is a true lower bound, and any schedule that reaches it is
+        optimal. host_relay and switch_chain are cost tiers (floor 0: no relay, no switch hop);
+        makespan and latency are not -- they reward progress, and their floor (everything met at
+        epoch 0) is never feasible.
+
+        A cost tier often reaches its floor: on rail_optimized_256gpu_dual_plane b4 host_relay
+        is 0. Gurobi still spent 2 h on that tier's root LP (7000 s of crossover) only to bound it
+        at 0, and its heuristics found the 0-relay schedule 5 s after the root. So every cost tier
+        after the first gets
+          BestObjStop = floor        stop as soon as an incumbent reaches it -- exact, since
+                                     nothing can be below it, and the next tier is then held to
+                                     the same value a fully solved pass would hand it;
+          NoRelHeurTime = budget     Gurobi's no-relaxation heuristic, the one heuristic that runs
+                                     BEFORE the root LP, searches from the previous tier's solution.
+        If the search misses the floor the pass falls back to the root LP as before, and the budget
+        is the only cost. The first tier is left alone: it has no previous solution to start from.
+        objective_tier_params entries are applied after these, so they override them.
+        """
+        if not self.model.IsMIP:
+            return
+        budget = min(self.COST_TIER_NOREL_MAX_SECONDS,
+                     self.COST_TIER_NOREL_SECONDS_PER_NZ * self.model.NumNZs)
+        names = getattr(self, "objective_tier_names", None) or [""] * self.model.NumObj
+        for index in range(1, self.model.NumObj):
+            floor = self._cost_floor(self.model.getObjective(index))
+            if floor is None:
+                continue
+            env = self.model.getMultiobjEnv(index)
+            env.setParam("BestObjStop", floor)
+            env.setParam("NoRelHeurTime", budget)
+            # In the Gurobi log, which a pass environment's settings do not show up in.
+            self.model.message(f"objective {index + 1} ({names[index]}) is a cost tier: stop at "
+                               f"its floor {floor:g}, {budget:.1f} s of pre-root NoRel search")
+
+    def _cost_floor(self, expr: gp.LinExpr):
+        """expr's value with every variable at its lower bound, if no term can go below that
+        (every coefficient >= 0 on a variable with a finite lower bound); else None."""
+        size = expr.size()
+        if size == 0:
+            return float(expr.getConstant())
+        coeffs = np.array([expr.getCoeff(t) for t in range(size)])
+        if (coeffs < 0).any():
+            return None
+        lbs = np.array(self.model.getAttr("LB", [expr.getVar(t) for t in range(size)]))
+        if (lbs <= -GRB.INFINITY).any():
+            return None
+        return float(expr.getConstant() + coeffs @ lbs)
 
     @abstractmethod
     def get_schedule(self) -> None:
