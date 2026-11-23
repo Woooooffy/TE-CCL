@@ -927,20 +927,32 @@ class AllGatherFormulation(BaseFormulation):
         counterpart of LPFormulation.hierarchical_objective_tiers -- same quantities, summed
         over the extra chunk index this formulation carries:
 
-          tier 0, makespan:     the epoch by which every demand is met (makespan_tier).
-          tier 1, host relay:   flow leaving a host that did not originate there (s != n).
-          tier 2, switch chain: flow entering a switch, one unit per hop, so the term is the
-                                length of the switch chain a unit traverses: 0 for a direct
-                                link, 1 for gpu->switch->gpu, 3 for leaf->spine->leaf.
+          tier 0, makespan:      the epoch by which every demand is met (makespan_tier).
+          tier 1, host relay:    flow leaving a host that did not originate there (s != n).
+          tier 2, latency+chain: latency + switch_chain at equal weight, where
+                                   latency      = -sum over (s, d, c, k) of total_demand_sat:
+                                                  every chunk pays one unit for every epoch it
+                                                  has not landed yet;
+                                   switch_chain = flow entering a switch, one unit per hop, so
+                                                  the length of the switch chain a unit
+                                                  traverses: 0 for a direct link, 1 for
+                                                  gpu->switch->gpu, 3 for leaf->spine->leaf.
 
-        No latency tier, unlike the LP (EXPERIMENT, branch milp-no-latency-tier). The LP's latency
-        tier -- outstanding demand summed over epochs -- stands in for finish time: its volumes are
-        continuous, so moving volume out of the last epoch shortens that epoch. On the MILP's
-        whole chunks it cannot: a chunk sent in the last epoch takes the epoch on a 1-chunk/epoch
-        link, so the finish is the epoch count, which tier 0 already owns. What the tier did reward
-        is every chunk landing an epoch earlier, everywhere -- on rail_optimized_256gpu_dual_plane
-        b4 that is every cell's ingress saturated in every epoch, which costs switch_chain 119+
-        copies against the 64 of a leaf broadcast, for 2.45% of summed completion epochs.
+        Latency and switch chain share one tier, after host relay (EXPERIMENT, branch
+        milp-merged-latency-chain). As separate tiers, latency pinned at its exact optimum decides
+        the routing alone: on rail_optimized_256gpu_dual_plane b4 that is every cell's ingress
+        saturated in every epoch, which costs switch_chain 119+ against the 64 of a leaf
+        broadcast, for 2.45% of summed completion epochs. One tier lets a switch hop be traded
+        against landing time. The weight is 1 because both terms count the same kind of event --
+        one chunk at one place for one epoch: a delivery that waits an epoch, or a copy that
+        enters a switch -- so a hop is worth taking exactly when it lands a chunk an epoch
+        earlier. On b4 the known schedules score: constructed chain design (-9152, 124) = -9028,
+        the 2026-11-23 runs (-9152, 133) = -9019 and (-8923, 66) = -8857, leaf broadcast
+        (-8928, 64) = -8864. So at weight 1 the latency-saturating side still wins (break-even
+        about 3.7 per hop) unless a schedule in between beats both.
+
+        Being negative in places, this tier is not a cost tier: it gets no automatic floor stop
+        or pre-root NoRel budget (BaseFormulation._set_cost_tier_stops).
 
         Only variables that were actually created are read; the sparse flow container returns
         0.0 for the (s, i, j, c, k) combinations initialize_variables skipped, which add into
@@ -964,15 +976,18 @@ class AllGatherFormulation(BaseFormulation):
                     for c, k in product(self.chunks, self.epochs):
                         relay.add(self.flow[s][n][j][c][k], 1.0)
 
-        switch_chain = gp.LinExpr(0.0)
+        latency_chain = gp.LinExpr(0.0)
+        for s, d, c, k in product(self.sources, self.nodes, self.chunks, self.epochs):
+            if self.demand[s][d][c]:
+                latency_chain.add(self.total_demand_sat[s][d][c][k], -1.0)
         for (i, j) in self.switch_ingress_links():
             for s, c, k in product(self.sources, self.chunks, self.epochs):
-                switch_chain.add(self.flow[s][i][j][c][k], 1.0)
+                latency_chain.add(self.flow[s][i][j][c][k], 1.0)
 
         return [
             ("makespan", makespan, instance.objective_makespan_rel_tol),
             ("host_relay", relay, instance.objective_relay_rel_tol),
-            ("switch_chain", switch_chain, 0.0),
+            ("latency_chain", latency_chain, 0.0),
         ]
 
     def encode_problem(self, use_one_less_epoch: bool = False, previous_buffers: List[List[int]] = []) -> int:

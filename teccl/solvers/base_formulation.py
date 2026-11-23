@@ -395,14 +395,20 @@ class BaseFormulation(ABC):
         names = getattr(self, "objective_tier_names", None) or [""] * self.model.NumObj
         for index in range(1, self.model.NumObj):
             floor = self._cost_floor(self.model.getObjective(index))
-            if floor is None:
-                continue
             hours = limits[index] if index < len(limits) else None
             budget = (size_budget if hours is None
                       else self.COST_TIER_NOREL_SHARE_OF_LIMIT * hours * 60 * 60)
             env = self.model.getMultiobjEnv(index)
-            env.setParam("BestObjStop", floor)
+            # EXPERIMENT (branch milp-merged-latency-chain): every tier after the first gets the
+            # pre-root search, not only cost tiers, so the merged latency+chain tier starts from a
+            # searched schedule rather than the host_relay tier's arbitrary 0-relay one. Only a
+            # cost tier has a floor to stop at.
             env.setParam("NoRelHeurTime", budget)
+            if floor is None:
+                self.model.message(f"objective {index + 1} ({names[index]}) is not a cost tier: "
+                                   f"no floor stop, {budget:.1f} s of pre-root NoRel search")
+                continue
+            env.setParam("BestObjStop", floor)
             # In the Gurobi log, which a pass environment's settings do not show up in.
             self.model.message(f"objective {index + 1} ({names[index]}) is a cost tier: stop at "
                                f"its floor {floor:g}, {budget:.1f} s of pre-root NoRel search")
