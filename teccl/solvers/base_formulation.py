@@ -340,11 +340,11 @@ class BaseFormulation(ABC):
         if instance.objective_type != ObjectiveType.LEXICOGRAPHIC:
             return
         self.model.update()       # NumObj, set in apply_objective, reads 1 until the update
-        self._set_cost_tier_stops()
         limits = instance.objective_tier_time_limit or []
         if len(limits) > self.model.NumObj:
             raise ValueError(f"objective_tier_time_limit has {len(limits)} entries but the "
                              f"lexicographic objective has {self.model.NumObj} tiers")
+        self._set_cost_tier_stops(limits)
         for index, hours in enumerate(limits):
             if hours is not None:
                 self.model.getMultiobjEnv(index).setParam("TimeLimit", hours * 60 * 60)
@@ -356,8 +356,15 @@ class BaseFormulation(ABC):
     # (6.5M nonzeros), whose host_relay root LP took 7000 s.
     COST_TIER_NOREL_SECONDS_PER_NZ = 1e-4
     COST_TIER_NOREL_MAX_SECONDS = 600.0
+    # Share of a cost tier's own time limit (objective_tier_time_limit) its search gets instead.
+    # A tier given a limit is one not expected to close, so its time is worth more to the search
+    # than to the root LP and cut loop: on rail_optimized_256gpu_dual_plane b4 the switch_chain
+    # search took 1074 -> 169 in 300 s and was still improving, while the 55 min after the root
+    # (bound 64, against an optimum of at least 119) changed nothing. The rest stays with the root
+    # LP, which still proves optimality where its bound meets the incumbent.
+    COST_TIER_NOREL_SHARE_OF_LIMIT = 0.9
 
-    def _set_cost_tier_stops(self) -> None:
+    def _set_cost_tier_stops(self, limits) -> None:
         """Let a MIP cost tier stop the moment it reaches its floor, without a root LP.
 
         A COST tier is one whose objective has no negative coefficient on a variable with a
@@ -378,16 +385,21 @@ class BaseFormulation(ABC):
                                      BEFORE the root LP, searches from the previous tier's solution.
         If the search misses the floor the pass falls back to the root LP as before, and the budget
         is the only cost. The first tier is left alone: it has no previous solution to start from.
+        The budget is COST_TIER_NOREL_SHARE_OF_LIMIT of the tier's time limit (`limits`, hours per
+        tier, objective_tier_time_limit) when it has one, else scaled to the model size.
         """
         if not self.model.IsMIP:
             return
-        budget = min(self.COST_TIER_NOREL_MAX_SECONDS,
-                     self.COST_TIER_NOREL_SECONDS_PER_NZ * self.model.NumNZs)
+        size_budget = min(self.COST_TIER_NOREL_MAX_SECONDS,
+                          self.COST_TIER_NOREL_SECONDS_PER_NZ * self.model.NumNZs)
         names = getattr(self, "objective_tier_names", None) or [""] * self.model.NumObj
         for index in range(1, self.model.NumObj):
             floor = self._cost_floor(self.model.getObjective(index))
             if floor is None:
                 continue
+            hours = limits[index] if index < len(limits) else None
+            budget = (size_budget if hours is None
+                      else self.COST_TIER_NOREL_SHARE_OF_LIMIT * hours * 60 * 60)
             env = self.model.getMultiobjEnv(index)
             env.setParam("BestObjStop", floor)
             env.setParam("NoRelHeurTime", budget)
