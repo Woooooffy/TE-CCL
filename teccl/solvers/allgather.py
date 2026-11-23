@@ -927,16 +927,20 @@ class AllGatherFormulation(BaseFormulation):
         counterpart of LPFormulation.hierarchical_objective_tiers -- same quantities, summed
         over the extra chunk index this formulation carries:
 
-          tier 0, makespan:     the epoch by which every demand is met (makespan_tier). Without
-                                it the latency tier alone, a SUM over demands, can tie a schedule
-                                that finishes an epoch later -- some demands land earlier, a relay
-                                lands later -- whenever the horizon leaves room.
-          tier 1, latency:      -sum over (s, d, c, k) of total_demand_sat, i.e. every chunk
-                                pays one unit for every epoch it has not landed yet.
-          tier 2, host relay:   flow leaving a host that did not originate there (s != n).
-          tier 3, switch chain: flow entering a switch, one unit per hop, so the term is the
+          tier 0, makespan:     the epoch by which every demand is met (makespan_tier).
+          tier 1, host relay:   flow leaving a host that did not originate there (s != n).
+          tier 2, switch chain: flow entering a switch, one unit per hop, so the term is the
                                 length of the switch chain a unit traverses: 0 for a direct
                                 link, 1 for gpu->switch->gpu, 3 for leaf->spine->leaf.
+
+        No latency tier, unlike the LP (EXPERIMENT, branch milp-no-latency-tier). The LP's latency
+        tier -- outstanding demand summed over epochs -- stands in for finish time: its volumes are
+        continuous, so moving volume out of the last epoch shortens that epoch. On the MILP's
+        whole chunks it cannot: a chunk sent in the last epoch takes the epoch on a 1-chunk/epoch
+        link, so the finish is the epoch count, which tier 0 already owns. What the tier did reward
+        is every chunk landing an epoch earlier, everywhere -- on rail_optimized_256gpu_dual_plane
+        b4 that is every cell's ingress saturated in every epoch, which costs switch_chain 119+
+        copies against the 64 of a leaf broadcast, for 2.45% of summed completion epochs.
 
         Only variables that were actually created are read; the sparse flow container returns
         0.0 for the (s, i, j, c, k) combinations initialize_variables skipped, which add into
@@ -948,12 +952,6 @@ class AllGatherFormulation(BaseFormulation):
                     if self.demand[s][d][c]]
         makespan = self.makespan_tier(
             lambda k: (self.total_demand_sat[s][d][c][k] for s, d, c in demanded))
-
-        latency = gp.LinExpr(0.0)
-        for s, d, c, k in product(self.sources, self.nodes, self.chunks, self.epochs):
-            if not self.demand[s][d][c]:
-                continue
-            latency.add(self.total_demand_sat[s][d][c][k], -1.0)
 
         relay = gp.LinExpr(0.0)
         for n in self.host_indices():
@@ -973,7 +971,6 @@ class AllGatherFormulation(BaseFormulation):
 
         return [
             ("makespan", makespan, instance.objective_makespan_rel_tol),
-            ("latency", latency, instance.objective_latency_rel_tol),
             ("host_relay", relay, instance.objective_relay_rel_tol),
             ("switch_chain", switch_chain, 0.0),
         ]
