@@ -345,9 +345,32 @@ class BaseFormulation(ABC):
             raise ValueError(f"objective_tier_time_limit has {len(limits)} entries but the "
                              f"lexicographic objective has {self.model.NumObj} tiers")
         self._set_cost_tier_stops(limits)
+        self._set_last_tier_gap()
         for index, hours in enumerate(limits):
             if hours is not None:
                 self.model.getMultiobjEnv(index).setParam("TimeLimit", hours * 60 * 60)
+
+    # Relative MIPGap of the LAST lexicographic tier of a MIP. Every tier above it is solved to the
+    # global gap, because its value is pinned for the tiers below; the last tier pins nothing, so
+    # proving it to 1e-4 only buys a certificate. On rail_optimized_256gpu_dual_plane b4 that
+    # certificate is never reached: the latency+chain tier's incumbent was within 0.94% of its root
+    # bound at 1047 s, and the first post-cut LP re-solve then ran to the 2 h cap without finishing.
+    # Relative to the tier's value, so on a latency-dominated tier (|value| ~9000 on b4) 1% is ~90
+    # units -- about the whole switch-hop slack, but less than the 2.5% a latency-losing leaf
+    # broadcast sits from the bound.
+    LAST_TIER_MIP_GAP = 0.01
+
+    def _set_last_tier_gap(self) -> None:
+        """Let the last tier of a MIP stop at LAST_TIER_MIP_GAP instead of the global MIPGap (kept
+        if it is already looser)."""
+        if not self.model.IsMIP or self.model.NumObj < 2:
+            return
+        gap = max(self.LAST_TIER_MIP_GAP, self.model.Params.MIPGap)
+        last = self.model.NumObj - 1
+        self.model.getMultiobjEnv(last).setParam("MIPGap", gap)
+        names = getattr(self, "objective_tier_names", None) or [""] * self.model.NumObj
+        self.model.message(f"objective {last + 1} ({names[last]}) is the last tier: "
+                           f"MIPGap {gap:g}")
 
     # Pre-root heuristic budget of a cost tier (_set_cost_tier_stops): seconds per model nonzero,
     # capped. Scaled to the model because the search runs its whole budget whenever it does not
