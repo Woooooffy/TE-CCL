@@ -1,433 +1,5 @@
 
-Gurobi 13.0.2 (linux64) logging started Mon Nov 23 12:37:43 2026
-
-Set parameter LogFile to value "Logs/Allgather_MILP_RailOptimizedDualPlane_44-nodes_2-chunks_8-epochs_0.04-epochduration_ObjectiveType.LEXICOGRAPHIC_rail_optimized_256gpu_dual_plane_hierarchical_allgather_milp_b4_nows_mergedlat.log"
-Set parameter LogToConsole to value 0
-Set parameter OutputFlag to value 1
-Set parameter TimeLimit to value 7200
-Set parameter FeasibilityTol to value 0.0001
-Set parameter IntFeasTol to value 0.0001
-Set parameter OptimalityTol to value 0.0001
-Set parameter MIPGap to value 0.0001
-Set parameter Crossover to value -1
-Set parameter MIPFocus to value 1
-Set parameter Method to value -1
-Set parameter Heuristics to value 0.05
-Set parameter Presolve to value -1
-Set parameter SolutionLimit to value 2000000
-Set parameter PreSOS1BigM to value 1000000
-objective 2 (host_relay) is a cost tier: stop at its floor 0, 600.0 s of pre-root NoRel search
-objective 3 (latency_chain) is not a cost tier: no floor stop, 600.0 s of pre-root NoRel search
-Gurobi Optimizer version 13.0.2 build v13.0.2rc1 (linux64 - "Ubuntu 22.04.5 LTS")
-
-CPU model: Intel(R) Xeon(R) Platinum 8180 CPU @ 2.50GHz, instruction set [SSE2|AVX|AVX2|AVX512]
-Thread count: 112 physical cores, 224 logical processors, using up to 32 threads
-
-Non-default parameters:
-SolutionLimit  2000000
-TimeLimit  7200
-FeasibilityTol  0.0001
-IntFeasTol  0.0001
-OptimalityTol  0.0001
-MIPFocus  1
-LogToConsole  0
-PreSOS1BigM  1000000
-
-Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
-Optimize a model with 474848 rows, 318984 columns and 6485440 nonzeros (Min)
-Model fingerprint: 0x0812a3df
-Model has 8 linear objective coefficients
-Variable types: 6152 continuous, 312832 integer (0 binary)
-Coefficient statistics:
-  Matrix range     [1e+00, 1e+01]
-  Objective range  [1e+00, 1e+00]
-  Bounds range     [1e+00, 1e+01]
-  RHS range        [1e+00, 1e+01]
-
-
----------------------------------------------------------------------------
-Multi-objectives: starting optimization (min) with 3 objectives... 
----------------------------------------------------------------------------
-
-Multi-objectives: applying initial presolve...
----------------------------------------------------------------------------
-
-Presolve removed 46464 rows and 40384 columns (presolve time = 5s)...
-Presolve removed 50048 rows and 40384 columns (presolve time = 10s)...
-Presolve removed 46464 rows and 36800 columns
-Presolve time: 11.59s
-Presolved: 428384 rows, 282184 columns, 1791808 nonzeros
----------------------------------------------------------------------------
-
-Multi-objectives: optimize objective 1 (makespan) ...
----------------------------------------------------------------------------
-
-Presolve removed 0 rows and 1 columns
-Presolve time: 4.61s
-Presolved: 428384 rows, 282183 columns, 1791808 nonzeros
-Variable types: 6144 continuous, 276039 integer (276039 binary)
-
-Root simplex log...
-
-Iteration    Objective       Primal Inf.    Dual Inf.      Time
-       0   -7.2593226e+00   1.235688e+01   0.000000e+00     19s
-      40   -4.6129032e+00   0.000000e+00   0.000000e+00     19s
-      40   -4.6129032e+00   0.000000e+00   0.000000e+00     19s
-
-Use crossover to convert LP symmetric solution to basic solution...
-
-Root crossover log...
-
-     217 DPushes remaining with DInf 0.0000000e+00                21s
-       0 DPushes remaining with DInf 0.0000000e+00                21s
-
-  113632 PPushes remaining with PInf 0.0000000e+00                21s
-   47757 PPushes remaining with PInf 0.0000000e+00                25s
-   34301 PPushes remaining with PInf 0.0000000e+00                30s
-   26710 PPushes remaining with PInf 0.0000000e+00                35s
-   21222 PPushes remaining with PInf 0.0000000e+00                40s
-   16652 PPushes remaining with PInf 0.0000000e+00                45s
-   11153 PPushes remaining with PInf 0.0000000e+00                50s
-    6017 PPushes remaining with PInf 0.0000000e+00                55s
-    2587 PPushes remaining with PInf 0.0000000e+00                61s
-       0 PPushes remaining with PInf 0.0000000e+00                65s
-
-  Push phase complete: Pinf 0.0000000e+00, Dinf 4.6622428e-14     65s
-
-
-Root simplex log...
-
-Iteration    Objective       Primal Inf.    Dual Inf.      Time
-  113892   -4.6129032e+00   0.000000e+00   0.000000e+00     65s
-Crossover time: 46.40 seconds (34.44 work units)
-
-Root relaxation: objective -4.612903e+00, 113892 iterations, 47.69 seconds (35.25 work units)
-
-    Nodes    |    Current Node    |     Objective Bounds      |     Work
- Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
-
-     0     0   -4.61290    0 77560          -   -4.61290      -     -  333s
-H    0     0                      -1.0000000   -4.61290   361%     -  335s
-
-Cutting planes:
-  Zero half: 36
-
-Explored 1 nodes (127518 simplex iterations) in 376.96 seconds (271.36 work units)
-Thread count was 32 (of 224 available processors)
-
-Solution count 1: -1 
-
-Optimal solution found (tolerance 1.00e-04)
-Best objective -1.000000000000e+00, best bound -1.000000000000e+00, gap 0.0000%
----------------------------------------------------------------------------
-
-Multi-objectives: optimize objective 2 (host_relay) ...
----------------------------------------------------------------------------
-
-Loaded user MIP start with objective 752
-
-Presolve removed 13889 rows and 8 columns
-Presolve time: 4.57s
-Presolved: 414496 rows, 282176 columns, 1764032 nonzeros
-Variable types: 6144 continuous, 276032 integer (276032 binary)
-Starting NoRel heuristic
-Found heuristic solution: objective 402.0000000
-Found heuristic solution: objective 269.0000000
-Found heuristic solution: objective 266.0000000
-Found heuristic solution: objective 263.0000000
-Found heuristic solution: objective 258.0000000
-Found heuristic solution: objective 253.0000000
-Found heuristic solution: objective 252.0000000
-Found heuristic solution: objective 226.0000000
-Found heuristic solution: objective 207.0000000
-Found heuristic solution: objective 205.0000000
-Found heuristic solution: objective 178.0000000
-Found heuristic solution: objective 142.0000000
-Found heuristic solution: objective 141.0000000
-Elapsed time for NoRel heuristic: 6s (best bound 0)
-Found heuristic solution: objective 117.0000000
-Found heuristic solution: objective 110.0000000
-Found heuristic solution: objective 109.0000000
-Found heuristic solution: objective 66.0000000
-Found heuristic solution: objective 55.0000000
-Found heuristic solution: objective 52.0000000
-Found heuristic solution: objective 42.0000000
-Found heuristic solution: objective 40.0000000
-Found heuristic solution: objective 32.0000000
-Elapsed time for NoRel heuristic: 12s (best bound 0)
-Found heuristic solution: objective 26.0000000
-Found heuristic solution: objective 25.0000000
-Found heuristic solution: objective 24.0000000
-Found heuristic solution: objective 20.0000000
-Found heuristic solution: objective 18.0000000
-Found heuristic solution: objective 14.0000000
-Elapsed time for NoRel heuristic: 17s (best bound 0)
-Found heuristic solution: objective 13.0000000
-Found heuristic solution: objective 9.0000000
-Found heuristic solution: objective 7.0000000
-Found heuristic solution: objective 4.0000000
-Found heuristic solution: objective 3.0000000
-Found heuristic solution: objective 2.0000000
-Elapsed time for NoRel heuristic: 23s (best bound 0)
-Found heuristic solution: objective 1.0000000
-Found heuristic solution: objective 0.0000000
-NoRel heuristic complete
-
-Explored 0 nodes (0 simplex iterations) in 407.23 seconds (281.76 work units)
-Thread count was 32 (of 224 available processors)
-
-Solution count 10: 0 1 2 ... 18
-
-Optimal solution found (tolerance 1.00e-04)
-Best objective 0.000000000000e+00, best bound 0.000000000000e+00, gap 0.0000%
----------------------------------------------------------------------------
-
-Multi-objectives: optimize objective 3 (latency_chain) ...
----------------------------------------------------------------------------
-
-Loaded user MIP start with objective -7496
-
-Presolve removed 236098 rows and 111112 columns
-Presolve time: 2.63s
-Presolved: 192288 rows, 171072 columns, 891072 nonzeros
-Variable types: 6144 continuous, 164928 integer (164928 binary)
-Starting NoRel heuristic
-Found heuristic solution: objective -7541.000000
-Found heuristic solution: objective -7544.000000
-Found heuristic solution: objective -7549.000000
-Found heuristic solution: objective -7554.000000
-Found heuristic solution: objective -7571.000000
-Found heuristic solution: objective -7590.000000
-Found heuristic solution: objective -7606.000000
-Found heuristic solution: objective -7607.000000
-Found heuristic solution: objective -7668.000000
-Found heuristic solution: objective -7703.000000
-Found heuristic solution: objective -7705.000000
-Found heuristic solution: objective -7706.000000
-Found heuristic solution: objective -7708.000000
-Found heuristic solution: objective -7727.000000
-Found heuristic solution: objective -7729.000000
-Found heuristic solution: objective -7742.000000
-Found heuristic solution: objective -7749.000000
-Found heuristic solution: objective -7750.000000
-Found heuristic solution: objective -7762.000000
-Elapsed time for NoRel heuristic: 5s (best bound -15872)
-Found heuristic solution: objective -7767.000000
-Found heuristic solution: objective -7774.000000
-Found heuristic solution: objective -7786.000000
-Found heuristic solution: objective -7788.000000
-Found heuristic solution: objective -7791.000000
-Found heuristic solution: objective -7792.000000
-Found heuristic solution: objective -7815.000000
-Found heuristic solution: objective -7816.000000
-Found heuristic solution: objective -7863.000000
-Found heuristic solution: objective -7866.000000
-Found heuristic solution: objective -7867.000000
-Elapsed time for NoRel heuristic: 11s (best bound -15872)
-Found heuristic solution: objective -7926.000000
-Found heuristic solution: objective -7953.000000
-Found heuristic solution: objective -7962.000000
-Found heuristic solution: objective -8013.000000
-Found heuristic solution: objective -8055.000000
-Elapsed time for NoRel heuristic: 17s (best bound -15872)
-Found heuristic solution: objective -8056.000000
-Found heuristic solution: objective -8064.000000
-Found heuristic solution: objective -8068.000000
-Found heuristic solution: objective -8095.000000
-Found heuristic solution: objective -8135.000000
-Found heuristic solution: objective -8169.000000
-Found heuristic solution: objective -8178.000000
-Elapsed time for NoRel heuristic: 24s (best bound -14954)
-Found heuristic solution: objective -8251.000000
-Found heuristic solution: objective -8253.000000
-Found heuristic solution: objective -8294.000000
-Found heuristic solution: objective -8297.000000
-Found heuristic solution: objective -8346.000000
-Elapsed time for NoRel heuristic: 29s (best bound -14522)
-Found heuristic solution: objective -8371.000000
-Found heuristic solution: objective -8415.000000
-Found heuristic solution: objective -8476.000000
-Elapsed time for NoRel heuristic: 35s (best bound -14430)
-Found heuristic solution: objective -8511.000000
-Found heuristic solution: objective -8526.000000
-Found heuristic solution: objective -8556.000000
-Found heuristic solution: objective -8557.000000
-Elapsed time for NoRel heuristic: 41s (best bound -13908)
-Found heuristic solution: objective -8573.000000
-Found heuristic solution: objective -8577.000000
-Found heuristic solution: objective -8589.000000
-Elapsed time for NoRel heuristic: 47s (best bound -13908)
-Found heuristic solution: objective -8606.000000
-Found heuristic solution: objective -8633.000000
-Found heuristic solution: objective -8644.000000
-Found heuristic solution: objective -8645.000000
-Elapsed time for NoRel heuristic: 53s (best bound -13908)
-Found heuristic solution: objective -8655.000000
-Found heuristic solution: objective -8657.000000
-Found heuristic solution: objective -8675.000000
-Found heuristic solution: objective -8677.000000
-Found heuristic solution: objective -8697.000000
-Elapsed time for NoRel heuristic: 61s (best bound -13808)
-Found heuristic solution: objective -8710.000000
-Found heuristic solution: objective -8724.000000
-Elapsed time for NoRel heuristic: 66s (best bound -13770)
-Found heuristic solution: objective -8740.000000
-Found heuristic solution: objective -8756.000000
-Found heuristic solution: objective -8769.000000
-Elapsed time for NoRel heuristic: 74s (best bound -13770)
-Found heuristic solution: objective -8778.000000
-Found heuristic solution: objective -8782.000000
-Found heuristic solution: objective -8795.000000
-Found heuristic solution: objective -8805.000000
-Found heuristic solution: objective -8806.000000
-Elapsed time for NoRel heuristic: 83s (best bound -13770)
-Found heuristic solution: objective -8815.000000
-Found heuristic solution: objective -8816.000000
-Found heuristic solution: objective -8826.000000
-Elapsed time for NoRel heuristic: 90s (best bound -13678)
-Found heuristic solution: objective -8837.000000
-Found heuristic solution: objective -8845.000000
-Found heuristic solution: objective -8846.000000
-Elapsed time for NoRel heuristic: 96s (best bound -13678)
-Found heuristic solution: objective -8855.000000
-Found heuristic solution: objective -8858.000000
-Elapsed time for NoRel heuristic: 103s (best bound -13678)
-Found heuristic solution: objective -8864.000000
-Found heuristic solution: objective -8865.000000
-Found heuristic solution: objective -8870.000000
-Elapsed time for NoRel heuristic: 110s (best bound -13678)
-Found heuristic solution: objective -8877.000000
-Found heuristic solution: objective -8888.000000
-Found heuristic solution: objective -8889.000000
-Elapsed time for NoRel heuristic: 119s (best bound -13448)
-Found heuristic solution: objective -8894.000000
-Found heuristic solution: objective -8897.000000
-Elapsed time for NoRel heuristic: 127s (best bound -13448)
-Found heuristic solution: objective -8905.000000
-Found heuristic solution: objective -8912.000000
-Found heuristic solution: objective -8916.000000
-Elapsed time for NoRel heuristic: 135s (best bound -13448)
-Found heuristic solution: objective -8918.000000
-Found heuristic solution: objective -8925.000000
-Elapsed time for NoRel heuristic: 145s (best bound -13402)
-Found heuristic solution: objective -8931.000000
-Found heuristic solution: objective -8937.000000
-Found heuristic solution: objective -8938.000000
-Elapsed time for NoRel heuristic: 154s (best bound -13402)
-Found heuristic solution: objective -8945.000000
-Elapsed time for NoRel heuristic: 160s (best bound -13402)
-Found heuristic solution: objective -8946.000000
-Found heuristic solution: objective -8947.000000
-Found heuristic solution: objective -8949.000000
-Found heuristic solution: objective -8953.000000
-Elapsed time for NoRel heuristic: 170s (best bound -13318)
-Found heuristic solution: objective -8959.000000
-Elapsed time for NoRel heuristic: 176s (best bound -13204)
-Found heuristic solution: objective -8960.000000
-Elapsed time for NoRel heuristic: 183s (best bound -13166)
-Found heuristic solution: objective -8963.000000
-Elapsed time for NoRel heuristic: 190s (best bound -13112)
-Found heuristic solution: objective -8966.000000
-Elapsed time for NoRel heuristic: 196s (best bound -12906)
-Found heuristic solution: objective -8967.000000
-Elapsed time for NoRel heuristic: 205s (best bound -12814)
-Found heuristic solution: objective -8970.000000
-Elapsed time for NoRel heuristic: 215s (best bound -12562)
-Found heuristic solution: objective -8974.000000
-Elapsed time for NoRel heuristic: 223s (best bound -12478)
-Found heuristic solution: objective -8975.000000
-Found heuristic solution: objective -8977.000000
-Elapsed time for NoRel heuristic: 237s (best bound -12196)
-Found heuristic solution: objective -8981.000000
-Elapsed time for NoRel heuristic: 245s (best bound -12196)
-Found heuristic solution: objective -8982.000000
-Found heuristic solution: objective -8983.000000
-Elapsed time for NoRel heuristic: 257s (best bound -12112)
-Found heuristic solution: objective -8987.000000
-Found heuristic solution: objective -8988.000000
-Elapsed time for NoRel heuristic: 266s (best bound -12036)
-Found heuristic solution: objective -8989.000000
-Elapsed time for NoRel heuristic: 279s (best bound -11868)
-Found heuristic solution: objective -8992.000000
-Elapsed time for NoRel heuristic: 289s (best bound -11830)
-Found heuristic solution: objective -8993.000000
-Elapsed time for NoRel heuristic: 305s (best bound -11732)
-Found heuristic solution: objective -8994.000000
-Elapsed time for NoRel heuristic: 316s (best bound -11656)
-Found heuristic solution: objective -8995.000000
-Elapsed time for NoRel heuristic: 335s (best bound -11626)
-Found heuristic solution: objective -8996.000000
-Elapsed time for NoRel heuristic: 358s (best bound -11566)
-Found heuristic solution: objective -8997.000000
-Elapsed time for NoRel heuristic: 370s (best bound -11528)
-Found heuristic solution: objective -8998.000000
-Elapsed time for NoRel heuristic: 392s (best bound -11386)
-Elapsed time for NoRel heuristic: 407s (best bound -11304)
-Found heuristic solution: objective -8999.000000
-Elapsed time for NoRel heuristic: 427s (best bound -11274)
-Found heuristic solution: objective -9000.000000
-Elapsed time for NoRel heuristic: 444s (best bound -11236)
-Elapsed time for NoRel heuristic: 474s (best bound -11176)
-Elapsed time for NoRel heuristic: 506s (best bound -11176)
-Elapsed time for NoRel heuristic: 524s (best bound -11094)
-Found heuristic solution: objective -9001.000000
-Elapsed time for NoRel heuristic: 582s (best bound -11072)
-Found heuristic solution: objective -9002.000000
-Found heuristic solution: objective -9003.000000
-Elapsed time for NoRel heuristic: 612s (best bound -11006)
-NoRel heuristic complete
-
-Root simplex log...
-
-Iteration    Objective       Primal Inf.    Dual Inf.      Time
-       0   -1.2663742e+04   1.287105e+00   0.000000e+00   1023s
-      36   -9.0880000e+03   0.000000e+00   0.000000e+00   1023s
-      36   -9.0880000e+03   0.000000e+00   0.000000e+00   1023s
-
-Use crossover to convert LP symmetric solution to basic solution...
-
-Root crossover log...
-
-       0 DPushes remaining with DInf 0.0000000e+00              1024s
-
-    1507 PPushes remaining with PInf 0.0000000e+00              1025s
-     377 PPushes remaining with PInf 0.0000000e+00              1025s
-       0 PPushes remaining with PInf 0.0000000e+00              1026s
-
-  Push phase complete: Pinf 0.0000000e+00, Dinf 4.8557709e-09   1026s
-
-
-Root simplex log...
-
-Iteration    Objective       Primal Inf.    Dual Inf.      Time
-    3466   -9.0880000e+03   0.000000e+00   0.000000e+00   1026s
-Crossover time: 2.45 seconds (2.26 work units)
-
-Root relaxation: objective -9.088000e+03, 3466 iterations, 3.04 seconds (2.66 work units)
-
-    Nodes    |    Current Node    |     Objective Bounds      |     Work
- Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
-
-     0     0 -9088.0000    0 75727 -9003.0000 -9088.0000  0.94%     - 1047s
-     0     0          -    0      -9003.0000 -9088.0000  0.94%     - 7200s
-
-Cutting planes:
-  Zero half: 1
-
-Explored 1 nodes (974934 simplex iterations) in 7200.10 seconds (9203.70 work units)
-Thread count was 32 (of 224 available processors)
-
-Solution count 10: -9003 -9002 -9001 ... -8994
-
-Time limit reached
-Best objective -9.003000000000e+03, best bound -9.088000000000e+03, gap 0.9441%
-
----------------------------------------------------------------------------
-Multi-objectives: stopped in 7200.46 seconds (9203.70 work units), solution count 10
-Time limit reached
-
-
-Gurobi 13.0.2 (linux64) logging started Tue Nov 24 12:51:43 2026
+Gurobi 13.0.2 (linux64) logging started Tue Nov 24 22:58:35 2026
 
 Set parameter LogFile to value "Logs/Allgather_MILP_RailOptimizedDualPlane_44-nodes_2-chunks_8-epochs_0.04-epochduration_ObjectiveType.LEXICOGRAPHIC_rail_optimized_256gpu_dual_plane_hierarchical_allgather_milp_b4_nows_mergedlat.log"
 Set parameter LogToConsole to value 0
@@ -484,7 +56,7 @@ Multi-objectives: applying initial presolve...
 Presolve removed 46464 rows and 40384 columns (presolve time = 5s)...
 Presolve removed 50048 rows and 40384 columns (presolve time = 10s)...
 Presolve removed 46464 rows and 36800 columns
-Presolve time: 11.45s
+Presolve time: 11.50s
 Presolved: 428384 rows, 282184 columns, 1791808 nonzeros
 ---------------------------------------------------------------------------
 
@@ -492,7 +64,7 @@ Multi-objectives: optimize objective 1 (makespan) ...
 ---------------------------------------------------------------------------
 
 Presolve removed 0 rows and 1 columns
-Presolve time: 4.59s
+Presolve time: 4.63s
 Presolved: 428384 rows, 282183 columns, 1791808 nonzeros
 Variable types: 6144 continuous, 276039 integer (276039 binary)
 
@@ -511,38 +83,36 @@ Root crossover log...
        0 DPushes remaining with DInf 0.0000000e+00                21s
 
   113632 PPushes remaining with PInf 0.0000000e+00                21s
-   45428 PPushes remaining with PInf 0.0000000e+00                25s
-   33821 PPushes remaining with PInf 0.0000000e+00                30s
+   47757 PPushes remaining with PInf 0.0000000e+00                25s
+   34301 PPushes remaining with PInf 0.0000000e+00                30s
    26710 PPushes remaining with PInf 0.0000000e+00                35s
-   21565 PPushes remaining with PInf 0.0000000e+00                40s
-   17079 PPushes remaining with PInf 0.0000000e+00                45s
-   11153 PPushes remaining with PInf 0.0000000e+00                50s
-    6703 PPushes remaining with PInf 0.0000000e+00                55s
-    3273 PPushes remaining with PInf 0.0000000e+00                60s
-     521 PPushes remaining with PInf 0.0000000e+00                65s
-       0 PPushes remaining with PInf 0.0000000e+00                66s
+   20879 PPushes remaining with PInf 0.0000000e+00                40s
+   14845 PPushes remaining with PInf 0.0000000e+00                45s
+    8761 PPushes remaining with PInf 0.0000000e+00                50s
+    4645 PPushes remaining with PInf 0.0000000e+00                55s
+       0 PPushes remaining with PInf 0.0000000e+00                60s
 
-  Push phase complete: Pinf 0.0000000e+00, Dinf 4.6622428e-14     66s
+  Push phase complete: Pinf 0.0000000e+00, Dinf 4.6622428e-14     60s
 
 
 Root simplex log...
 
 Iteration    Objective       Primal Inf.    Dual Inf.      Time
-  113892   -4.6129032e+00   0.000000e+00   0.000000e+00     66s
-Crossover time: 47.71 seconds (34.44 work units)
+  113892   -4.6129032e+00   0.000000e+00   0.000000e+00     61s
+Crossover time: 41.78 seconds (34.44 work units)
 
-Root relaxation: objective -4.612903e+00, 113892 iterations, 48.98 seconds (35.25 work units)
+Root relaxation: objective -4.612903e+00, 113892 iterations, 43.08 seconds (35.25 work units)
 
     Nodes    |    Current Node    |     Objective Bounds      |     Work
  Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
 
-     0     0   -4.61290    0 77560          -   -4.61290      -     -  342s
-H    0     0                      -1.0000000   -4.61290   361%     -  344s
+     0     0   -4.61290    0 77560          -   -4.61290      -     -  336s
+H    0     0                      -1.0000000   -4.61290   361%     -  337s
 
 Cutting planes:
   Zero half: 36
 
-Explored 1 nodes (127518 simplex iterations) in 385.11 seconds (271.36 work units)
+Explored 1 nodes (127518 simplex iterations) in 379.43 seconds (271.36 work units)
 Thread count was 32 (of 224 available processors)
 
 Solution count 1: -1 
@@ -557,7 +127,7 @@ Multi-objectives: optimize objective 2 (host_relay) ...
 Loaded user MIP start with objective 752
 
 Presolve removed 13889 rows and 8 columns
-Presolve time: 4.44s
+Presolve time: 4.48s
 Presolved: 414496 rows, 282176 columns, 1764032 nonzeros
 Variable types: 6144 continuous, 276032 integer (276032 binary)
 Starting NoRel heuristic
@@ -590,20 +160,20 @@ Found heuristic solution: objective 25.0000000
 Found heuristic solution: objective 24.0000000
 Found heuristic solution: objective 20.0000000
 Found heuristic solution: objective 18.0000000
-Elapsed time for NoRel heuristic: 16s (best bound 0)
 Found heuristic solution: objective 14.0000000
+Elapsed time for NoRel heuristic: 17s (best bound 0)
 Found heuristic solution: objective 13.0000000
 Found heuristic solution: objective 9.0000000
 Found heuristic solution: objective 7.0000000
 Found heuristic solution: objective 4.0000000
-Elapsed time for NoRel heuristic: 22s (best bound 0)
 Found heuristic solution: objective 3.0000000
 Found heuristic solution: objective 2.0000000
+Elapsed time for NoRel heuristic: 23s (best bound 0)
 Found heuristic solution: objective 1.0000000
 Found heuristic solution: objective 0.0000000
 NoRel heuristic complete
 
-Explored 0 nodes (0 simplex iterations) in 415.66 seconds (281.76 work units)
+Explored 0 nodes (0 simplex iterations) in 409.87 seconds (281.76 work units)
 Thread count was 32 (of 224 available processors)
 
 Solution count 10: 0 1 2 ... 18
@@ -618,7 +188,7 @@ Multi-objectives: optimize objective 3 (latency_chain) ...
 Loaded user MIP start with objective -7496
 
 Presolve removed 236098 rows and 111112 columns
-Presolve time: 2.64s
+Presolve time: 3.44s
 Presolved: 192288 rows, 171072 columns, 891072 nonzeros
 Variable types: 6144 continuous, 164928 integer (164928 binary)
 Starting NoRel heuristic
@@ -647,18 +217,19 @@ Found heuristic solution: objective -7774.000000
 Found heuristic solution: objective -7786.000000
 Found heuristic solution: objective -7788.000000
 Found heuristic solution: objective -7791.000000
+Found heuristic solution: objective -7792.000000
 Found heuristic solution: objective -7815.000000
 Found heuristic solution: objective -7816.000000
 Found heuristic solution: objective -7863.000000
+Elapsed time for NoRel heuristic: 10s (best bound -15872)
 Found heuristic solution: objective -7866.000000
 Found heuristic solution: objective -7867.000000
-Elapsed time for NoRel heuristic: 11s (best bound -15872)
 Found heuristic solution: objective -7926.000000
 Found heuristic solution: objective -7953.000000
 Found heuristic solution: objective -7962.000000
 Found heuristic solution: objective -8013.000000
 Found heuristic solution: objective -8055.000000
-Elapsed time for NoRel heuristic: 17s (best bound -15872)
+Elapsed time for NoRel heuristic: 18s (best bound -15872)
 Found heuristic solution: objective -8056.000000
 Found heuristic solution: objective -8064.000000
 Found heuristic solution: objective -8068.000000
@@ -666,86 +237,86 @@ Found heuristic solution: objective -8095.000000
 Found heuristic solution: objective -8135.000000
 Found heuristic solution: objective -8169.000000
 Found heuristic solution: objective -8178.000000
-Elapsed time for NoRel heuristic: 24s (best bound -14954)
+Elapsed time for NoRel heuristic: 25s (best bound -14954)
 Found heuristic solution: objective -8251.000000
 Found heuristic solution: objective -8253.000000
 Found heuristic solution: objective -8294.000000
 Found heuristic solution: objective -8297.000000
 Found heuristic solution: objective -8346.000000
+Elapsed time for NoRel heuristic: 30s (best bound -14522)
 Found heuristic solution: objective -8371.000000
-Elapsed time for NoRel heuristic: 31s (best bound -14522)
 Found heuristic solution: objective -8415.000000
 Found heuristic solution: objective -8476.000000
+Elapsed time for NoRel heuristic: 36s (best bound -14430)
 Found heuristic solution: objective -8511.000000
-Elapsed time for NoRel heuristic: 36s (best bound -14146)
 Found heuristic solution: objective -8526.000000
 Found heuristic solution: objective -8556.000000
 Found heuristic solution: objective -8557.000000
+Elapsed time for NoRel heuristic: 42s (best bound -13908)
 Found heuristic solution: objective -8573.000000
-Elapsed time for NoRel heuristic: 43s (best bound -13908)
 Found heuristic solution: objective -8577.000000
 Found heuristic solution: objective -8589.000000
+Elapsed time for NoRel heuristic: 47s (best bound -13908)
 Found heuristic solution: objective -8606.000000
-Elapsed time for NoRel heuristic: 49s (best bound -13908)
 Found heuristic solution: objective -8633.000000
 Found heuristic solution: objective -8644.000000
 Found heuristic solution: objective -8645.000000
+Elapsed time for NoRel heuristic: 54s (best bound -13908)
 Found heuristic solution: objective -8655.000000
 Found heuristic solution: objective -8657.000000
-Elapsed time for NoRel heuristic: 55s (best bound -13908)
 Found heuristic solution: objective -8675.000000
 Found heuristic solution: objective -8677.000000
 Found heuristic solution: objective -8697.000000
-Elapsed time for NoRel heuristic: 60s (best bound -13808)
+Elapsed time for NoRel heuristic: 61s (best bound -13808)
 Found heuristic solution: objective -8710.000000
 Found heuristic solution: objective -8724.000000
 Elapsed time for NoRel heuristic: 66s (best bound -13770)
 Found heuristic solution: objective -8740.000000
 Found heuristic solution: objective -8756.000000
 Found heuristic solution: objective -8769.000000
-Elapsed time for NoRel heuristic: 74s (best bound -13770)
+Elapsed time for NoRel heuristic: 75s (best bound -13770)
 Found heuristic solution: objective -8778.000000
 Found heuristic solution: objective -8782.000000
 Found heuristic solution: objective -8795.000000
-Elapsed time for NoRel heuristic: 79s (best bound -13770)
+Elapsed time for NoRel heuristic: 80s (best bound -13770)
 Found heuristic solution: objective -8805.000000
 Found heuristic solution: objective -8806.000000
 Found heuristic solution: objective -8815.000000
 Found heuristic solution: objective -8816.000000
-Elapsed time for NoRel heuristic: 86s (best bound -13724)
+Elapsed time for NoRel heuristic: 87s (best bound -13724)
 Found heuristic solution: objective -8826.000000
 Found heuristic solution: objective -8837.000000
-Elapsed time for NoRel heuristic: 92s (best bound -13678)
+Elapsed time for NoRel heuristic: 94s (best bound -13678)
 Found heuristic solution: objective -8845.000000
 Found heuristic solution: objective -8846.000000
 Found heuristic solution: objective -8855.000000
-Elapsed time for NoRel heuristic: 99s (best bound -13678)
+Elapsed time for NoRel heuristic: 101s (best bound -13678)
 Found heuristic solution: objective -8858.000000
 Found heuristic solution: objective -8864.000000
 Found heuristic solution: objective -8865.000000
-Elapsed time for NoRel heuristic: 106s (best bound -13678)
+Elapsed time for NoRel heuristic: 107s (best bound -13678)
 Found heuristic solution: objective -8870.000000
 Found heuristic solution: objective -8877.000000
-Elapsed time for NoRel heuristic: 114s (best bound -13448)
+Elapsed time for NoRel heuristic: 115s (best bound -13448)
 Found heuristic solution: objective -8888.000000
 Found heuristic solution: objective -8889.000000
+Elapsed time for NoRel heuristic: 120s (best bound -13448)
 Found heuristic solution: objective -8894.000000
-Elapsed time for NoRel heuristic: 122s (best bound -13448)
 Found heuristic solution: objective -8897.000000
+Elapsed time for NoRel heuristic: 128s (best bound -13448)
 Found heuristic solution: objective -8905.000000
-Elapsed time for NoRel heuristic: 130s (best bound -13448)
 Found heuristic solution: objective -8912.000000
 Found heuristic solution: objective -8916.000000
-Elapsed time for NoRel heuristic: 135s (best bound -13448)
+Elapsed time for NoRel heuristic: 136s (best bound -13448)
 Found heuristic solution: objective -8918.000000
 Found heuristic solution: objective -8925.000000
-Elapsed time for NoRel heuristic: 145s (best bound -13402)
+Elapsed time for NoRel heuristic: 146s (best bound -13402)
 Found heuristic solution: objective -8931.000000
 Found heuristic solution: objective -8937.000000
 Found heuristic solution: objective -8938.000000
 Elapsed time for NoRel heuristic: 155s (best bound -13402)
 Found heuristic solution: objective -8945.000000
-Elapsed time for NoRel heuristic: 160s (best bound -13402)
+Elapsed time for NoRel heuristic: 161s (best bound -13402)
 Found heuristic solution: objective -8946.000000
 Found heuristic solution: objective -8947.000000
 Found heuristic solution: objective -8949.000000
@@ -756,61 +327,61 @@ Elapsed time for NoRel heuristic: 177s (best bound -13204)
 Found heuristic solution: objective -8960.000000
 Elapsed time for NoRel heuristic: 184s (best bound -13166)
 Found heuristic solution: objective -8963.000000
-Elapsed time for NoRel heuristic: 191s (best bound -13112)
+Elapsed time for NoRel heuristic: 190s (best bound -13112)
 Found heuristic solution: objective -8966.000000
-Elapsed time for NoRel heuristic: 198s (best bound -12906)
+Elapsed time for NoRel heuristic: 197s (best bound -12906)
 Found heuristic solution: objective -8967.000000
 Elapsed time for NoRel heuristic: 207s (best bound -12814)
 Found heuristic solution: objective -8970.000000
-Elapsed time for NoRel heuristic: 216s (best bound -12562)
+Elapsed time for NoRel heuristic: 217s (best bound -12562)
 Found heuristic solution: objective -8974.000000
-Elapsed time for NoRel heuristic: 224s (best bound -12478)
+Elapsed time for NoRel heuristic: 225s (best bound -12478)
 Found heuristic solution: objective -8975.000000
 Found heuristic solution: objective -8977.000000
-Elapsed time for NoRel heuristic: 238s (best bound -12196)
+Elapsed time for NoRel heuristic: 239s (best bound -12196)
 Found heuristic solution: objective -8981.000000
-Elapsed time for NoRel heuristic: 246s (best bound -12196)
+Elapsed time for NoRel heuristic: 247s (best bound -12196)
 Found heuristic solution: objective -8982.000000
 Found heuristic solution: objective -8983.000000
-Elapsed time for NoRel heuristic: 258s (best bound -12112)
+Elapsed time for NoRel heuristic: 260s (best bound -12112)
 Found heuristic solution: objective -8987.000000
 Found heuristic solution: objective -8988.000000
-Elapsed time for NoRel heuristic: 268s (best bound -12036)
+Elapsed time for NoRel heuristic: 269s (best bound -12036)
 Found heuristic solution: objective -8989.000000
-Elapsed time for NoRel heuristic: 280s (best bound -11868)
+Elapsed time for NoRel heuristic: 284s (best bound -11868)
 Found heuristic solution: objective -8992.000000
-Elapsed time for NoRel heuristic: 291s (best bound -11830)
+Elapsed time for NoRel heuristic: 294s (best bound -11830)
 Found heuristic solution: objective -8993.000000
-Elapsed time for NoRel heuristic: 306s (best bound -11732)
+Elapsed time for NoRel heuristic: 310s (best bound -11732)
 Found heuristic solution: objective -8994.000000
-Elapsed time for NoRel heuristic: 317s (best bound -11656)
+Elapsed time for NoRel heuristic: 322s (best bound -11656)
 Found heuristic solution: objective -8995.000000
-Elapsed time for NoRel heuristic: 335s (best bound -11626)
+Elapsed time for NoRel heuristic: 340s (best bound -11626)
 Found heuristic solution: objective -8996.000000
-Elapsed time for NoRel heuristic: 357s (best bound -11566)
+Elapsed time for NoRel heuristic: 362s (best bound -11566)
 Found heuristic solution: objective -8997.000000
-Elapsed time for NoRel heuristic: 370s (best bound -11528)
+Elapsed time for NoRel heuristic: 374s (best bound -11528)
 Found heuristic solution: objective -8998.000000
-Elapsed time for NoRel heuristic: 393s (best bound -11386)
-Elapsed time for NoRel heuristic: 407s (best bound -11304)
+Elapsed time for NoRel heuristic: 396s (best bound -11386)
+Elapsed time for NoRel heuristic: 411s (best bound -11304)
 Found heuristic solution: objective -8999.000000
-Elapsed time for NoRel heuristic: 428s (best bound -11274)
+Elapsed time for NoRel heuristic: 430s (best bound -11274)
 Found heuristic solution: objective -9000.000000
-Elapsed time for NoRel heuristic: 445s (best bound -11236)
-Elapsed time for NoRel heuristic: 476s (best bound -11176)
-Elapsed time for NoRel heuristic: 506s (best bound -11176)
-Elapsed time for NoRel heuristic: 524s (best bound -11094)
+Elapsed time for NoRel heuristic: 448s (best bound -11236)
+Elapsed time for NoRel heuristic: 478s (best bound -11176)
+Elapsed time for NoRel heuristic: 508s (best bound -11176)
+Elapsed time for NoRel heuristic: 526s (best bound -11094)
 Found heuristic solution: objective -9001.000000
-Elapsed time for NoRel heuristic: 583s (best bound -11072)
+Elapsed time for NoRel heuristic: 584s (best bound -11072)
 Found heuristic solution: objective -9002.000000
 Found heuristic solution: objective -9003.000000
-Elapsed time for NoRel heuristic: 613s (best bound -11006)
+Elapsed time for NoRel heuristic: 615s (best bound -11006)
 NoRel heuristic complete
 
 Root simplex log...
 
 Iteration    Objective       Primal Inf.    Dual Inf.      Time
-       0   -1.2663742e+04   1.287105e+00   0.000000e+00   1032s
+       0   -1.2663742e+04   1.287105e+00   0.000000e+00   1029s
 Deterministic concurrent LP optimizer: primal simplex, dual simplex, and barrier
 Showing barrier log only...
 
@@ -826,128 +397,124 @@ Barrier statistics:
 
                   Objective                Residual
 Iter       Primal          Dual         Primal    Dual     Compl     Time
-   0  -1.17688467e+05 -1.42041377e+05  1.26e+03 1.00e+00  2.49e+01  1036s
-   1  -4.07494318e+04 -2.57673868e+05  6.08e+02 1.07e-14  9.95e+00  1036s
-   2  -6.38514065e+03 -1.93825198e+05  1.71e+01 1.42e-14  6.08e-01  1037s
-   3  -5.33898308e+03 -6.38769588e+04  2.03e+00 9.77e-15  1.32e-01  1037s
-   4  -5.38061381e+03 -2.89084049e+04  4.88e-01 4.22e-15  4.86e-02  1037s
-   5  -5.62567203e+03 -1.57963477e+04  1.29e-01 2.44e-15  2.01e-02  1037s
-   6  -6.54727601e+03 -1.49225107e+04  4.97e-02 2.66e-15  1.64e-02  1037s
-   7  -7.93044032e+03 -1.18139932e+04  1.39e-02 2.16e-15  7.56e-03  1037s
-   8  -9.00121174e+03 -9.59327342e+03  2.21e-04 2.41e-15  1.15e-03  1038s
-   9  -9.08415933e+03 -9.09709132e+03  1.52e-04 2.07e-15  2.51e-05  1038s
-  10  -9.08799279e+03 -9.08801070e+03  1.01e-06 2.30e-15  3.50e-08  1038s
+   0  -1.17688467e+05 -1.42041377e+05  1.26e+03 1.00e+00  2.49e+01  1033s
+   1  -4.07494318e+04 -2.57673868e+05  6.08e+02 1.07e-14  9.95e+00  1034s
+   2  -6.38514065e+03 -1.93825198e+05  1.71e+01 1.42e-14  6.08e-01  1034s
+   3  -5.33898308e+03 -6.38769588e+04  2.03e+00 9.77e-15  1.32e-01  1034s
+   4  -5.38061381e+03 -2.89084049e+04  4.88e-01 4.22e-15  4.86e-02  1034s
+   5  -5.62567203e+03 -1.57963477e+04  1.29e-01 2.44e-15  2.01e-02  1034s
+   6  -6.54727601e+03 -1.49225107e+04  4.97e-02 2.66e-15  1.64e-02  1034s
+   7  -7.93044032e+03 -1.18139932e+04  1.39e-02 2.16e-15  7.56e-03  1035s
+   8  -9.00121174e+03 -9.59327342e+03  2.21e-04 2.41e-15  1.15e-03  1035s
+   9  -9.08415933e+03 -9.09709132e+03  1.52e-04 2.07e-15  2.51e-05  1035s
+  10  -9.08799279e+03 -9.08801070e+03  1.01e-06 2.30e-15  3.50e-08  1035s
 
-Barrier performed 10 iterations in 1038.14 seconds (625.22 work units)
+Barrier performed 10 iterations in 1035.27 seconds (625.22 work units)
 Objective cutoff exceeded
 
-Waiting for other threads to finish...        1103s
-Waiting for other threads to finish...        1168s
-Waiting for other threads to finish...        1233s
-Waiting for other threads to finish...        1297s
-Waiting for other threads to finish...        1363s
-Waiting for other threads to finish...        1430s
-Waiting for other threads to finish...        1497s
+Waiting for other threads to finish...        1100s
+Waiting for other threads to finish...        1164s
+Waiting for other threads to finish...        1231s
+Waiting for other threads to finish...        1295s
+Waiting for other threads to finish...        1362s
+Waiting for other threads to finish...        1429s
+Waiting for other threads to finish...        1496s
 Waiting for other threads to finish...        1564s
 Waiting for other threads to finish...        1631s
-Waiting for other threads to finish...        1697s
-Waiting for other threads to finish...        1760s
-Waiting for other threads to finish...        1824s
-Waiting for other threads to finish...        1888s
-Waiting for other threads to finish...        1952s
-Waiting for other threads to finish...        2015s
-Waiting for other threads to finish...        2078s
-Waiting for other threads to finish...        2142s
-Waiting for other threads to finish...        2205s
-Waiting for other threads to finish...        2269s
-Waiting for other threads to finish...        2332s
-Waiting for other threads to finish...        2396s
-Waiting for other threads to finish...        2460s
-Waiting for other threads to finish...        2523s
-Waiting for other threads to finish...        2587s
-Waiting for other threads to finish...        2650s
-Waiting for other threads to finish...        2714s
-Waiting for other threads to finish...        2777s
-Waiting for other threads to finish...        2841s
-Waiting for other threads to finish...        2904s
-Waiting for other threads to finish...        2968s
-Waiting for other threads to finish...        3031s
-Waiting for other threads to finish...        3095s
-Waiting for other threads to finish...        3159s
-Waiting for other threads to finish...        3223s
-Waiting for other threads to finish...        3287s
-Waiting for other threads to finish...        3351s
-Waiting for other threads to finish...        3415s
-Waiting for other threads to finish...        3478s
-Waiting for other threads to finish...        3542s
-Waiting for other threads to finish...        3606s
-Waiting for other threads to finish...        3670s
-Waiting for other threads to finish...        3734s
-Waiting for other threads to finish...        3797s
-Waiting for other threads to finish...        3861s
-Waiting for other threads to finish...        3925s
-Waiting for other threads to finish...        3988s
-Waiting for other threads to finish...        4052s
-Waiting for other threads to finish...        4115s
-Waiting for other threads to finish...        4179s
-Waiting for other threads to finish...        4243s
+Waiting for other threads to finish...        1698s
+Waiting for other threads to finish...        1765s
+Waiting for other threads to finish...        1832s
+Waiting for other threads to finish...        1900s
+Waiting for other threads to finish...        1967s
+Waiting for other threads to finish...        2035s
+Waiting for other threads to finish...        2102s
+Waiting for other threads to finish...        2169s
+Waiting for other threads to finish...        2236s
+Waiting for other threads to finish...        2303s
+Waiting for other threads to finish...        2371s
+Waiting for other threads to finish...        2438s
+Waiting for other threads to finish...        2505s
+Waiting for other threads to finish...        2573s
+Waiting for other threads to finish...        2640s
+Waiting for other threads to finish...        2708s
+Waiting for other threads to finish...        2775s
+Waiting for other threads to finish...        2843s
+Waiting for other threads to finish...        2910s
+Waiting for other threads to finish...        2976s
+Waiting for other threads to finish...        3042s
+Waiting for other threads to finish...        3108s
+Waiting for other threads to finish...        3176s
+Waiting for other threads to finish...        3243s
+Waiting for other threads to finish...        3310s
+Waiting for other threads to finish...        3378s
+Waiting for other threads to finish...        3445s
+Waiting for other threads to finish...        3509s
+Waiting for other threads to finish...        3573s
+Waiting for other threads to finish...        3638s
+Waiting for other threads to finish...        3705s
+Waiting for other threads to finish...        3772s
+Waiting for other threads to finish...        3839s
+Waiting for other threads to finish...        3905s
+Waiting for other threads to finish...        3970s
+Waiting for other threads to finish...        4036s
+Waiting for other threads to finish...        4104s
+Waiting for other threads to finish...        4171s
+Waiting for other threads to finish...        4239s
 Waiting for other threads to finish...        4306s
-Waiting for other threads to finish...        4370s
-Waiting for other threads to finish...        4433s
-Waiting for other threads to finish...        4496s
-Waiting for other threads to finish...        4560s
-Waiting for other threads to finish...        4624s
-Waiting for other threads to finish...        4688s
-Waiting for other threads to finish...        4752s
-Waiting for other threads to finish...        4815s
-Waiting for other threads to finish...        4878s
-Waiting for other threads to finish...        4942s
-Waiting for other threads to finish...        5005s
-Waiting for other threads to finish...        5069s
-Waiting for other threads to finish...        5132s
-Waiting for other threads to finish...        5196s
-Waiting for other threads to finish...        5260s
-Waiting for other threads to finish...        5324s
-Waiting for other threads to finish...        5387s
-Waiting for other threads to finish...        5451s
-Waiting for other threads to finish...        5515s
-Waiting for other threads to finish...        5578s
-Waiting for other threads to finish...        5642s
-Waiting for other threads to finish...        5705s
-Waiting for other threads to finish...        5769s
-Waiting for other threads to finish...        5832s
-Waiting for other threads to finish...        5895s
-Waiting for other threads to finish...        5959s
-Waiting for other threads to finish...        6022s
-Waiting for other threads to finish...        6086s
-Waiting for other threads to finish...        6149s
-Waiting for other threads to finish...        6213s
-Waiting for other threads to finish...        6276s
-Waiting for other threads to finish...        6340s
-Waiting for other threads to finish...        6403s
-Waiting for other threads to finish...        6467s
-Waiting for other threads to finish...        6531s
-Waiting for other threads to finish...        6594s
-Waiting for other threads to finish...        6658s
-Waiting for other threads to finish...        6722s
-Waiting for other threads to finish...        6786s
-Waiting for other threads to finish...        6849s
-Waiting for other threads to finish...        6913s
-Waiting for other threads to finish...        6977s
-Waiting for other threads to finish...        7041s
-Waiting for other threads to finish...        7105s
-Waiting for other threads to finish...        7168s
+Waiting for other threads to finish...        4374s
+Waiting for other threads to finish...        4441s
+Waiting for other threads to finish...        4508s
+Waiting for other threads to finish...        4575s
+Waiting for other threads to finish...        4643s
+Waiting for other threads to finish...        4710s
+Waiting for other threads to finish...        4776s
+Waiting for other threads to finish...        4843s
+Waiting for other threads to finish...        4911s
+Waiting for other threads to finish...        4978s
+Waiting for other threads to finish...        5046s
+Waiting for other threads to finish...        5113s
+Waiting for other threads to finish...        5180s
+Waiting for other threads to finish...        5247s
+Waiting for other threads to finish...        5315s
+Waiting for other threads to finish...        5382s
+Waiting for other threads to finish...        5449s
+Waiting for other threads to finish...        5517s
+Waiting for other threads to finish...        5584s
+Waiting for other threads to finish...        5652s
+Waiting for other threads to finish...        5719s
+Waiting for other threads to finish...        5786s
+Waiting for other threads to finish...        5853s
+Waiting for other threads to finish...        5919s
+Waiting for other threads to finish...        5986s
+Waiting for other threads to finish...        6054s
+Waiting for other threads to finish...        6121s
+Waiting for other threads to finish...        6189s
+Waiting for other threads to finish...        6256s
+Waiting for other threads to finish...        6324s
+Waiting for other threads to finish...        6391s
+Waiting for other threads to finish...        6456s
+Waiting for other threads to finish...        6520s
+Waiting for other threads to finish...        6584s
+Waiting for other threads to finish...        6650s
+Waiting for other threads to finish...        6718s
+Waiting for other threads to finish...        6785s
+Waiting for other threads to finish...        6852s
+Waiting for other threads to finish...        6920s
+Waiting for other threads to finish...        6987s
+Waiting for other threads to finish...        7055s
+Waiting for other threads to finish...        7122s
+Waiting for other threads to finish...        7190s
 
 Solved with barrier
 
-Root relaxation: interrupted, 0 iterations, 6168.33 seconds (6.31 work units)
+Root relaxation: interrupted, 0 iterations, 6171.21 seconds (6.31 work units)
 
     Nodes    |    Current Node    |     Objective Bounds      |     Work
  Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
 
      0     0          -    0      -9003.0000 -9088.0107  0.94%     - 7200s
 
-Explored 1 nodes (0 simplex iterations) in 7200.17 seconds (625.35 work units)
+Explored 1 nodes (0 simplex iterations) in 7200.16 seconds (625.35 work units)
 Thread count was 32 (of 224 available processors)
 
 Solution count 10: -9003 -9002 -9001 ... -8994
@@ -956,6 +523,6 @@ Time limit reached
 Best objective -9.003000000000e+03, best bound -9.088000000000e+03, gap 0.9441%
 
 ---------------------------------------------------------------------------
-Multi-objectives: stopped in 7200.62 seconds (625.35 work units), solution count 10
+Multi-objectives: stopped in 7200.58 seconds (625.35 work units), solution count 10
 Time limit reached
 
