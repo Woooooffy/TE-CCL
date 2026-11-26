@@ -51,10 +51,13 @@ MAX_M = 128
 REMOTE_PACING_GATES = os.environ.get('TECCL_REMOTE_PACING_GATES', '1').lower() not in (
     '0', '', 'false', 'no', 'off')
 
-try:                                  # sibling module; this file runs both as a script
+try:                                  # sibling modules; this file runs both as a script
     from port_split import unqualify_path_key                            # noqa: E402
+    from routes import Tree, first_hop, is_tree, last_hop, receivers_of, route_links  # noqa: E402
 except ImportError:                   # ... and as part of the teccl package
     from teccl.ncclize.port_split import unqualify_path_key
+    from teccl.ncclize.routes import (Tree, first_hop, is_tree, last_hop, receivers_of,
+                                      route_links)
 
 FLOW_RE = re.compile(
     r'Chunk (\d+) from (\d+) traveled over (\d+)->(\d+)'
@@ -428,13 +431,11 @@ def _send_uplink(key):
     split uplink would collapse to one None and the pool would over-serialize.
     """
     _step, src, _dst, path_key = key
-    switches, cables = unqualify_path_key(path_key)
-    first_switch = switches[0] if switches else None
-    first_cable = cables[0] if cables else 0
+    first_switch, first_cable = first_hop(path_key)
     return (src, first_switch, first_cable)
 
 
-def _recv_downlink(key, mirrored=False):
+def _recv_downlink(key, mirrored=False, receiver=None):
     """The physical INGRESS link a transfer lands on, from its key.
 
     The mirror of _send_uplink at the far end: a transfer arrives at its destination GPU over
@@ -447,12 +448,14 @@ def _recv_downlink(key, mirrored=False):
     already the receiver; a plain send key (step, src, dst, path_key) names it third. Like
     _send_uplink the key must be deconstructed, never indexed: a port-qualified path_key is
     ((switches...), (cables...)).
+
+    A multicast send key names several receivers; `receiver` picks the one whose branch is meant.
     """
     _step, gpu, peer, path_key = key
-    switches, cables = unqualify_path_key(path_key)
-    last_switch = switches[-1] if switches else None
-    last_cable = cables[-1] if cables else 0
-    return (last_switch, last_cable, gpu if mirrored else peer)
+    if receiver is None:
+        receiver = gpu if mirrored else peer
+    last_switch, last_cable = last_hop(path_key, receiver)
+    return (last_switch, last_cable, receiver)
 
 
 def _route_links(key, mirrored=False):
@@ -462,14 +465,12 @@ def _route_links(key, mirrored=False):
     used to rank P4 arrivals at a GPU OTHER than the gated send's destination: the one whose
     transfer shared the most links with the send is the one most plausibly holding the capacity
     the send is queued behind. `mirrored` has the same meaning as in _recv_downlink. A hop with
-    no cable information is cable 0, so on an unsplit fabric this is just the node sequence.
+    no cable information is cable 0, so on an unsplit fabric this is just the node sequence. A
+    multicast route's links are its whole tree's, once each.
     """
     _step, gpu, peer, path_key = key
     src, dst = (peer, gpu) if mirrored else (gpu, peer)
-    switches, cables = unqualify_path_key(path_key)
-    nodes = [src, *(switches or ()), dst]
-    cables = cables or (0,) * (len(nodes) - 1)
-    return {(u, v, c) for u, v, c in zip(nodes, nodes[1:], cables)}
+    return route_links(src, dst, path_key)
 
 
 def _finish_before_start_gates(paced_sends, remote_gates=False):
@@ -583,7 +584,9 @@ def _finish_before_start_gates(paced_sends, remote_gates=False):
     for key, (start, finish) in paced_sends.items():
         step, src, dst, path_key = key
         by_src[src].append((finish, _send_uplink(key), key))
-        arrivals[dst].append((finish, (step, dst, src, path_key)))
+        # A multicast send is ONE transmission (one entry above) landing at every receiver.
+        for receiver in receivers_of(dst):
+            arrivals[receiver].append((finish, (step, receiver, src, path_key)))
 
     edges = []
     remote = []            # (consumer key, producer recv mirror key), canonicalized below
@@ -609,15 +612,15 @@ def _finish_before_start_gates(paced_sends, remote_gates=False):
             # (anything else is not worth a notification): first a delivery into S's own
             # destination, the op holding the ingress capacity S needs; failing that, one
             # into ANY other GPU, ranked by how many links its transfer shared with S's route.
-            cdst = key[2]
-            cingress = _recv_downlink(key)
+            cdsts = receivers_of(key[2])
             clinks = _route_links(key)
             rbest = None
-            for gpu in [cdst, *sorted(g for g in arrivals if g not in (cdst, csrc))]:
+            for gpu in [*cdsts, *sorted(g for g in arrivals if g not in cdsts and g != csrc)]:
                 for arrival, rkey in arrivals[gpu]:
                     if arrival != cstart:
                         continue
-                    if gpu == cdst:
+                    if gpu in cdsts:
+                        cingress = _recv_downlink(key, receiver=gpu)
                         rank = (1, 1 if _recv_downlink(rkey, mirrored=True) == cingress else 0)
                     else:
                         rank = (0, len(clinks & _route_links(rkey, mirrored=True)))
@@ -670,7 +673,8 @@ def unpinned_sends(paced_sends, gates):
     for key, (_start, finish) in paced_sends.items():
         step, src, dst, path_key = key
         landing[('send', key)] = finish
-        landing[('recv', (step, dst, src, path_key))] = finish
+        for receiver in receivers_of(dst):
+            landing[('recv', (step, receiver, src, path_key))] = finish
 
     pinned = set()
     for consumer, producer, kind in gates:
@@ -982,160 +986,354 @@ def parse_flows_lp(schedule, collective_name, port_qualify=None, gpu_ranks=None)
             pacing_gates, rank_map, participants)
 
 
+def parse_sends(schedule, collective_name, port_qualify=None, gpu_ranks=None, multicast=True):
+    """Parse a schedule's "10-Sends" section: one record per TRANSMISSION, with every receiver it
+    reaches (see multicast_output_design.md). Returns the parse_flows_lp() tuple, so build_algorithm
+    only changes which parser it calls.
+
+    A record is {chunk, from, sender, epoch, span, rate, volume, branches: [{to, via, ready}]}, in
+    the schedule's own epoch units. `chunk` / `from` are the label the "8-Chunk paths" keys use,
+    decoded the same way (src-major, or alltoall's dst-major); `rate` is GB/s for a paced (network)
+    send and null for an unpaced one; `volume` is always 1 -- the section is only written for
+    schedules whose sends carry whole (sub-)chunks, so there is no M-way piece subdivision here.
+
+    taccl sees one (chunk, sender, receiver) send PER BRANCH, so check_implements verifies a
+    multicast exactly as it verifies one unicast per receiver. What makes it ONE transmission is
+    the route key: a record with several branches gets a `routes.Tree` as the path key of every
+    branch, which ncclize turns into one send op and one recv per receiver. A one-branch record
+    keeps the ordinary unicast key, so a schedule without copy parses to exactly what
+    parse_flows_lp() gives. `multicast=False` gives each branch its own unicast key instead -- one
+    send per receiver, the pre-multicast output, for a runtime that cannot replicate.
+
+    The pacing window of a paced send is read off the record, (epoch, epoch + span), and keyed
+    (step, sender, peer, route) with `peer` the receiver -- or, for a multicast, the sorted receiver
+    tuple: one transmission, one entry in the send pool, one arrival per receiver.
+    """
+    if collective_name not in ('alltoall', 'gather', 'allgather', 'broadcast'):
+        raise ValueError(f"Unknown collective {collective_name!r}")
+    dst_major = collective_name == 'alltoall'
+    rooted = collective_name in ('gather', 'broadcast')
+    records = schedule['10-Sends']
+
+    # The demand set (participants, root) comes from the "8-Chunk paths" KEYS, exactly as in
+    # parse_flows_lp(); the transmissions come from the records.
+    raw_ids, switch_raw_ids, demands = set(), set(), []
+    for demand_key in schedule['8-Chunk paths']:
+        dm = DEMAND_RE.match(demand_key)
+        if not dm:
+            raise ValueError(f'Could not parse demand key: {demand_key!r}')
+        dst_raw, chunk, src_raw, _met = (int(x) for x in dm.group(1, 2, 3, 4))
+        raw_ids.update((dst_raw, src_raw))
+        demands.append((dst_raw, chunk, src_raw))
+    for rec in records:
+        if abs(rec['volume'] - 1.0) > 1e-9:
+            raise ValueError(f'"10-Sends" record {rec} carries volume {rec["volume"]}; the section '
+                             f'is only defined for whole (sub-)chunk sends')
+        raw_ids.add(rec['sender'])
+        for b in rec['branches']:
+            raw_ids.add(b['to'])
+            switch_raw_ids.update(b['via'])
+
+    rank_map, num_nodes = _rank_space(raw_ids, gpu_ranks, 'parse_sends')
+    switch_rank_map = {raw: idx for idx, raw in enumerate(sorted(switch_raw_ids))}
+    participants = sorted({d[0] for d in demands} | {d[2] for d in demands})
+    slot = {raw: idx for idx, raw in enumerate(participants)}
+    P = len(participants)
+    if P == 0:
+        raise ValueError('schedule has no demands, so no participating GPUs')
+    root_dense = None
+    if rooted:
+        root_raw = schedule.get('0-Root')
+        if root_raw is None or root_raw not in rank_map:
+            raise ValueError(f"{collective_name} schedule has no usable '0-Root' ({root_raw})")
+        root_dense = rank_map[root_raw]
+    num_subchunks = (max(c for _, c, _ in demands) // P + 1 if dst_major
+                     else max(c for _, c, _ in demands) + 1)
+    factor = num_subchunks
+
+    def chunk_id_of(label, origin_raw):
+        """The taccl chunk index of a label. A dst-major (alltoall) label encodes the DEMAND's
+        destination slot -- not a relay hop's receiver, which is why it is read off the label."""
+        if not dst_major:
+            return slot[origin_raw] * factor + label
+        return ((label % P) * P + slot[origin_raw]) * factor + label // P
+
+    def unicast_key(sender, receiver, via, origin, label, epoch):
+        key = tuple(via) if via else None
+        if port_qualify is not None:      # see the note in parse_flows()
+            key = port_qualify(sender, receiver, key, origin, label, epoch)
+        return key
+
+    # epoch -> {(chunk_id, src, dst): None}, insertion-ordered: records are written in first-use
+    # order, so a schedule without copy reproduces parse_flows_lp()'s order and hence its XML.
+    by_epoch = defaultdict(dict)
+    entries = []   # (epoch, chunk_id, src, dst, route, completion, rate, peer, span)
+    for rec in records:
+        sender, epoch, label, origin = rec['sender'], rec['epoch'], rec['chunk'], rec['from']
+        src = rank_map[sender]
+        branches = rec['branches']
+        if multicast and len(branches) > 1:
+            if port_qualify is not None and any(
+                    unicast_key(sender, b['to'], b['via'], origin, label, epoch)
+                    != (tuple(b['via']) or None) for b in branches):
+                raise NotImplementedError(
+                    f'multicast send {rec} crosses a port-split link; splitting a tree across '
+                    f'cables is not supported (multicast_output_design.md section 5)')
+            tree = Tree(tuple(sorted((rank_map[b['to']], tuple(b['via'])) for b in branches)))
+            routes = [tree] * len(branches)
+            peer = tree.receivers
+        else:
+            routes = [unicast_key(sender, b['to'], b['via'], origin, label, epoch)
+                      for b in branches]
+            peer = None
+        for b, route in zip(branches, routes):
+            dst = rank_map[b['to']]
+            chunk_id = chunk_id_of(label, origin)
+            by_epoch[epoch][(chunk_id, src, dst)] = None
+            entries.append((epoch, chunk_id, src, dst, route, b['ready'], rec['rate'],
+                            dst if peer is None else peer, rec['span']))
+
+    sorted_epochs = sorted(by_epoch)
+    steps_in_order = [list(by_epoch[epoch]) for epoch in sorted_epochs]
+    epoch_to_step_idx = {epoch: idx for idx, epoch in enumerate(sorted_epochs)}
+
+    flow_path_keys, flow_completion_epochs, flow_rates, paced_sends = {}, {}, {}, {}
+    # As in parse_flows_lp(): a schedule with no rate anywhere is a flat one, still paced, at one
+    # epoch per send; in a schedule that HAS rates, a send without one is deliberately unpaced.
+    flat = all(rate is None for *_, rate, _peer, _span in entries)
+    for epoch, chunk_id, src, dst, route, ready, rate, peer, span in entries:
+        step_idx = epoch_to_step_idx[epoch]
+        key = (step_idx, chunk_id, src, dst)
+        flow_path_keys[key] = route
+        flow_completion_epochs[key] = ready
+        if rate is not None:
+            prev = flow_rates.setdefault(key, rate)
+            if abs(prev - rate) > 1e-9:
+                raise ValueError(f'Flow {src}->{dst} chunk {chunk_id} at step {step_idx} carries '
+                                 f'two different rates ({prev} and {rate}).')
+            paced_sends[(step_idx, src, peer, route)] = (epoch, epoch + span)
+        elif flat:
+            paced_sends[(step_idx, src, peer, route)] = (epoch, epoch + 1)
+
+    # Remote (P4) gates follow the legacy parser of the same format: parse_flows_lp() derives them,
+    # the flat MILP path (parse_flows) never did. Kept so each format's XML is unchanged.
+    remote = REMOTE_PACING_GATES and schedule.get('0-Formulation') != 'MILP'
+    pacing_gates = _finish_before_start_gates(paced_sends, remote_gates=remote)
+    early = unpinned_sends(paced_sends, pacing_gates)
+    if early:
+        print(f'[ncclize] pacing: {len(early)} of {len(paced_sends)} paced sends are not pinned to '
+              f'their epoch by any gate -- they will fire early [(gpu, epoch)]: {early[:8]}')
+    elif not paced_sends:
+        print('[ncclize] pacing: no paced sends, so no gates -- every send fires as soon as its '
+              'data dependency allows')
+    else:
+        print(f'[ncclize] pacing: all {len(paced_sends)} paced sends are pinned to their epoch by '
+              f'a gate landing exactly at their start')
+
+    return (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
+            sorted_epochs, flow_completion_epochs, flow_rates, root_dense,
+            pacing_gates, rank_map, participants)
+
+
 def build_switch_routes(flow_manifest, switch_rank_map, programmable_switches=None,
                         physical_port=None, gpu_rank_map=None, topology=None):
-    """Build a per-switch flow_id -> next-hop forwarding table.
+    """Build the switch forwarding program, format 2 (multicast_output_design.md section 5).
 
-    flow_manifest is the list of {'flow_id', 'step', 'src', 'dst', 'path_key'}
-    records recorded by ncclize(). Since a flow_id is a bijection with a
-    physical route (src, dst, path_key), the same flow_id can appear in several
-    records (one per epoch/chunk that used the route); they all describe the
-    identical forwarding, so building the table is idempotent per flow_id. The
-    'step' (epoch) field is intentionally NOT carried into the table: forwarding
-    is a property of the route, not of when it is used, so a route-level entry
-    has no single meaningful epoch.
+    flow_manifest is the list of {'flow_id', 'step', 'src', 'dst', 'dsts', 'path_key'} records
+    ncclize() writes for its PACED (network) ops. A flow id is a bijection with a physical ROUTE --
+    the switch path for a unicast, the routes.Tree (the switch path to every receiver) for a
+    multicast -- so the same id appears in several records (one per epoch/chunk that used the
+    route), all describing identical forwarding. That bijection is checked here in both
+    directions, and written down as the `flows` section, so a reader can look up what an id is.
 
-    The table covers the PACED (network) routes only, because ncclize() emits a
-    flow id only for those. That is the intended scope, not a gap: an unpaced hop
-    is an intra-cell one crossing an NVSwitch, which routes on its own and is
-    never programmed from this table. A hierarchical schedule therefore yields
-    entries for its inter-cell switches and none for the per-cell NVSwitches.
+    The table covers the paced routes only: an unpaced hop is an intra-cell one crossing an
+    NVSwitch, which routes on its own and is never programmed from this table.
 
-    programmable_switches, when given, is the set of RAW switch node ids that
-    accept an external forwarding program (Topology.programmable_switch_indices).
-    Only those get a table; every other switch on a route is treated as a
-    transparent self-routing hop and skipped, so a route
-    gpu -> nvswitch -> leaf -> spine -> leaf -> nvswitch -> gpu yields entries on
-    the three network switches only, chained leaf -> spine -> leaf -> dst gpu as
-    if the NVSwitches were not there. That is the correct program for such a
-    fabric: the NVSwitch delivers by its own addressing, so the last programmable
-    switch's next hop is the destination GPU. A route whose switches are all
-    non-programmable contributes nothing. None => every switch is programmable
-    (the previous behaviour).
+    programmable_switches, when given, is the set of RAW switch ids that accept a forwarding
+    program (Topology.programmable_switch_indices). Only those get entries; every other switch on a
+    route is a transparent self-routing hop, chained past (gpu -> nvswitch -> leaf -> spine -> leaf
+    -> gpu yields entries on the three network switches, next hops chained leaf -> spine -> leaf ->
+    dst gpu). A self-routing switch cannot be told to replicate, so a tree that BRANCHES at one is
+    refused. None => every switch is programmable.
 
-    THE ENTRY IS A FLOW ID -> EGRESS PORT MAPPING. 'port' is the only key a
-    runtime needs and the only one that is load-bearing: a switch that sees a
-    packet tagged with this flow id sends it out of that physical port, and
-    every other key in the entry is there to be read by a human. 'port' is the
-    port number on THIS switch, in its own 0..radix-1 numbering
-    (Topology.port_map), of the cable the route leaves on -- not a link-local
-    index and not the next hop's port.
+    Each entry is the flow's fan-out at that switch: 'ports' is the list of THIS switch's egress
+    ports (Topology.port_map numbering) the flow leaves on -- one for a unicast or an unbranched
+    tree hop, several where a multicast branches, and a switch REPLICATES a packet to every listed
+    port. 'ports' is the only load-bearing key and is omitted without physical_port (no
+    --topology), since a port that was not read off a topology is a fiction. 'next_hops' names
+    where each copy goes, in the dense numbering used elsewhere ({'type': 'gpu'|'switch', 'id'});
+    it is debug, a reader can check any port against it.
 
-    physical_port(node, neighbor, cable) supplies those numbers, normally
-    Topology.physical_port. Without it (no --topology) the entries carry no
-    'port' at all rather than a guessed one, since a port number that was not
-    read off a topology is a fiction. gpu_rank_map (raw GPU id -> dense) is
-    needed alongside it because the LAST hop's port faces the destination GPU,
-    and a port lookup is on raw node ids while the manifest carries dense ones.
-
-    The remaining keys are debug: next_hop / next_hop_type name where the packet
-    is going in the same dense 0-indexed numbering used elsewhere (GPU ids
-    matching the main XML's, switch ids ranked over the switches this table
-    covers), with next_hop_type ('switch' or 'gpu') disambiguating the two since
-    they are independently 0-indexed and can otherwise collide numerically;
-    src_gpu / dst_gpu name the route's endpoints. A reader can check any 'port'
-    against them; a runtime never has to.
-
-    Returns {'switch_id_map': {switch_id_str: raw_node_id},
-             'switches': {switch_id_str: {flow_id_str: {...}}}}. switch_id_map
-    records the dense id -> raw fine node id correspondence, which is no longer
-    inferable from the schedule alone once the table covers a subset of the
-    switches.
+    Returns {'format': 2,
+             'switch_id_map': {switch_id_str: raw_node_id},
+             'flows': {flow_id_str: {'src_gpu', 'branches': [{'dst_gpu', 'switches'[, 'cables']}]}},
+             'switches': {switch_id_str: {flow_id_str: {'ports', 'next_hops'}}}}.
     """
-    # Rank over the switches this table actually covers, so its ids stay dense
-    # 0..k-1 rather than inheriting holes where a filtered-out switch sat.
+    # Rank over the switches this table actually covers, so its ids stay dense 0..k-1 rather than
+    # inheriting holes where a filtered-out switch sat.
     if programmable_switches is None:
         rank_map = dict(switch_rank_map)
     else:
         programmable_switches = set(programmable_switches)
         rank_map = {raw: idx for idx, raw in
-                    enumerate(sorted(s for s in switch_rank_map
-                                     if s in programmable_switches))}
-
+                    enumerate(sorted(s for s in switch_rank_map if s in programmable_switches))}
     raw_gpu = ({dense: raw for raw, dense in gpu_rank_map.items()}
                if gpu_rank_map is not None else None)
 
-    routes = defaultdict(dict)
+    flows, route_of_id, id_of_route = {}, {}, {}
+    entries = defaultdict(lambda: defaultdict(lambda: {'ports': set(), 'next_hops': set()}))
     for record in flow_manifest:
-        raw_key, cables = unqualify_path_key(record['path_key'])
-        if not raw_key:
-            continue  # direct GPU-GPU link, no switch hop involved
-        # Keep each surviving switch's ORIGINAL index. Its egress port is a property of the
-        # RAW wire leaving it, which is unaffected by whether the switches after it were
-        # filtered out as self-routing: chaining past a skipped switch changes where the packet
-        # ends up, not which socket it left this one by.
-        kept = [(i, rank_map[s]) for i, s in enumerate(raw_key) if s in rank_map]
-        if not kept:
-            continue  # entirely self-routing (e.g. an intra-node NVSwitch hop)
-        switch_path = [dense for _, dense in kept]
-        flow_id, src, dst = (
-            record['flow_id'], record['src'], record['dst'])
-        # The raw node sequence the wires actually follow. `dst` is dense, so the last hop's
-        # far end has to be translated back before it can be looked up as a port.
-        raw_dst = None if raw_gpu is None else raw_gpu.get(dst)
-        raw_path = (raw_key + (raw_dst,)) if raw_dst is not None else None
-        for i, (orig_idx, switch) in enumerate(kept):
-            is_last = i == len(switch_path) - 1
-            next_hop_type = 'gpu' if is_last else 'switch'
-            next_hop = dst if is_last else switch_path[i + 1]
-            # `port` and `next_hop` deliberately need not name the same node: the port is the RAW
-            # wire leaving this switch, while next_hop chains PAST any self-routing switch that was
-            # filtered out of the table (a PCIe root complex or an NVSwitch -- `pcie` is a DSL alias
-            # for `nvswitch`, and DslTopology.default_programmable_switch_indices keeps only
-            # `type=switch` nodes). A reader following the port is therefore right and a reader
-            # following next_hop may be a hop short. What MUST hold for that to be safe is that
-            # every node skipped between the two is genuinely self-routing and that the last of them
-            # is wired to the declared next hop -- otherwise following the port leads somewhere the
-            # table never mentions, which is a silent black hole. Assert it here rather than trust
-            # it: on a topology where the port did NOT happen to reach the right host this is the
-            # only place the mismatch is still visible.
-            if topology is not None and raw_path is not None:
-                declared_raw = raw_dst if is_last else raw_key[kept[i + 1][0]]
-                j = orig_idx + 1
-                skipped = []
-                while j < len(raw_path) and raw_path[j] != declared_raw:
-                    skipped.append(raw_path[j])
-                    j += 1
-                if j >= len(raw_path):
+        flow_id, src, path_key = record['flow_id'], record['src'], record['path_key']
+        route = (src, path_key) if is_tree(path_key) else (src, record['dst'], path_key)
+        # The bijection, both directions: one route per id, one id per route.
+        if route_of_id.setdefault(flow_id, route) != route:
+            raise AssertionError(f'flow id {flow_id} names two routes: {route_of_id[flow_id]} '
+                                 f'and {route}')
+        if id_of_route.setdefault(route, flow_id) != flow_id:
+            raise AssertionError(f'route {route} has two flow ids: {id_of_route[route]} and '
+                                 f'{flow_id}')
+        if flow_id in flows:
+            continue            # the same route in another epoch/chunk: identical forwarding
+
+        if is_tree(path_key):
+            branches = [(receiver, switches, None) for receiver, switches in path_key.branches]
+        else:
+            switches, cables = unqualify_path_key(path_key)
+            branches = [(record['dst'], tuple(switches or ()), cables)]
+        flows[flow_id] = {'src_gpu': src, 'branches': [
+            dict({'dst_gpu': d, 'switches': list(sw)}, **({'cables': list(c)} if c else {}))
+            for d, sw, c in branches]}
+
+        # A switch where the tree branches must be programmable: nothing else tells it to copy.
+        if is_tree(path_key):
+            fanout = defaultdict(set)
+            for receiver, switches, _c in branches:
+                nodes = list(switches) + [('gpu', receiver)]
+                for u, v in zip(nodes, nodes[1:]):
+                    fanout[u].add(v)
+            for sw, nxt in fanout.items():
+                if len(nxt) > 1 and sw not in rank_map:
                     raise ValueError(
-                        f"flow {record['flow_id']} route {raw_key} -> gpu {raw_dst}: declared next "
-                        f"hop {declared_raw} does not appear downstream of switch {raw_key[orig_idx]}")
-                for skip in skipped:
-                    if skip not in set(topology.switch_indices) or skip in rank_map:
+                        f'flow {flow_id} (multicast from gpu {src}) branches at switch {sw}, '
+                        f'which takes no forwarding program; it cannot be told to replicate')
+
+        for dst, raw_key, cables in branches:
+            if not raw_key:
+                continue  # direct GPU-GPU link, no switch hop involved
+            # Keep each surviving switch's ORIGINAL index. Its egress port is a property of the
+            # RAW wire leaving it, which is unaffected by whether the switches after it were
+            # filtered out as self-routing: chaining past a skipped switch changes where the packet
+            # ends up, not which socket it left this one by.
+            kept = [(i, rank_map[s]) for i, s in enumerate(raw_key) if s in rank_map]
+            if not kept:
+                continue  # entirely self-routing (e.g. an intra-node NVSwitch hop)
+            raw_dst = None if raw_gpu is None else raw_gpu.get(dst)
+            raw_path = (tuple(raw_key) + (raw_dst,)) if raw_dst is not None else None
+            for i, (orig_idx, switch) in enumerate(kept):
+                is_last = i == len(kept) - 1
+                next_hop = ('gpu', dst) if is_last else ('switch', kept[i + 1][1])
+                # `port` and the next hop deliberately need not name the same node: the port is
+                # the RAW wire leaving this switch, while the next hop chains PAST any self-routing
+                # switch filtered out of the table. What MUST hold for that to be safe is that every
+                # node skipped between the two is genuinely self-routing and that the last of them
+                # is wired to the declared next hop -- otherwise following the port leads somewhere
+                # the table never mentions, a silent black hole. Assert it here: on a topology
+                # where the port did NOT happen to reach the right host this is the only place the
+                # mismatch is still visible.
+                if topology is not None and raw_path is not None:
+                    declared_raw = raw_dst if is_last else raw_key[kept[i + 1][0]]
+                    j = orig_idx + 1
+                    skipped = []
+                    while j < len(raw_path) and raw_path[j] != declared_raw:
+                        skipped.append(raw_path[j])
+                        j += 1
+                    if j >= len(raw_path):
                         raise ValueError(
-                            f"flow {record['flow_id']}: the table chains switch "
-                            f"{raw_key[orig_idx]} straight to {declared_raw}, skipping node {skip}, "
-                            f"which is not a self-routing switch -- a reader following 'port' would "
-                            f"land on {skip} with no forwarding entry for it.")
-                if skipped and topology.capacity[skipped[-1]][declared_raw] <= 0:
-                    raise ValueError(
-                        f"flow {record['flow_id']}: switch {raw_key[orig_idx]}'s port faces "
-                        f"{skipped[0]}, but the last skipped node {skipped[-1]} has no link to the "
-                        f"declared next hop {declared_raw}; following the port would black-hole.")
-            entry = {}
-            if physical_port is not None and raw_path is not None:
-                # `cables` carries one entry per HOP, so hop orig_idx+1 is the one LEAVING this
-                # switch; an unqualified key touches no multi-port link, so every cable is 0.
-                cable = cables[orig_idx + 1] if cables is not None else 0
-                port = physical_port(raw_key[orig_idx], raw_path[orig_idx + 1], cable)
-                if port is not None:
-                    entry['port'] = port
-            entry.update({
-                'next_hop_type': next_hop_type,
-                'next_hop': next_hop,
-                'src_gpu': src,
-                'dst_gpu': dst,
-            })
-            routes[switch][flow_id] = entry
+                            f"flow {flow_id} route {raw_key} -> gpu {raw_dst}: declared next hop "
+                            f"{declared_raw} does not appear downstream of switch "
+                            f"{raw_key[orig_idx]}")
+                    for skip in skipped:
+                        if skip not in set(topology.switch_indices) or skip in rank_map:
+                            raise ValueError(
+                                f"flow {flow_id}: the table chains switch {raw_key[orig_idx]} "
+                                f"straight to {declared_raw}, skipping node {skip}, which is not a "
+                                f"self-routing switch -- a reader following 'ports' would land on "
+                                f"{skip} with no forwarding entry for it.")
+                    if skipped and topology.capacity[skipped[-1]][declared_raw] <= 0:
+                        raise ValueError(
+                            f"flow {flow_id}: switch {raw_key[orig_idx]}'s port faces "
+                            f"{skipped[0]}, but the last skipped node {skipped[-1]} has no link to "
+                            f"the declared next hop {declared_raw}; following it would black-hole.")
+                entry = entries[switch][flow_id]
+                entry['next_hops'].add(next_hop)
+                if physical_port is not None and raw_path is not None:
+                    # `cables` has one entry per HOP, so hop orig_idx+1 is the one LEAVING this
+                    # switch; an unqualified key touches no multi-port link, so every cable is 0.
+                    cable = cables[orig_idx + 1] if cables is not None else 0
+                    port = physical_port(raw_key[orig_idx], raw_path[orig_idx + 1], cable)
+                    if port is not None:
+                        entry['ports'].add(port)
+
+    def emit(entry):
+        out = {}
+        if entry['ports']:
+            out['ports'] = sorted(entry['ports'])
+        out['next_hops'] = [{'type': t, 'id': i} for t, i in sorted(entry['next_hops'])]
+        return out
 
     return {
+        'format': 2,
         'switch_id_map': {str(dense): raw for raw, dense in sorted(
             rank_map.items(), key=lambda kv: kv[1])},
+        'flows': {str(fid): flows[fid] for fid in sorted(flows)},
         'switches': {
-            str(switch): {str(flow_id): entry for flow_id, entry in flows.items()}
-            for switch, flows in sorted(routes.items())
+            str(switch): {str(fid): emit(entry) for fid, entry in sorted(by_flow.items())}
+            for switch, by_flow in sorted(entries.items())
         }
     }
+
+
+def check_switch_routes(routes):
+    """The table reproduces every flow's route: following next_hops from the flow's first
+    programmed switch reaches exactly its receivers (those whose path crosses a programmed switch),
+    each once, through exactly the programmed switches the `flows` entry lists -- and every entry
+    has as many ports as next hops when ports are present. Raises on the first mismatch."""
+    raw_of = {int(d): raw for d, raw in routes['switch_id_map'].items()}
+    dense_of = {raw: d for d, raw in raw_of.items()}
+    table = routes['switches']
+    for fid, flow in routes['flows'].items():
+        want_gpus, want_switches = set(), set()
+        firsts = set()
+        for b in flow['branches']:
+            kept = [dense_of[s] for s in b['switches'] if s in dense_of]
+            if kept:
+                want_gpus.add(b['dst_gpu'])
+                want_switches.update(kept)
+                firsts.add(kept[0])
+        if not want_gpus:
+            continue
+        if len(firsts) != 1:
+            raise AssertionError(f'flow {fid} enters the programmed fabric at {sorted(firsts)}')
+        got_gpus, got_switches = [], set()
+        frontier = [firsts.pop()]
+        while frontier:
+            sw = frontier.pop()
+            if sw in got_switches:
+                raise AssertionError(f'flow {fid} revisits switch {sw}')
+            got_switches.add(sw)
+            entry = table.get(str(sw), {}).get(fid)
+            if entry is None:
+                raise AssertionError(f'flow {fid} reaches switch {sw}, which has no entry for it')
+            if 'ports' in entry and len(entry['ports']) != len(entry['next_hops']):
+                raise AssertionError(f'flow {fid} at switch {sw}: {entry["ports"]} ports for '
+                                     f'{len(entry["next_hops"])} next hops')
+            for hop in entry['next_hops']:
+                (got_gpus.append if hop['type'] == 'gpu' else frontier.append)(hop['id'])
+        if sorted(got_gpus) != sorted(want_gpus) or got_switches != want_switches:
+            raise AssertionError(
+                f'flow {fid}: the table reaches gpus {sorted(got_gpus)} via switches '
+                f'{sorted(got_switches)}, but the route is gpus {sorted(want_gpus)} via switches '
+                f'{sorted(want_switches)}')
 
 
 class TeCCLTopology:
@@ -1326,7 +1524,7 @@ def _build_port_qualifier(schedule, topology, lp_format):
     return qualify, assignment
 
 
-def build_algorithm(schedule, name='teccl', topology=None):
+def build_algorithm(schedule, name='teccl', topology=None, multicast=True):
     """Build the taccl Algorithm from a TE-CCL schedule.
 
     `topology` is the real fine Topology, when the caller has it (the hierarchical driver passes
@@ -1334,6 +1532,12 @@ def build_algorithm(schedule, name='teccl', topology=None):
     PHYSICAL mode: one channel replica per used link and no (tautological) taccl bandwidth check --
     the fix for the channel over-allocation. Omitted (None) keeps the schedule-inferred behaviour
     every flat single-level schedule relies on.
+
+    A schedule carrying "10-Sends" (the hierarchical stitch, the flat MILP) is parsed from those
+    transmission records by parse_sends(); one without it by the legacy string parsers.
+    `multicast=False` emits each receiver of a multicast send as its own unicast send -- the
+    pre-multicast output, for a runtime that cannot replicate (it oversubscribes the sender's
+    uplink by the fan-out, which is why it is opt-in).
     """
     from taccl_algorithm import Algorithm, Step
     from taccl_instance import Instance
@@ -1362,7 +1566,13 @@ def build_algorithm(schedule, name='teccl', topology=None):
         if gpus == list(range(len(gpus))):
             gpu_ranks = len(gpus)
 
-    if lp_format:
+    if '10-Sends' in schedule:
+        (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
+         sorted_epochs, flow_completion_epochs, flow_rates, root_dense,
+         pacing_gates, gpu_rank_map, participants) = parse_sends(
+            schedule, collective_name, port_qualify, gpu_ranks, multicast=multicast)
+        collective = _build_collective(collective_name, num_nodes, root_dense, participants)
+    elif lp_format:
         (num_nodes, factor, steps_in_order, flow_path_keys, switch_rank_map,
          sorted_epochs, flow_completion_epochs, flow_rates, root_dense,
          pacing_gates, gpu_rank_map, participants) = parse_flows_lp(
@@ -1549,6 +1759,10 @@ def main():
                          'The schedule is computed identically; only the final '
                          'written output differs, to enable regression testing '
                          'against outputs that predate the rate field.')
+    p.add_argument('--no-multicast', action='store_true',
+                    help='emit every receiver of a multicast (switch-copy) send as its own unicast '
+                         'send, with its own flow id -- the pre-multicast output, for a runtime that '
+                         'cannot replicate. It oversubscribes the sender\'s uplink by the fan-out.')
     p.add_argument('--hierarchical', action='store_true',
                     help='this schedule came from the hierarchical (multi-level) solver, so the '
                          'flat-axis realizability feasibility check does not apply -- its epoch '
@@ -1567,7 +1781,7 @@ def main():
     real_topology = load_topology(args.topology) if args.topology else None
     (algo, flow_path_keys, switch_rank_map,
      gpu_epoch_view, piece_rate, pacing_gates, gpu_rank_map) = build_algorithm(
-        schedule, topology=real_topology)
+        schedule, topology=real_topology, multicast=not args.no_multicast)
 
     # Send pacing is enforced INSIDE ncclize by realizing the pacing_gates manifest (per-flow
     # finish-before-start edges derived here in teccl_ncclize), so there is no XML post-pass.
@@ -1636,6 +1850,7 @@ def main():
             flow_manifest, switch_rank_map, programmable,
             physical_port=(real_topology.physical_port if real_topology is not None else None),
             gpu_rank_map=gpu_rank_map, topology=real_topology)
+        check_switch_routes(routes)
         with open(args.switch_routing_output, 'w') as f:
             json.dump(routes, f, indent=2)
         print(f'Wrote {args.switch_routing_output}')

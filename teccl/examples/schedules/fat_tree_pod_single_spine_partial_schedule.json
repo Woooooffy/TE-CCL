@@ -1,0 +1,65 @@
+{
+  "1-Epoch_Duration": 0.01,
+  "2-Expected_Epoch_Duration": 0.01,
+  "3-Epochs_Required": 2,
+  "4-Collective_Finish_Time": 0.02,
+  "5-Algo_Bandwidth": 100.0,
+  "6-Demand_Met": {
+    "GPU 0": {
+      "GPU 1": {
+        "Chunk 0": 0.02
+      },
+      "GPU 2": {
+        "Chunk 0": 0.01
+      }
+    },
+    "GPU 1": {
+      "GPU 0": {
+        "Chunk 0": 0.01
+      },
+      "GPU 2": {
+        "Chunk 0": 0.02
+      }
+    },
+    "GPU 2": {
+      "GPU 0": {
+        "Chunk 0": 0.02
+      },
+      "GPU 1": {
+        "Chunk 0": 0.01
+      }
+    }
+  },
+  "7-Flows": [
+    "Chunk 0 from 1 traveled over 1->2 in epoch 0 via switches 4 -> 6 -> 5",
+    "Chunk 0 from 0 traveled over 0->1 in epoch 0 via switches 4",
+    "Chunk 0 from 2 traveled over 2->0 in epoch 0 via switches 5 -> 6 -> 4",
+    "Chunk 0 from 0 traveled over 1->2 in epoch 1 via switches 4 -> 6 -> 5",
+    "Chunk 0 from 1 traveled over 2->0 in epoch 1 via switches 5 -> 6 -> 4",
+    "Chunk 0 from 2 traveled over 0->1 in epoch 1 via switches 4"
+  ],
+  "8-Chunk paths": {
+    "Demand at 0 for chunk 0 from 1 met by epoch 1": [
+      "1->2 in epoch 0 via switches 4 -> 6 -> 5",
+      "2->0 in epoch 1 via switches 5 -> 6 -> 4"
+    ],
+    "Demand at 0 for chunk 0 from 2 met by epoch 0": [
+      "2->0 in epoch 0 via switches 5 -> 6 -> 4"
+    ],
+    "Demand at 1 for chunk 0 from 0 met by epoch 0": [
+      "0->1 in epoch 0 via switches 4"
+    ],
+    "Demand at 1 for chunk 0 from 2 met by epoch 1": [
+      "2->0 in epoch 0 via switches 5 -> 6 -> 4",
+      "0->1 in epoch 1 via switches 4"
+    ],
+    "Demand at 2 for chunk 0 from 0 met by epoch 1": [
+      "0->1 in epoch 0 via switches 4",
+      "1->2 in epoch 1 via switches 4 -> 6 -> 5"
+    ],
+    "Demand at 2 for chunk 0 from 1 met by epoch 0": [
+      "1->2 in epoch 0 via switches 4 -> 6 -> 5"
+    ]
+  },
+  "Solver_Time": 0.18982601165771484
+}

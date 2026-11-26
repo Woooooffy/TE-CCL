@@ -1,0 +1,7 @@
+milp_chunking=2 exceeds a holder's class (sizes [1]), so bundles span holders within a cell, as under 'cell'
+Set parameter WLSAccessID
+Set parameter WLSSecret
+Set parameter LicenseID to value 2766017
+Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
+Set parameter LogFile to value "Logs/Allgather_MILP_RailOptimizedSinglePlane_44-nodes_4-chunks_19-epochs_0.04-epochduration_ObjectiveType.LEXICOGRAPHIC_rail_optimized_256gpu_hierarchical_allgather_milp_b2.log"
+Set parameter LogToConsole to value 0

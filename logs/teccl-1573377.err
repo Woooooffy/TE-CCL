@@ -1,0 +1,37 @@
+cpu-bind=MASK - lanka27, task  0  0 [542215]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka27, task  0  0 [542707]: mask 0xff0000ff set
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/bin/teccl", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/__main__.py", line 21, in main
+    if handler(args, args.command):
+       ~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/cli/solve.py", line 41, in handler
+    solver.solve()
+    ~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 376, in solve
+    self.solve_hierarchy(start)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 344, in solve_hierarchy
+    info, solution = solve_hierarchical(
+                     ~~~~~~~~~~~~~~~~~~^
+        topology, level_input, instance.collective, num_chunks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        prefix=prefix, debug=instance.debug, level_chunk=instance.level_chunk)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 634, in solve_hierarchical
+    solution = solve_level(root, ctx)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 314, in solve_level
+    return _solve_recursive(problem, ctx)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 443, in _solve_recursive
+    assert_bands_fit(flows, m, num_coarse_epochs=max((p.send_epoch for p in res.pieces),
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                     default=-1) + 1)
+                                                     ^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/flatten.py", line 143, in assert_bands_fit
+    raise AssertionError(
+        f"intra-cell work does not fit the coarse epoch it runs under, on {len(over)} "
+        f"(cell, band) pairs [(cell, band, rounds)] with m={m}: {over[:6]}")
+AssertionError: intra-cell work does not fit the coarse epoch it runs under, on 4 (cell, band) pairs [(cell, band, rounds)] with m=144: [(0, 0, 480), (1, 0, 480), (2, 0, 480), (3, 0, 480)]
+srun: error: lanka27: task 0: Exited with exit code 1

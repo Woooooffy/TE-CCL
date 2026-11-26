@@ -1,0 +1,1420 @@
+{
+  "pieces": [
+    {
+      "src_cell": 0,
+      "dst_cell": 1,
+      "identity": [
+        0,
+        0
+      ],
+      "egress_gpu": 0,
+      "ingress_gpu": 4,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 1,
+      "arrival_epoch": 1,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 0,
+      "dst_cell": 2,
+      "identity": [
+        0,
+        0
+      ],
+      "egress_gpu": 1,
+      "ingress_gpu": 11,
+      "via_switches": [
+        18
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 0,
+      "dst_cell": 1,
+      "identity": [
+        1,
+        0
+      ],
+      "egress_gpu": 0,
+      "ingress_gpu": 4,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 1,
+      "arrival_epoch": 1,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 0,
+      "dst_cell": 2,
+      "identity": [
+        1,
+        0
+      ],
+      "egress_gpu": 1,
+      "ingress_gpu": 11,
+      "via_switches": [
+        18
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 0,
+      "dst_cell": 1,
+      "identity": [
+        2,
+        0
+      ],
+      "egress_gpu": 0,
+      "ingress_gpu": 4,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 4,
+      "arrival_epoch": 4,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 0,
+      "dst_cell": 2,
+      "identity": [
+        2,
+        0
+      ],
+      "egress_gpu": 1,
+      "ingress_gpu": 11,
+      "via_switches": [
+        18
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 0,
+      "dst_cell": 1,
+      "identity": [
+        3,
+        0
+      ],
+      "egress_gpu": 0,
+      "ingress_gpu": 4,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 4,
+      "arrival_epoch": 4,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 0,
+      "dst_cell": 2,
+      "identity": [
+        3,
+        0
+      ],
+      "egress_gpu": 1,
+      "ingress_gpu": 11,
+      "via_switches": [
+        18
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 1,
+      "dst_cell": 0,
+      "identity": [
+        4,
+        0
+      ],
+      "egress_gpu": 4,
+      "ingress_gpu": 0,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 2,
+      "arrival_epoch": 2,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 1,
+      "dst_cell": 2,
+      "identity": [
+        4,
+        0
+      ],
+      "egress_gpu": 4,
+      "ingress_gpu": 8,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 1,
+      "dst_cell": 0,
+      "identity": [
+        5,
+        0
+      ],
+      "egress_gpu": 4,
+      "ingress_gpu": 0,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 2,
+      "arrival_epoch": 2,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 1,
+      "dst_cell": 2,
+      "identity": [
+        5,
+        0
+      ],
+      "egress_gpu": 4,
+      "ingress_gpu": 8,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 1,
+      "dst_cell": 0,
+      "identity": [
+        6,
+        0
+      ],
+      "egress_gpu": 4,
+      "ingress_gpu": 0,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 3,
+      "arrival_epoch": 3,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 1,
+      "dst_cell": 2,
+      "identity": [
+        6,
+        0
+      ],
+      "egress_gpu": 4,
+      "ingress_gpu": 8,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 1,
+      "arrival_epoch": 1,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 1,
+      "dst_cell": 0,
+      "identity": [
+        7,
+        0
+      ],
+      "egress_gpu": 4,
+      "ingress_gpu": 0,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 3,
+      "arrival_epoch": 3,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 1,
+      "dst_cell": 2,
+      "identity": [
+        7,
+        0
+      ],
+      "egress_gpu": 4,
+      "ingress_gpu": 8,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 1,
+      "arrival_epoch": 1,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 0,
+      "identity": [
+        8,
+        0
+      ],
+      "egress_gpu": 8,
+      "ingress_gpu": 0,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 1,
+      "identity": [
+        8,
+        0
+      ],
+      "egress_gpu": 8,
+      "ingress_gpu": 4,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 0,
+      "identity": [
+        9,
+        0
+      ],
+      "egress_gpu": 11,
+      "ingress_gpu": 1,
+      "via_switches": [
+        18
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 1,
+      "identity": [
+        9,
+        0
+      ],
+      "egress_gpu": 8,
+      "ingress_gpu": 4,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 2,
+      "arrival_epoch": 2,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 0,
+      "identity": [
+        10,
+        0
+      ],
+      "egress_gpu": 13,
+      "ingress_gpu": 1,
+      "via_switches": [
+        18
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 1,
+      "identity": [
+        10,
+        0
+      ],
+      "egress_gpu": 8,
+      "ingress_gpu": 4,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 3,
+      "arrival_epoch": 3,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 0,
+      "identity": [
+        11,
+        0
+      ],
+      "egress_gpu": 11,
+      "ingress_gpu": 1,
+      "via_switches": [
+        18
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 1,
+      "identity": [
+        11,
+        0
+      ],
+      "egress_gpu": 8,
+      "ingress_gpu": 4,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 3,
+      "arrival_epoch": 3,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 0,
+      "identity": [
+        12,
+        0
+      ],
+      "egress_gpu": 8,
+      "ingress_gpu": 0,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 1,
+      "identity": [
+        12,
+        0
+      ],
+      "egress_gpu": 8,
+      "ingress_gpu": 4,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 2,
+      "arrival_epoch": 2,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 0,
+      "identity": [
+        13,
+        0
+      ],
+      "egress_gpu": 13,
+      "ingress_gpu": 1,
+      "via_switches": [
+        18
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    },
+    {
+      "src_cell": 2,
+      "dst_cell": 1,
+      "identity": [
+        13,
+        0
+      ],
+      "egress_gpu": 8,
+      "ingress_gpu": 4,
+      "via_switches": [
+        17
+      ],
+      "volume": 1.0,
+      "send_epoch": 0,
+      "arrival_epoch": 0,
+      "rate": 25.0
+    }
+  ],
+  "intra_demands": [
+    {
+      "cell": 0,
+      "kind": "egress_stage",
+      "identity": [
+        0,
+        0
+      ],
+      "src_gpu": 0,
+      "dst_gpus": [
+        1
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 0,
+      "kind": "egress_stage",
+      "identity": [
+        1,
+        0
+      ],
+      "src_gpu": 1,
+      "dst_gpus": [
+        0
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 1
+    },
+    {
+      "cell": 0,
+      "kind": "egress_stage",
+      "identity": [
+        2,
+        0
+      ],
+      "src_gpu": 2,
+      "dst_gpus": [
+        0
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 4
+    },
+    {
+      "cell": 0,
+      "kind": "egress_stage",
+      "identity": [
+        2,
+        0
+      ],
+      "src_gpu": 2,
+      "dst_gpus": [
+        1
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 0,
+      "kind": "egress_stage",
+      "identity": [
+        3,
+        0
+      ],
+      "src_gpu": 3,
+      "dst_gpus": [
+        0
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 4
+    },
+    {
+      "cell": 0,
+      "kind": "egress_stage",
+      "identity": [
+        3,
+        0
+      ],
+      "src_gpu": 3,
+      "dst_gpus": [
+        1
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "egress_stage",
+      "identity": [
+        5,
+        0
+      ],
+      "src_gpu": 5,
+      "dst_gpus": [
+        4
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "egress_stage",
+      "identity": [
+        6,
+        0
+      ],
+      "src_gpu": 6,
+      "dst_gpus": [
+        4
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 1
+    },
+    {
+      "cell": 1,
+      "kind": "egress_stage",
+      "identity": [
+        7,
+        0
+      ],
+      "src_gpu": 7,
+      "dst_gpus": [
+        4
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 1
+    },
+    {
+      "cell": 2,
+      "kind": "egress_stage",
+      "identity": [
+        9,
+        0
+      ],
+      "src_gpu": 9,
+      "dst_gpus": [
+        11
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 2,
+      "kind": "egress_stage",
+      "identity": [
+        9,
+        0
+      ],
+      "src_gpu": 9,
+      "dst_gpus": [
+        8
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 2
+    },
+    {
+      "cell": 2,
+      "kind": "egress_stage",
+      "identity": [
+        10,
+        0
+      ],
+      "src_gpu": 10,
+      "dst_gpus": [
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 2,
+      "kind": "egress_stage",
+      "identity": [
+        10,
+        0
+      ],
+      "src_gpu": 10,
+      "dst_gpus": [
+        8
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 3
+    },
+    {
+      "cell": 2,
+      "kind": "egress_stage",
+      "identity": [
+        11,
+        0
+      ],
+      "src_gpu": 11,
+      "dst_gpus": [
+        8
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 3
+    },
+    {
+      "cell": 2,
+      "kind": "egress_stage",
+      "identity": [
+        12,
+        0
+      ],
+      "src_gpu": 12,
+      "dst_gpus": [
+        8
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 2,
+      "kind": "egress_stage",
+      "identity": [
+        13,
+        0
+      ],
+      "src_gpu": 13,
+      "dst_gpus": [
+        8
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        0,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 1
+    },
+    {
+      "cell": 2,
+      "kind": "ingress_distribution",
+      "identity": [
+        0,
+        0
+      ],
+      "src_gpu": 11,
+      "dst_gpus": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        1,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 1
+    },
+    {
+      "cell": 2,
+      "kind": "ingress_distribution",
+      "identity": [
+        1,
+        0
+      ],
+      "src_gpu": 11,
+      "dst_gpus": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        2,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 4
+    },
+    {
+      "cell": 2,
+      "kind": "ingress_distribution",
+      "identity": [
+        2,
+        0
+      ],
+      "src_gpu": 11,
+      "dst_gpus": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        3,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 4
+    },
+    {
+      "cell": 2,
+      "kind": "ingress_distribution",
+      "identity": [
+        3,
+        0
+      ],
+      "src_gpu": 11,
+      "dst_gpus": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        4,
+        0
+      ],
+      "src_gpu": 0,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 2
+    },
+    {
+      "cell": 2,
+      "kind": "ingress_distribution",
+      "identity": [
+        4,
+        0
+      ],
+      "src_gpu": 8,
+      "dst_gpus": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        5,
+        0
+      ],
+      "src_gpu": 0,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 2
+    },
+    {
+      "cell": 2,
+      "kind": "ingress_distribution",
+      "identity": [
+        5,
+        0
+      ],
+      "src_gpu": 8,
+      "dst_gpus": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        6,
+        0
+      ],
+      "src_gpu": 0,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 3
+    },
+    {
+      "cell": 2,
+      "kind": "ingress_distribution",
+      "identity": [
+        6,
+        0
+      ],
+      "src_gpu": 8,
+      "dst_gpus": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 1
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        7,
+        0
+      ],
+      "src_gpu": 0,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 3
+    },
+    {
+      "cell": 2,
+      "kind": "ingress_distribution",
+      "identity": [
+        7,
+        0
+      ],
+      "src_gpu": 8,
+      "dst_gpus": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 1
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        8,
+        0
+      ],
+      "src_gpu": 0,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        8,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        9,
+        0
+      ],
+      "src_gpu": 1,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        9,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 2
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        10,
+        0
+      ],
+      "src_gpu": 1,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        10,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 3
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        11,
+        0
+      ],
+      "src_gpu": 1,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        11,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 3
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        12,
+        0
+      ],
+      "src_gpu": 0,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        12,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 2
+    },
+    {
+      "cell": 0,
+      "kind": "ingress_distribution",
+      "identity": [
+        13,
+        0
+      ],
+      "src_gpu": 1,
+      "dst_gpus": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "ingress_distribution",
+      "identity": [
+        13,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 0,
+      "kind": "self_distribution",
+      "identity": [
+        0,
+        0
+      ],
+      "src_gpu": 0,
+      "dst_gpus": [
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 0,
+      "kind": "self_distribution",
+      "identity": [
+        1,
+        0
+      ],
+      "src_gpu": 1,
+      "dst_gpus": [
+        2,
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 0,
+      "kind": "self_distribution",
+      "identity": [
+        2,
+        0
+      ],
+      "src_gpu": 2,
+      "dst_gpus": [
+        3
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 0,
+      "kind": "self_distribution",
+      "identity": [
+        3,
+        0
+      ],
+      "src_gpu": 3,
+      "dst_gpus": [
+        2
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "self_distribution",
+      "identity": [
+        4,
+        0
+      ],
+      "src_gpu": 4,
+      "dst_gpus": [
+        5,
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "self_distribution",
+      "identity": [
+        5,
+        0
+      ],
+      "src_gpu": 5,
+      "dst_gpus": [
+        6,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "self_distribution",
+      "identity": [
+        6,
+        0
+      ],
+      "src_gpu": 6,
+      "dst_gpus": [
+        5,
+        7
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 1,
+      "kind": "self_distribution",
+      "identity": [
+        7,
+        0
+      ],
+      "src_gpu": 7,
+      "dst_gpus": [
+        5,
+        6
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 2,
+      "kind": "self_distribution",
+      "identity": [
+        8,
+        0
+      ],
+      "src_gpu": 8,
+      "dst_gpus": [
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 2,
+      "kind": "self_distribution",
+      "identity": [
+        9,
+        0
+      ],
+      "src_gpu": 9,
+      "dst_gpus": [
+        10,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 2,
+      "kind": "self_distribution",
+      "identity": [
+        10,
+        0
+      ],
+      "src_gpu": 10,
+      "dst_gpus": [
+        9,
+        11,
+        12
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 2,
+      "kind": "self_distribution",
+      "identity": [
+        11,
+        0
+      ],
+      "src_gpu": 11,
+      "dst_gpus": [
+        9,
+        10,
+        12,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 2,
+      "kind": "self_distribution",
+      "identity": [
+        12,
+        0
+      ],
+      "src_gpu": 12,
+      "dst_gpus": [
+        9,
+        10,
+        11,
+        13
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    },
+    {
+      "cell": 2,
+      "kind": "self_distribution",
+      "identity": [
+        13,
+        0
+      ],
+      "src_gpu": 13,
+      "dst_gpus": [
+        9,
+        10,
+        11,
+        12
+      ],
+      "volume": 1.0,
+      "deadline_epoch": 0
+    }
+  ],
+  "scale": {
+    "bytes_per_chunk": 1,
+    "num_chunks": 

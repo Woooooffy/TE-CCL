@@ -1,0 +1,22 @@
+// Two GPUs joined by a two-switch chain whose MIDDLE link is the slowest:
+//
+//     g0 --100G-- s0 --50G-- s1 --100G-- g1
+//
+// The smallest fabric where a cut-through traversal has a slow link AFTER a fast one. At a 1 GB
+// chunk and a 0.08 s epoch (= 1 GB at 100 Gbps) the 100G links carry one chunk per epoch and the
+// 50G link half a chunk, so a chunk from g0 physically needs 0.16 s to reach g1 -- the bottleneck,
+// not the first hop. Built as the regression input for the MILP pace classes
+// (teccl/solvers/milp_pipeline_check.py); the first-hop rule credited this in 0.08 s.
+
+module main() {
+    rdma L2AckInterval=0 L2ChunkSize=4000 Mtu=4096 CcMode=12;
+
+    node g0 type=gpu;
+    node g1 type=gpu;
+    node s0 type=switch;
+    node s1 type=switch;
+
+    link g0 s0 bandwidth=100[Gbps] latency=700[ns];
+    link s0 s1 bandwidth=50[Gbps] latency=700[ns];
+    link s1 g1 bandwidth=100[Gbps] latency=700[ns];
+}

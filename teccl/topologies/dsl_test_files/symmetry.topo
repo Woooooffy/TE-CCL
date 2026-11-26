@@ -1,0 +1,24 @@
+// Fixture: `symmetric` declaring what the graph cannot show on its own.
+// GPU 0/1 and GPU 2/3 are interchangeable (a source-permuting symmetry the switch-restricted
+// inference deliberately does not report), and the two spines are twins the inference DOES find
+// on its own -- declaring them as well must not produce a duplicate group.
+module main() {
+    for g in (0, 3) {
+        node gpu{g} type=gpu;
+    }
+    node edge0 type=switch;
+    node edge1 type=switch;
+    node spine0 type=switch;
+    node spine1 type=switch;
+    link gpu0 edge0 bandwidth=50[GBps] latency=700[ns];
+    link gpu1 edge0 bandwidth=50[GBps] latency=700[ns];
+    link gpu2 edge1 bandwidth=50[GBps] latency=700[ns];
+    link gpu3 edge1 bandwidth=50[GBps] latency=700[ns];
+    for e in (0, 1) {
+        link edge{e} spine0 bandwidth=50[GBps] latency=700[ns];
+        link edge{e} spine1 bandwidth=50[GBps] latency=700[ns];
+    }
+    symmetric gpu0 gpu1;
+    symmetric gpu2 gpu3;
+    symmetric spine0 spine1;
+}

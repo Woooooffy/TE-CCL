@@ -1,0 +1,48 @@
+<algo name="taccl" nchannels="2" nchunksperloop="12" proto="Simple" maxBytes="9223372036854775807" minBytes="0" outofplace="0" inplace="1" redop="nop" ngpus="3">
+  <gpu id="0" i_chunks="4" o_chunks="12" s_chunks="0">
+    <copy i_off="0" o_off="0" />
+    <copy i_off="1" o_off="1" />
+    <copy i_off="2" o_off="2" />
+    <copy i_off="3" o_off="3" />
+    <tb id="0" send="-1" recv="1" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="1" dstbuf="o" dstoff="5" cnt="2" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="1" chan="1">
+      <step s="0" type="r" srcbuf="i" srcoff="3" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="-1" recv="2" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="1" dstbuf="o" dstoff="9" cnt="2" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="2" chan="1">
+      <step s="0" type="r" srcbuf="i" srcoff="3" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="1" i_chunks="4" o_chunks="0" s_chunks="1">
+    <tb id="0" send="0" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="1" dstbuf="o" dstoff="5" cnt="2" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="8" cnt="1" depid="2" deps="1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="0" recv="-1" chan="1">
+      <step s="0" type="s" srcbuf="i" srcoff="3" dstbuf="o" dstoff="7" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="2" send="2" recv="2" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+      <step s="1" type="r" srcbuf="i" srcoff="0" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+  </gpu>
+  <gpu id="2" i_chunks="4" o_chunks="0" s_chunks="1">
+    <tb id="0" send="0" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="1" dstbuf="o" dstoff="9" cnt="2" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="4" cnt="1" depid="2" deps="1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="0" recv="-1" chan="1">
+      <step s="0" type="s" srcbuf="i" srcoff="3" dstbuf="o" dstoff="11" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="2" send="1" recv="1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+      <step s="1" type="r" srcbuf="i" srcoff="0" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+  </gpu>
+</algo>

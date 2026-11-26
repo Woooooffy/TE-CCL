@@ -1,0 +1,16 @@
+// Node-type aliases: `pcie` and `self_routing` are surface spellings of `nvswitch`, folded
+// away at parse time. This file declares one of each alongside a canonical `nvswitch`; all
+// three must come out indistinguishable downstream.
+module main() {
+    node g0 type=gpu;
+    node g1 type=gpu;
+    node a type=pcie;
+    node b type=self_routing;
+    node c type=nvswitch;
+    node sw type=switch;
+    link g0 a bandwidth=100[Gbps] latency=700[ns];
+    link g1 b bandwidth=100[Gbps] latency=700[ns];
+    link a c bandwidth=100[Gbps] latency=700[ns];
+    link b c bandwidth=100[Gbps] latency=700[ns];
+    link c sw bandwidth=100[Gbps] latency=700[ns];
+}

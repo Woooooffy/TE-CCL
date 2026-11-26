@@ -1,0 +1,49 @@
+{
+    "_comment": "SINGLE-PATH baseline for mini_1gpu_1nic_alltoall.json: the SAME topology, the same collective, the same epoch clock and the same objective, solved with the chunk-level MILP (formulation 1) at num_chunks 1 instead of the continuous LP (formulation 2). Read the two side by side; every field below that differs from its LP partner is called out in _vs_lp.",
+
+    "_why_milp_num_chunks_1": "THIS IS THE WHOLE POINT OF THE FILE. The LP routes a continuous flow, so one (src, dst) demand may be SPLIT across as many paths as help -- on this fabric that means a GB fanned across spine0 and spine1 at whatever ratio the cut wants. The MILP's flow variables are INTEGER and a chunk is indivisible, so with num_chunks 1 each (src, dst) pair owns exactly one 1 GB chunk that traverses exactly ONE path end to end. That is the no-multipath regime a basic ring-style algorithm gives you, approximated here by a solver that is otherwise free to pick the best such assignment -- so the gap to the LP is a LOWER BOUND on what per-pair multipath is worth, not an upper one (a real ring also fixes the path, whereas this picks the best one).",
+
+    "_vs_lp": "Differences from mini_1gpu_1nic_alltoall.json, and only these: formulation 1 (MILP) not 2 (LP); symmetry false not true; num_epochs 8 kept; distinct log_file and schedule_output_file so neither run clobbers the other. Everything the comparison rests on is HELD FIXED: same topo_file, same chunk_size 1, same collective 2, same switch_copy false, same epoch_type 2 / epoch_duration -1 (both land on 0.16 s, the 50Gbps spine uplink), same switch_pipeline true, same objective_type 6, same solution_method 1. num_chunks is 1 in both files and means the same thing in both -- per source per DESTINATION -- so this is not a granularity change; the difference is integrality alone.",
+
+    "_why_symmetry_off": "symmetry true adds equal-aggregate-inflow/outflow constraints across topologically equivalent nodes. On the LP that is free: the feasible set is convex, so the symmetric average of any optimum is an optimum, and the constraint only picks a nicer point on the optimal face. On the MILP it is a REAL restriction -- with 4 indivisible chunks to place, an equal-count split may simply not exist at the integral optimum -- and cutting off the optimum is exactly the failure mode this file is built to avoid measuring. Off, so the reported makespan is the true single-path optimum.",
+
+    "_expected": "T* = 0.32 s = 2 epochs of 0.16 s -- the SAME as the LP, and that is the interesting result here, not a bug. Cross-leaf demand is 4 chunks per direction (2 leaf0 GPUs x 2 remote GPUs) against 2 uplinks x 1 chunk per epoch (50Gbps x 0.16 s = 1 GB exactly), so the cut needs 2 epochs whether the chunks are split or not. The granularity happens to be perfect at this size: one chunk is exactly one uplink-epoch, so there is nothing for multipath to recover. The per-GPU egress bound is looser (3 chunks over a 100Gbps NIC = 2 chunks/epoch -> 2 epochs). WHAT TO INSPECT ANYWAY: in this schedule each GPU's two cross-leaf chunks take one spine EACH and neither chunk is split, whereas the LP's are fanned; the aggregate load on the two spines is identical, the per-chunk routing is not. The gap this pair is meant to expose only opens when a chunk is NOT an integer number of link-epochs -- see the 2gpu files, where the shared NIC and the wider fabric break that coincidence.",
+
+    "_epoch_note": "epoch_type 2 (SLOWEST_LINK) with epoch_duration -1 resolves to 0.16 s = 1 GB / 6.25 GB/s, the 50Gbps leaf-spine uplink. Inherited verbatim from the LP file rather than re-derived: the comparison is only meaningful on one clock, and 0.16 s divides the 0.32 s cut bound exactly so neither run loses anything to the final ceiling.",
+
+    "_topology_note": "The topology comes from the .topo DSL file; topo_file SELECTS it, so TECCLSolver.get_topology builds a DslTopology and `name` is only the free-form label the output filenames and the Gurobi log are built from. The path is relative to the repo root, i.e. to the directory `teccl solve` runs from.",
+
+    "TopologyParams": {
+        "topo_file": "teccl/topologies/topology-dsl-frontend/examples/mini_1gpu_1nic.topo",
+        "name": "Mini1GPU1NIC",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 2,
+        "feasibility_tol": 1e-6,
+        "optimality_tol": 1e-6,
+        "output_flag": 1,
+        "log_file": "_mini_1g1n_a2a_milp",
+        "log_to_console": 0,
+        "method": -1,
+        "crossover": -1
+    },
+    "InstanceParams": {
+        "collective": 2,
+        "formulation": 1,
+        "switch_copy": false,
+        "num_chunks": 1,
+        "epoch_type": 2,
+        "epoch_duration": -1,
+        "epoch_multiplier": 1,
+        "num_epochs": 8,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": false,
+        "objective_type": 6,
+        "solution_method": 1,
+        "hierarchical": false,
+        "schedule_output_file": "Schedules/mini_1gpu_1nic_alltoall_milp.json"
+    }
+}

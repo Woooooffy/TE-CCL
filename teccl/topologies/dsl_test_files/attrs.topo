@@ -1,0 +1,11 @@
+// Fixture: per-node attributes that no shared example uses -- `radix` (the part's port count)
+// and `passive` (a GPU that forwards but carries no demand of its own).
+module main() {
+    node gpu0 type=gpu;
+    node gpu1 type=gpu;
+    node gpu2 type=gpu passive=1;
+    node sw type=switch radix=4;
+    for g in (0, 2) {
+        link gpu{g} sw bandwidth=25[GBps] latency=700[ns];
+    }
+}

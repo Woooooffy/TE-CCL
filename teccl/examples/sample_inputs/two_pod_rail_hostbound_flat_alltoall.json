@@ -1,0 +1,40 @@
+{
+    "_comment": "Ground-truth FLAT solve of the 30-node fine TwoPodRail (no abstraction). This is the reason the topology is only 16 GPUs: unlike RailOptimizedSpineLeaf, the flat problem is small enough to solve directly, so the hierarchical result has something to be validated AGAINST rather than only self-consistency-checked. Copy-free LP AllGather, settings otherwise mirroring two_pod_rail_hierarchical_allgather.json so the two are comparable.",
+
+    "_expected": "Same T* = 0.4267 as the hierarchical run (chunk_size 1 GB). A hierarchical makespan ABOVE this is the abstraction's cost; BELOW it means one of the two is wrong. Also compare the emitted per-flow rates: cross-pod 18.75 splitting 12.5 / 6.25 across the spines.",
+
+    "TopologyParams": {
+        "name": "TwoPodRailHostBound",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 2,
+        "feasibility_tol": 1e-4,
+        "intfeas_tol": 1e-4,
+        "optimality_tol": 1e-4,
+        "output_flag": 1,
+        "log_to_console": 1,
+        "mip_gap": 1e-4,
+        "mip_focus": 1,
+        "crossover": -1,
+        "method": -1,
+        "heuristics": 0.05
+    },
+    "InstanceParams": {
+        "collective": 2,
+        "formulation": 2,
+        "switch_copy": false,
+        "num_chunks": 1,
+        "epoch_type": 2,
+        "epoch_multiplier": 1,
+        "epoch_duration": -1,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_pipeline": true,
+        "symmetry": true,
+        "objective_type": 6,
+        "solution_method": 1,
+        "schedule_output_file": "Schedules/two_pod_rail_hostbound_alltoall_flatsolve.json"
+    }
+}

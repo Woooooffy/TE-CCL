@@ -1,0 +1,1503 @@
+{
+  "0-Collective": "allgather",
+  "0-Formulation": "LP",
+  "1-Epoch_Duration": 0.0011111111111111111,
+  "10-Sends": [
+    {
+      "branches": [
+        {
+          "ready": 1,
+          "to": 0,
+          "via": [
+            8
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 0,
+      "from": 1,
+      "rate": null,
+      "sender": 1,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 72,
+          "to": 0,
+          "via": [
+            12
+          ]
+        },
+        {
+          "ready": 72,
+          "to": 5,
+          "via": [
+            12,
+            14,
+            13
+          ]
+        },
+        {
+          "ready": 72,
+          "to": 7,
+          "via": [
+            12,
+            14,
+            13
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 0,
+      "from": 2,
+      "rate": 12.5,
+      "sender": 2,
+      "span": 72,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 216,
+          "to": 0,
+          "via": [
+            12
+          ]
+        },
+        {
+          "ready": 216,
+          "to": 4,
+          "via": [
+            12,
+            14,
+            13
+          ]
+        },
+        {
+          "ready": 216,
+          "to": 6,
+          "via": [
+            12,
+            14,
+            13
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 3,
+      "rate": 12.5,
+      "sender": 3,
+      "span": 72,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 144,
+          "to": 0,
+          "via": [
+            13,
+            14,
+            12
+          ]
+        },
+        {
+          "ready": 144,
+          "to": 2,
+          "via": [
+            13,
+            14,
+            12
+          ]
+        },
+        {
+          "ready": 144,
+          "to": 7,
+          "via": [
+            13
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 72,
+      "from": 4,
+      "rate": 12.5,
+      "sender": 4,
+      "span": 72,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 216,
+          "to": 1,
+          "via": [
+            13,
+            14,
+            12
+          ]
+        },
+        {
+          "ready": 216,
+          "to": 3,
+          "via": [
+            13,
+            14,
+            12
+          ]
+        },
+        {
+          "ready": 216,
+          "to": 7,
+          "via": [
+            13
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 5,
+      "rate": 12.5,
+      "sender": 5,
+      "span": 72,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 217,
+          "to": 0,
+          "via": [
+            8
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 216,
+      "from": 5,
+      "rate": null,
+      "sender": 1,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 72,
+          "to": 1,
+          "via": [
+            13,
+            15,
+            12
+          ]
+        },
+        {
+          "ready": 72,
+          "to": 3,
+          "via": [
+            13,
+            15,
+            12
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 0,
+      "from": 6,
+      "rate": 12.5,
+      "sender": 6,
+      "span": 72,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 73,
+          "to": 0,
+          "via": [
+            8
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 72,
+      "from": 6,
+      "rate": null,
+      "sender": 1,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 144,
+          "to": 1,
+          "via": [
+            13,
+            15,
+            12
+          ]
+        },
+        {
+          "ready": 144,
+          "to": 3,
+          "via": [
+            13,
+            15,
+            12
+          ]
+        },
+        {
+          "ready": 144,
+          "to": 5,
+          "via": [
+            13
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 72,
+      "from": 7,
+      "rate": 12.5,
+      "sender": 7,
+      "span": 72,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 145,
+          "to": 0,
+          "via": [
+            8
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 7,
+      "rate": null,
+      "sender": 1,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 1,
+          "to": 1,
+          "via": [
+            8
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 0,
+      "from": 0,
+      "rate": null,
+      "sender": 0,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 73,
+          "to": 1,
+          "via": [
+            8
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 72,
+      "from": 2,
+      "rate": null,
+      "sender": 0,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 217,
+          "to": 1,
+          "via": [
+            8
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 216,
+      "from": 3,
+      "rate": null,
+      "sender": 0,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 145,
+          "to": 1,
+          "via": [
+            8
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 4,
+      "rate": null,
+      "sender": 0,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 216,
+          "to": 2,
+          "via": [
+            12
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 0,
+      "rate": 12.5,
+      "sender": 0,
+      "span": 72,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 72,
+          "to": 2,
+          "via": [
+            12
+          ]
+        },
+        {
+          "ready": 72,
+          "to": 4,
+          "via": [
+            12,
+            15,
+            13
+          ]
+        },
+        {
+          "ready": 72,
+          "to": 6,
+          "via": [
+            12,
+            15,
+            13
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 0,
+      "from": 1,
+      "rate": 12.5,
+      "sender": 1,
+      "span": 72,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 1,
+          "to": 2,
+          "via": [
+            9
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 0,
+      "from": 3,
+      "rate": null,
+      "sender": 3,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 217,
+          "to": 2,
+          "via": [
+            9
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 216,
+      "from": 5,
+      "rate": null,
+      "sender": 3,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 73,
+          "to": 2,
+          "via": [
+            9
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 72,
+      "from": 6,
+      "rate": null,
+      "sender": 3,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 145,
+          "to": 2,
+          "via": [
+            9
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 7,
+      "rate": null,
+      "sender": 3,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 217,
+          "to": 3,
+          "via": [
+            9
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 216,
+      "from": 0,
+      "rate": null,
+      "sender": 2,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 73,
+          "to": 3,
+          "via": [
+            9
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 72,
+      "from": 1,
+      "rate": null,
+      "sender": 2,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 1,
+          "to": 3,
+          "via": [
+            9
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 0,
+      "from": 2,
+      "rate": null,
+      "sender": 2,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 145,
+          "to": 3,
+          "via": [
+            9
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 4,
+      "rate": null,
+      "sender": 2,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 144,
+          "to": 4,
+          "via": [
+            12,
+            15,
+            13
+          ]
+        },
+        {
+          "ready": 144,
+          "to": 6,
+          "via": [
+            12,
+            15,
+            13
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 72,
+      "from": 0,
+      "rate": 12.5,
+      "sender": 0,
+      "span": 72,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 73,
+          "to": 4,
+          "via": [
+            10
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 72,
+      "from": 2,
+      "rate": null,
+      "sender": 5,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 1,
+          "to": 4,
+          "via": [
+            10
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 0,
+      "from": 5,
+      "rate": null,
+      "sender": 5,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 216,
+          "to": 5,
+          "via": [
+            13
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 6,
+      "rate": 12.5,
+      "sender": 6,
+      "span": 72,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 217,
+          "to": 4,
+          "via": [
+            10
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 216,
+      "from": 6,
+      "rate": null,
+      "sender": 5,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 145,
+          "to": 4,
+          "via": [
+            10
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 7,
+      "rate": null,
+      "sender": 5,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 145,
+          "to": 5,
+          "via": [
+            10
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 0,
+      "rate": null,
+      "sender": 4,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 73,
+          "to": 5,
+          "via": [
+            10
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 72,
+      "from": 1,
+      "rate": null,
+      "sender": 4,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 217,
+          "to": 5,
+          "via": [
+            10
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 216,
+      "from": 3,
+      "rate": null,
+      "sender": 4,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 1,
+          "to": 5,
+          "via": [
+            10
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 0,
+      "from": 4,
+      "rate": null,
+      "sender": 4,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 73,
+          "to": 6,
+          "via": [
+            11
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 72,
+      "from": 2,
+      "rate": null,
+      "sender": 7,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 145,
+          "to": 6,
+          "via": [
+            11
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 4,
+      "rate": null,
+      "sender": 7,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 217,
+          "to": 6,
+          "via": [
+            11
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 216,
+      "from": 5,
+      "rate": null,
+      "sender": 7,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 1,
+          "to": 6,
+          "via": [
+            11
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 0,
+      "from": 7,
+      "rate": null,
+      "sender": 7,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 145,
+          "to": 7,
+          "via": [
+            11
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 144,
+      "from": 0,
+      "rate": null,
+      "sender": 6,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 73,
+          "to": 7,
+          "via": [
+            11
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 72,
+      "from": 1,
+      "rate": null,
+      "sender": 6,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 217,
+          "to": 7,
+          "via": [
+            11
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 216,
+      "from": 3,
+      "rate": null,
+      "sender": 6,
+      "span": 1,
+      "volume": 1.0
+    },
+    {
+      "branches": [
+        {
+          "ready": 1,
+          "to": 7,
+          "via": [
+            11
+          ]
+        }
+      ],
+      "chunk": 0,
+      "epoch": 0,
+      "from": 6,
+      "rate": null,
+      "sender": 6,
+      "span": 1,
+      "volume": 1.0
+    }
+  ],
+  "2-Expected_Epoch_Duration": 0.0011111111111111111,
+  "3-Epochs_Required": 218,
+  "4-Collective_Finish_Time": 0.24222222222222223,
+  "5-Algo_Bandwidth": 33.027522935779814,
+  "7-Flows": [
+    "Chunk 0 from 0 traveled over 0->1 with volume 1 in epoch 0 via switches 8",
+    "Chunk 0 from 1 traveled over 1->0 with volume 1 in epoch 0 via switches 8",
+    "Chunk 0 from 1 traveled over 1->2 with volume 1 in epoch 0 at rate 12.5 via switches 12",
+    "Chunk 0 from 1 traveled over 1->4 with volume 1 in epoch 0 at rate 12.5 via switches 12->15->13",
+    "Chunk 0 from 1 traveled over 1->6 with volume 1 in epoch 0 at rate 12.5 via switches 12->15->13",
+    "Chunk 0 from 2 traveled over 2->0 with volume 1 in epoch 0 at rate 12.5 via switches 12",
+    "Chunk 0 from 2 traveled over 2->3 with volume 1 in epoch 0 via switches 9",
+    "Chunk 0 from 2 traveled over 2->5 with volume 1 in epoch 0 at rate 12.5 via switches 12->14->13",
+    "Chunk 0 from 2 traveled over 2->7 with volume 1 in epoch 0 at rate 12.5 via switches 12->14->13",
+    "Chunk 0 from 3 traveled over 3->2 with volume 1 in epoch 0 via switches 9",
+    "Chunk 0 from 4 traveled over 4->5 with volume 1 in epoch 0 via switches 10",
+    "Chunk 0 from 5 traveled over 5->4 with volume 1 in epoch 0 via switches 10",
+    "Chunk 0 from 6 traveled over 6->1 with volume 1 in epoch 0 at rate 12.5 via switches 13->15->12",
+    "Chunk 0 from 6 traveled over 6->3 with volume 1 in epoch 0 at rate 12.5 via switches 13->15->12",
+    "Chunk 0 from 6 traveled over 6->7 with volume 1 in epoch 0 via switches 11",
+    "Chunk 0 from 7 traveled over 7->6 with volume 1 in epoch 0 via switches 11",
+    "Chunk 0 from 0 traveled over 0->4 with volume 1 in epoch 72 at rate 12.5 via switches 12->15->13",
+    "Chunk 0 from 0 traveled over 0->6 with volume 1 in epoch 72 at rate 12.5 via switches 12->15->13",
+    "Chunk 0 from 1 traveled over 2->3 with volume 1 in epoch 72 via switches 9",
+    "Chunk 0 from 1 traveled over 4->5 with volume 1 in epoch 72 via switches 10",
+    "Chunk 0 from 1 traveled over 6->7 with volume 1 in epoch 72 via switches 11",
+    "Chunk 0 from 2 traveled over 0->1 with volume 1 in epoch 72 via switches 8",
+    "Chunk 0 from 2 traveled over 5->4 with volume 1 in epoch 72 via switches 10",
+    "Chunk 0 from 2 traveled over 7->6 with volume 1 in epoch 72 via switches 11",
+    "Chunk 0 from 4 traveled over 4->0 with volume 1 in epoch 72 at rate 12.5 via switches 13->14->12",
+    "Chunk 0 from 4 traveled over 4->2 with volume 1 in epoch 72 at rate 12.5 via switches 13->14->12",
+    "Chunk 0 from 4 traveled over 4->7 with volume 1 in epoch 72 at rate 12.5 via switches 13",
+    "Chunk 0 from 6 traveled over 1->0 with volume 1 in epoch 72 via switches 8",
+    "Chunk 0 from 6 traveled over 3->2 with volume 1 in epoch 72 via switches 9",
+    "Chunk 0 from 7 traveled over 7->1 with volume 1 in epoch 72 at rate 12.5 via switches 13->15->12",
+    "Chunk 0 from 7 traveled over 7->3 with volume 1 in epoch 72 at rate 12.5 via switches 13->15->12",
+    "Chunk 0 from 7 traveled over 7->5 with volume 1 in epoch 72 at rate 12.5 via switches 13",
+    "Chunk 0 from 0 traveled over 0->2 with volume 1 in epoch 144 at rate 12.5 via switches 12",
+    "Chunk 0 from 0 traveled over 4->5 with volume 1 in epoch 144 via switches 10",
+    "Chunk 0 from 0 traveled over 6->7 with volume 1 in epoch 144 via switches 11",
+    "Chunk 0 from 3 traveled over 3->0 with volume 1 in epoch 144 at rate 12.5 via switches 12",
+    "Chunk 0 from 3 traveled over 3->4 with volume 1 in epoch 144 at rate 12.5 via switches 12->14->13",
+    "Chunk 0 from 3 traveled over 3->6 with volume 1 in epoch 144 at rate 12.5 via switches 12->14->13",
+    "Chunk 0 from 4 traveled over 0->1 with volume 1 in epoch 144 via switches 8",
+    "Chunk 0 from 4 traveled over 2->3 with volume 1 in epoch 144 via switches 9",
+    "Chunk 0 from 4 traveled over 7->6 with volume 1 in epoch 144 via switches 11",
+    "Chunk 0 from 5 traveled over 5->1 with volume 1 in epoch 144 at rate 12.5 via switches 13->14->12",
+    "Chunk 0 from 5 traveled over 5->3 with volume 1 in epoch 144 at rate 12.5 via switches 13->14->12",
+    "Chunk 0 from 5 traveled over 5->7 with volume 1 in epoch 144 at rate 12.5 via switches 13",
+    "Chunk 0 from 6 traveled over 6->5 with volume 1 in epoch 144 at rate 12.5 via switches 13",
+    "Chunk 0 from 7 traveled over 1->0 with volume 1 in epoch 144 via switches 8",
+    "Chunk 0 from 7 traveled over 3->2 with volume 1 in epoch 144 via switches 9",
+    "Chunk 0 from 7 traveled over 5->4 with volume 1 in epoch 144 via switches 10",
+    "Chunk 0 from 0 traveled over 2->3 with volume 1 in epoch 216 via switches 9",
+    "Chunk 0 from 3 traveled over 0->1 with volume 1 in epoch 216 via switches 8",
+    "Chunk 0 from 3 traveled over 4->5 with volume 1 in epoch 216 via switches 10",
+    "Chunk 0 from 3 traveled over 6->7 with volume 1 in epoch 216 via switches 11",
+    "Chunk 0 from 5 traveled over 1->0 with volume 1 in epoch 216 via switches 8",
+    "Chunk 0 from 5 traveled over 3->2 with volume 1 in epoch 216 via switches 9",
+    "Chunk 0 from 5 traveled over 7->6 with volume 1 in epoch 216 via switches 11",
+    "Chunk 0 from 6 traveled over 5->4 with volume 1 in epoch 216 via switches 10"
+  ],
+  "8-Chunk paths": {
+    "Demand at 0 for chunk 0 from 1 met by epoch 1": [
+      [
+        [
+          0,
+          "1->0 with volume 1 in epoch 0 via switches 8"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 2 met by epoch 72": [
+      [
+        [
+          0,
+          "2->0 with volume 1 in epoch 0 at rate 12.5 via switches 12"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 3 met by epoch 216": [
+      [
+        [
+          144,
+          "3->0 with volume 1 in epoch 144 at rate 12.5 via switches 12"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 4 met by epoch 144": [
+      [
+        [
+          72,
+          "4->0 with volume 1 in epoch 72 at rate 12.5 via switches 13->14->12"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 5 met by epoch 217": [
+      [
+        [
+          144,
+          "5->1 with volume 1 in epoch 144 at rate 12.5 via switches 13->14->12"
+        ],
+        [
+          216,
+          "1->0 with volume 1 in epoch 216 via switches 8"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 6 met by epoch 73": [
+      [
+        [
+          0,
+          "6->1 with volume 1 in epoch 0 at rate 12.5 via switches 13->15->12"
+        ],
+        [
+          72,
+          "1->0 with volume 1 in epoch 72 via switches 8"
+        ]
+      ]
+    ],
+    "Demand at 0 for chunk 0 from 7 met by epoch 145": [
+      [
+        [
+          72,
+          "7->1 with volume 1 in epoch 72 at rate 12.5 via switches 13->15->12"
+        ],
+        [
+          144,
+          "1->0 with volume 1 in epoch 144 via switches 8"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 0 from 0 met by epoch 1": [
+      [
+        [
+          0,
+          "0->1 with volume 1 in epoch 0 via switches 8"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 0 from 2 met by epoch 73": [
+      [
+        [
+          0,
+          "2->0 with volume 1 in epoch 0 at rate 12.5 via switches 12"
+        ],
+        [
+          72,
+          "0->1 with volume 1 in epoch 72 via switches 8"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 0 from 3 met by epoch 217": [
+      [
+        [
+          144,
+          "3->0 with volume 1 in epoch 144 at rate 12.5 via switches 12"
+        ],
+        [
+          216,
+          "0->1 with volume 1 in epoch 216 via switches 8"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 0 from 4 met by epoch 145": [
+      [
+        [
+          72,
+          "4->0 with volume 1 in epoch 72 at rate 12.5 via switches 13->14->12"
+        ],
+        [
+          144,
+          "0->1 with volume 1 in epoch 144 via switches 8"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 0 from 5 met by epoch 216": [
+      [
+        [
+          144,
+          "5->1 with volume 1 in epoch 144 at rate 12.5 via switches 13->14->12"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 0 from 6 met by epoch 72": [
+      [
+        [
+          0,
+          "6->1 with volume 1 in epoch 0 at rate 12.5 via switches 13->15->12"
+        ]
+      ]
+    ],
+    "Demand at 1 for chunk 0 from 7 met by epoch 144": [
+      [
+        [
+          72,
+          "7->1 with volume 1 in epoch 72 at rate 12.5 via switches 13->15->12"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 0 met by epoch 216": [
+      [
+        [
+          144,
+          "0->2 with volume 1 in epoch 144 at rate 12.5 via switches 12"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 1 met by epoch 72": [
+      [
+        [
+          0,
+          "1->2 with volume 1 in epoch 0 at rate 12.5 via switches 12"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 3 met by epoch 1": [
+      [
+        [
+          0,
+          "3->2 with volume 1 in epoch 0 via switches 9"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 4 met by epoch 144": [
+      [
+        [
+          72,
+          "4->2 with volume 1 in epoch 72 at rate 12.5 via switches 13->14->12"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 5 met by epoch 217": [
+      [
+        [
+          144,
+          "5->3 with volume 1 in epoch 144 at rate 12.5 via switches 13->14->12"
+        ],
+        [
+          216,
+          "3->2 with volume 1 in epoch 216 via switches 9"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 6 met by epoch 73": [
+      [
+        [
+          0,
+          "6->3 with volume 1 in epoch 0 at rate 12.5 via switches 13->15->12"
+        ],
+        [
+          72,
+          "3->2 with volume 1 in epoch 72 via switches 9"
+        ]
+      ]
+    ],
+    "Demand at 2 for chunk 0 from 7 met by epoch 145": [
+      [
+        [
+          72,
+          "7->3 with volume 1 in epoch 72 at rate 12.5 via switches 13->15->12"
+        ],
+        [
+          144,
+          "3->2 with volume 1 in epoch 144 via switches 9"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 0 met by epoch 217": [
+      [
+        [
+          144,
+          "0->2 with volume 1 in epoch 144 at rate 12.5 via switches 12"
+        ],
+        [
+          216,
+          "2->3 with volume 1 in epoch 216 via switches 9"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 1 met by epoch 73": [
+      [
+        [
+          0,
+          "1->2 with volume 1 in epoch 0 at rate 12.5 via switches 12"
+        ],
+        [
+          72,
+          "2->3 with volume 1 in epoch 72 via switches 9"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 2 met by epoch 1": [
+      [
+        [
+          0,
+          "2->3 with volume 1 in epoch 0 via switches 9"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 4 met by epoch 145": [
+      [
+        [
+          72,
+          "4->2 with volume 1 in epoch 72 at rate 12.5 via switches 13->14->12"
+        ],
+        [
+          144,
+          "2->3 with volume 1 in epoch 144 via switches 9"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 5 met by epoch 216": [
+      [
+        [
+          144,
+          "5->3 with volume 1 in epoch 144 at rate 12.5 via switches 13->14->12"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 6 met by epoch 72": [
+      [
+        [
+          0,
+          "6->3 with volume 1 in epoch 0 at rate 12.5 via switches 13->15->12"
+        ]
+      ]
+    ],
+    "Demand at 3 for chunk 0 from 7 met by epoch 144": [
+      [
+        [
+          72,
+          "7->3 with volume 1 in epoch 72 at rate 12.5 via switches 13->15->12"
+        ]
+      ]
+    ],
+    "Demand at 4 for chunk 0 from 0 met by epoch 144": [
+      [
+        [
+          72,
+          "0->4 with volume 1 in epoch 72 at rate 12.5 via switches 12->15->13"
+        ]
+      ]
+    ],
+    "Demand at 4 for chunk 0 from 1 met by epoch 72": [
+      [
+        [
+          0,
+          "1->4 with volume 1 in epoch 0 at rate 12.5 via switches 12->15->13"
+        ]
+      ]
+    ],
+    "Demand at 4 for chunk 0 from 2 met by epoch 73": [
+      [
+        [
+          0,
+          "2->5 with volume 1 in epoch 0 at rate 12.5 via switches 12->14->13"
+        ],
+        [
+          72,
+          "5->4 with volume 1 in epoch 72 via switches 10"
+        ]
+      ]
+    ],
+    "Demand at 4 for chunk 0 from 3 met by epoch 216": [
+      [
+        [
+          144,
+          "3->4 with volume 1 in epoch 144 at rate 12.5 via switches 12->14->13"
+        ]
+      ]
+    ],
+    "Demand at 4 for chunk 0 from 5 met by epoch 1": [
+      [
+        [
+          0,
+          "5->4 with volume 1 in epoch 0 via switches 10"
+        ]
+      ]
+    ],
+    "Demand at 4 for chunk 0 from 6 met by epoch 217": [
+      [
+        [
+          144,
+          "6->5 with volume 1 in epoch 144 at rate 12.5 via switches 13"
+        ],
+        [
+          216,
+          "5->4 with volume 1 in epoch 216 via switches 10"
+        ]
+      ]
+    ],
+    "Demand at 4 for chunk 0 from 7 met by epoch 145": [
+      [
+        [
+          72,
+          "7->5 with volume 1 in epoch 72 at rate 12.5 via switches 13"
+        ],
+        [
+          144,
+          "5->4 with volume 1 in epoch 144 via switches 10"
+        ]
+      ]
+    ],
+    "Demand at 5 for chunk 0 from 0 met by epoch 145": [
+      [
+        [
+          72,
+          "0->4 with volume 1 in epoch 72 at rate 12.5 via switches 12->15->13"
+        ],
+        [
+          144,
+          "4->5 with volume 1 in epoch 144 via switches 10"
+        ]
+      ]
+    ],
+    "Demand at 5 for chunk 0 from 1 met by epoch 73": [
+      [
+        [
+          0,
+          "1->4 with volume 1 in epoch 0 at rate 12.5 via switches 12->15->13"
+        ],
+        [
+          72,
+          "4->5 with volume 1 in epoch 72 via switches 10"
+        ]
+      ]
+    ],
+    "Demand at 5 for chunk 0 from 2 met by epoch 72": [
+      [
+        [
+          0,
+          "2->5 with volume 1 in epoch 0 at rate 12.5 via switches 12->14->13"
+        ]
+      ]
+    ],
+    "Demand at 5 for chunk 0 from 3 met by epoch 217": [
+      [
+        [
+          144,
+          "3->4 with volume 1 in epoch 144 at rate 12.5 via switches 12->14->13"
+        ],
+        [
+          216,
+          "4->5 with volume 1 in epoch 216 via switches 10"
+        ]
+      ]
+    ],
+    "Demand at 5 for chunk 0 from 4 met by epoch 1": [
+      [
+        [
+          0,
+          "4->5 with volume 1 in epoch 0 via switches 10"
+        ]
+      ]
+    ],
+    "Demand at 5 for chunk 0 from 6 met by epoch 216": [
+      [
+        [
+          144,
+          "6->5 with volume 1 in epoch 144 at rate 12.5 via switches 13"
+        ]
+      ]
+    ],
+    "Demand at 5 for chunk 0 from 7 met by epoch 144": [
+      [
+        [
+          72,
+          "7->5 with volume 1 in epoch 72 at rate 12.5 via switches 13"
+        ]
+      ]
+    ],
+    "Demand at 6 for chunk 0 from 0 met by epoch 144": [
+      [
+        [
+          72,
+          "0->6 with volume 1 in epoch 72 at rate 12.5 via switches 12->15->13"
+        ]
+      ]
+    ],
+    "Demand at 6 for chunk 0 from 1 met by epoch 72": [
+      [
+        [
+          0,
+          "1->6 with volume 1 in epoch 0 at rate 12.5 via switches 12->15->13"
+        ]
+      ]
+    ],
+    "Demand at 6 for chunk 0 from 2 met by epoch 73": [
+      [
+        [
+          0,
+          "2->7 with volume 1 in epoch 0 at rate 12.5 via switches 12->14->13"
+        ],
+        [
+          72,
+          "7->6 with volume 1 in epoch 72 via switches 11"
+        ]
+      ]
+    ],
+    "Demand at 6 for chunk 0 from 3 met by epoch 216": [
+      [
+        [
+          144,
+          "3->6 with volume 1 in epoch 144 at rate 12.5 via switches 12->14->13"
+        ]
+      ]
+    ],
+    "Demand at 6 for chunk 0 from 4 met by epoch 145": [
+      [
+        [
+          72,
+          "4->7 with volume 1 in epoch 72 at rate 12.5 via switches 13"
+        ],
+        [
+          144,
+          "7->6 with volume 1 in epoch 144 via switches 11"
+        ]
+      ]
+    ],
+    "Demand at 6 for chunk 0 from 5 met by epoch 217": [
+      [
+        [
+          144,
+          "5->7 with volume 1 in epoch 144 at rate 12.5 via switches 13"
+        ],
+        [
+          216,
+          "7->6 with volume 1 in epoch 216 via switches 11"
+        ]
+      ]
+    ],
+    "Demand at 6 for chunk 0 from 7 met by epoch 1": [
+      [
+        [
+          0,
+          "7->6 with volume 1 in epoch 0 via switches 11"
+        ]
+      ]
+    ],
+    "Demand at 7 for chunk 0 from 0 met by epoch 145": [
+      [
+        [
+          72,
+          "0->6 with volume 1 in epoch 72 at rate 12.5 via switches 12->15->13"
+        ],
+        [
+          144,
+          "6->7 with volume 1 in epoch 144 via switches 11"
+        ]
+      ]
+    ],
+    "Demand at 7 for chunk 0 from 1 met by epoch 73": [
+      [
+        [
+          0,
+          "1->6 with volume 1 in epoch 0 at rate 12.5 via switches 12->15->13"
+        ],
+        [
+          72,
+          "6->7 with volume 1 in epoch 72 via switches 11"
+        ]
+      ]
+    ],
+    "Demand at 7 for chunk 0 from 2 met by epoch 72": [
+      [
+        [
+          0,
+          "2->7 with volume 1 in epoch 0 at rate 12.5 via switches 12->14->13"
+        ]
+      ]
+    ],
+    "Demand at 7 for chunk 0 from 3 met by epoch 217": [
+      [
+        [
+          144,
+          "3->6 with volume 1 in epoch 144 at rate 12.5 via switches 12->14->13"
+        ],
+        [
+          216,
+          "6->7 with volume 1 in epoch 216 via switches 11"
+        ]
+      ]
+    ],
+    "Demand at 7 for chunk 0 from 4 met by epoch 144": [
+      [
+        [
+          72,
+          "4->7 with volume 1 in epoch 72 at rate 12.5 via switches 13"
+        ]
+      ]
+    ],
+    "Demand at 7 for chunk 0 from 5 met by epoch 216": [
+      [
+        [
+          144,
+          "5->7 with volume 1 in epoch 144 at rate 12.5 via switches 13"
+        ]
+      ]
+    ],
+    "Demand at 7 for chunk 0 from 6 met by epoch 1": [
+      [
+        [
+          0,
+          "6->7 with volume 1 in epoch 0 via switches 11"
+        ]
+      ]
+    ]
+  },
+  "9-Chunk_Size": 1,
+  "Solver_Time": 2.0547008514404297
+}

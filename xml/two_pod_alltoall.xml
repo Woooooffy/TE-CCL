@@ -1,0 +1,1266 @@
+<algo name="taccl" nchannels="1" nchunksperloop="16" proto="Simple" maxBytes="9223372036854775807" minBytes="0" coll="alltoall" inplace="0" outofplace="1" redop="nop" ngpus="16">
+  <gpu id="0" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="0" o_off="0"/>
+    <tb id="0" send="-1" recv="1" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="2" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="2" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="2" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="4" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="34" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="34" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="6" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="64" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="64" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="8" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="98" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="98" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="10" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="96" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="96" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="12" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="0" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="0" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="14" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="32" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="32" rate="12.5"/>
+    </tb>
+    <tb id="8" send="1" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="1" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="2" cnt="1" depid="1" deps="1" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="12" cnt="1" depid="6" deps="1" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="4" cnt="1" depid="2" deps="1" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="14" cnt="1" depid="7" deps="1" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="6" cnt="1" depid="3" deps="1" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="8" cnt="1" depid="4" deps="1" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="10" cnt="1" depid="5" deps="1" hasdep="0"/>
+    </tb>
+    <tb id="9" send="2" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="o" dstoff="0" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="48" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="s" dstoff="2" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="48" rate="12.5"/>
+    </tb>
+    <tb id="10" send="4" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="20" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="20" rate="12.5"/>
+    </tb>
+    <tb id="11" send="6" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="24" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="24" rate="12.5"/>
+    </tb>
+    <tb id="12" send="8" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="o" dstoff="0" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="104" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="s" dstoff="5" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="104" rate="12.5"/>
+    </tb>
+    <tb id="13" send="10" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="o" dstoff="0" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="36" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="s" dstoff="2" cnt="1" depid="10" deps="1" hasdep="1" mscclflowid="36" rate="12.5"/>
+    </tb>
+    <tb id="14" send="12" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="o" dstoff="0" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="84" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="s" dstoff="5" cnt="1" depid="15" deps="1" hasdep="1" mscclflowid="84" rate="12.5"/>
+    </tb>
+    <tb id="15" send="14" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="o" dstoff="0" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="72" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="s" dstoff="4" cnt="1" depid="13" deps="1" hasdep="1" mscclflowid="72" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="1" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="1" o_off="1"/>
+    <tb id="0" send="-1" recv="0" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="1" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="3" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="3" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="3" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="5" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="35" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="35" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="7" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="65" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="65" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="9" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="99" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="99" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="11" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="97" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="97" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="13" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="1" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="1" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="15" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="0" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="33" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="1" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="33" rate="12.5"/>
+    </tb>
+    <tb id="8" send="0" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="3" cnt="1" depid="1" deps="0" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="13" cnt="1" depid="6" deps="0" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="5" cnt="1" depid="2" deps="0" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="15" cnt="1" depid="7" deps="0" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="7" cnt="1" depid="3" deps="0" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="9" cnt="1" depid="4" deps="0" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="11" cnt="1" depid="5" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="9" send="3" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="s" dstoff="2" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="49" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="o" dstoff="1" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="49" rate="12.5"/>
+    </tb>
+    <tb id="10" send="5" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="21" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="21" rate="12.5"/>
+    </tb>
+    <tb id="11" send="7" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="25" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="25" rate="12.5"/>
+    </tb>
+    <tb id="12" send="9" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="s" dstoff="5" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="105" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="o" dstoff="1" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="105" rate="12.5"/>
+    </tb>
+    <tb id="13" send="11" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="s" dstoff="2" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="37" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="o" dstoff="1" cnt="1" depid="10" deps="1" hasdep="1" mscclflowid="37" rate="12.5"/>
+    </tb>
+    <tb id="14" send="13" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="s" dstoff="5" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="85" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="o" dstoff="1" cnt="1" depid="15" deps="1" hasdep="1" mscclflowid="85" rate="12.5"/>
+    </tb>
+    <tb id="15" send="15" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="s" dstoff="4" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="73" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="o" dstoff="1" cnt="1" depid="13" deps="1" hasdep="1" mscclflowid="73" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="2" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="2" o_off="2"/>
+    <tb id="0" send="-1" recv="0" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="48" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="48" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="3" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="-1" recv="4" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="18" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="18" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="6" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="50" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="50" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="8" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="90" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="90" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="10" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="74" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="74" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="12" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="76" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="76" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="14" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="16" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="16" rate="12.5"/>
+    </tb>
+    <tb id="8" send="0" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="2" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="2" rate="12.5"/>
+    </tb>
+    <tb id="9" send="3" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="3" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="4" cnt="1" depid="2" deps="1" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="14" cnt="1" depid="7" deps="1" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="1" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="6" cnt="1" depid="3" deps="1" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="10" cnt="1" depid="5" deps="1" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="12" cnt="1" depid="6" deps="1" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="8" cnt="1" depid="4" deps="1" hasdep="0"/>
+    </tb>
+    <tb id="10" send="4" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="o" dstoff="2" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="78" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="s" dstoff="4" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="78" rate="12.5"/>
+    </tb>
+    <tb id="11" send="6" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="o" dstoff="2" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="56" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="s" dstoff="2" cnt="1" depid="8" deps="1" hasdep="1" mscclflowid="56" rate="12.5"/>
+    </tb>
+    <tb id="12" send="8" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="o" dstoff="2" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="62" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="s" dstoff="3" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="62" rate="12.5"/>
+    </tb>
+    <tb id="13" send="10" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="o" dstoff="2" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="68" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="s" dstoff="5" cnt="1" depid="11" deps="1" hasdep="1" mscclflowid="68" rate="12.5"/>
+    </tb>
+    <tb id="14" send="12" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="o" dstoff="2" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="86" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="s" dstoff="6" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="86" rate="12.5"/>
+    </tb>
+    <tb id="15" send="14" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="12" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="12" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="3" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="3" o_off="3"/>
+    <tb id="0" send="-1" recv="1" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="49" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="49" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="2" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="3" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="-1" recv="5" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="19" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="19" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="7" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="51" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="51" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="9" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="91" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="91" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="11" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="75" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="75" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="13" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="77" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="77" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="15" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="2" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="17" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="3" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="17" rate="12.5"/>
+    </tb>
+    <tb id="8" send="1" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="3" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="3" rate="12.5"/>
+    </tb>
+    <tb id="9" send="2" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="5" cnt="1" depid="2" deps="0" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="15" cnt="1" depid="7" deps="0" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="1" cnt="1" depid="0" deps="0" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="7" cnt="1" depid="3" deps="0" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="11" cnt="1" depid="5" deps="0" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="13" cnt="1" depid="6" deps="0" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="9" cnt="1" depid="4" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="10" send="5" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="s" dstoff="4" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="79" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="o" dstoff="3" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="79" rate="12.5"/>
+    </tb>
+    <tb id="11" send="7" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="s" dstoff="2" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="57" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="o" dstoff="3" cnt="1" depid="8" deps="1" hasdep="1" mscclflowid="57" rate="12.5"/>
+    </tb>
+    <tb id="12" send="9" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="s" dstoff="3" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="63" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="o" dstoff="3" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="63" rate="12.5"/>
+    </tb>
+    <tb id="13" send="11" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="s" dstoff="5" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="69" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="o" dstoff="3" cnt="1" depid="11" deps="1" hasdep="1" mscclflowid="69" rate="12.5"/>
+    </tb>
+    <tb id="14" send="13" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="s" dstoff="6" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="87" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="o" dstoff="3" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="87" rate="12.5"/>
+    </tb>
+    <tb id="15" send="15" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="13" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="13" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="4" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="4" o_off="4"/>
+    <tb id="0" send="-1" recv="0" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="20" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="20" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="2" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="78" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="78" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="5" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="6" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="22" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="22" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="8" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="54" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="54" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="10" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="92" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="92" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="12" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="52" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="52" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="14" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="102" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="102" rate="12.5"/>
+    </tb>
+    <tb id="8" send="0" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="o" dstoff="4" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="34" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="s" dstoff="3" cnt="1" depid="13" deps="1" hasdep="1" mscclflowid="34" rate="12.5"/>
+    </tb>
+    <tb id="9" send="2" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="18" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="18" rate="12.5"/>
+    </tb>
+    <tb id="10" send="5" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="5" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="1" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="6" cnt="1" depid="3" deps="1" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="8" cnt="1" depid="4" deps="1" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="12" cnt="1" depid="6" deps="1" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="2" cnt="1" depid="1" deps="1" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="10" cnt="1" depid="5" deps="1" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="14" cnt="1" depid="7" deps="1" hasdep="0"/>
+    </tb>
+    <tb id="11" send="6" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="o" dstoff="4" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="58" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="s" dstoff="3" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="58" rate="12.5"/>
+    </tb>
+    <tb id="12" send="8" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="o" dstoff="4" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="106" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="s" dstoff="6" cnt="1" depid="14" deps="1" hasdep="1" mscclflowid="106" rate="12.5"/>
+    </tb>
+    <tb id="13" send="10" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="6" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="6" rate="12.5"/>
+    </tb>
+    <tb id="14" send="12" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="o" dstoff="4" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="70" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="s" dstoff="4" cnt="1" depid="8" deps="1" hasdep="1" mscclflowid="70" rate="12.5"/>
+    </tb>
+    <tb id="15" send="14" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="o" dstoff="4" cnt="1" depid="12" deps="1" hasdep="0" mscclflowid="108" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="s" dstoff="6" cnt="1" depid="12" deps="1" hasdep="0" mscclflowid="108" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="5" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="5" o_off="5"/>
+    <tb id="0" send="-1" recv="1" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="21" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="21" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="3" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="79" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="79" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="4" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="5" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="7" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="23" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="23" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="9" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="55" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="55" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="11" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="93" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="93" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="13" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="53" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="53" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="15" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="4" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="103" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="5" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="103" rate="12.5"/>
+    </tb>
+    <tb id="8" send="1" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="s" dstoff="3" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="35" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="o" dstoff="5" cnt="1" depid="13" deps="1" hasdep="1" mscclflowid="35" rate="12.5"/>
+    </tb>
+    <tb id="9" send="3" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="19" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="19" rate="12.5"/>
+    </tb>
+    <tb id="10" send="4" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="1" cnt="1" depid="0" deps="0" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="7" cnt="1" depid="3" deps="0" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="9" cnt="1" depid="4" deps="0" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="13" cnt="1" depid="6" deps="0" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="3" cnt="1" depid="1" deps="0" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="11" cnt="1" depid="5" deps="0" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="15" cnt="1" depid="7" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="11" send="7" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="s" dstoff="3" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="59" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="o" dstoff="5" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="59" rate="12.5"/>
+    </tb>
+    <tb id="12" send="9" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="s" dstoff="6" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="107" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="o" dstoff="5" cnt="1" depid="14" deps="1" hasdep="1" mscclflowid="107" rate="12.5"/>
+    </tb>
+    <tb id="13" send="11" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="7" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="7" rate="12.5"/>
+    </tb>
+    <tb id="14" send="13" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="s" dstoff="4" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="71" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="o" dstoff="5" cnt="1" depid="8" deps="1" hasdep="1" mscclflowid="71" rate="12.5"/>
+    </tb>
+    <tb id="15" send="15" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="s" dstoff="6" cnt="1" depid="12" deps="1" hasdep="0" mscclflowid="109" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="o" dstoff="5" cnt="1" depid="12" deps="1" hasdep="0" mscclflowid="109" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="6" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="6" o_off="6"/>
+    <tb id="0" send="-1" recv="0" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="24" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="24" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="2" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="56" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="56" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="4" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="58" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="58" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="7" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="4" send="-1" recv="8" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="80" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="80" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="10" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="26" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="26" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="12" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="110" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="110" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="14" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="94" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="94" rate="12.5"/>
+    </tb>
+    <tb id="8" send="0" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="o" dstoff="6" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="64" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="s" dstoff="4" cnt="1" depid="14" deps="1" hasdep="1" mscclflowid="64" rate="12.5"/>
+    </tb>
+    <tb id="9" send="2" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="o" dstoff="6" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="50" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="s" dstoff="3" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="50" rate="12.5"/>
+    </tb>
+    <tb id="10" send="4" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="22" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="22" rate="12.5"/>
+    </tb>
+    <tb id="11" send="7" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="7" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="1" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="10" cnt="1" depid="5" deps="1" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="2" cnt="1" depid="1" deps="1" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="4" cnt="1" depid="2" deps="1" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="8" cnt="1" depid="4" deps="1" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="14" cnt="1" depid="7" deps="1" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="12" cnt="1" depid="6" deps="1" hasdep="0"/>
+    </tb>
+    <tb id="12" send="8" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="30" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="30" rate="12.5"/>
+    </tb>
+    <tb id="13" send="10" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="o" dstoff="6" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="100" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="s" dstoff="6" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="100" rate="12.5"/>
+    </tb>
+    <tb id="14" send="12" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="o" dstoff="6" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="42" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="s" dstoff="3" cnt="1" depid="10" deps="1" hasdep="1" mscclflowid="42" rate="12.5"/>
+    </tb>
+    <tb id="15" send="14" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="o" dstoff="6" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="88" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="s" dstoff="5" cnt="1" depid="8" deps="1" hasdep="1" mscclflowid="88" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="7" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="7" o_off="7"/>
+    <tb id="0" send="-1" recv="1" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="25" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="25" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="3" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="57" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="57" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="5" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="59" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="59" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="6" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="7" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="4" send="-1" recv="9" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="81" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="81" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="11" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="27" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="27" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="13" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="111" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="111" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="15" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="6" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="95" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="7" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="95" rate="12.5"/>
+    </tb>
+    <tb id="8" send="1" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="s" dstoff="4" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="65" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="o" dstoff="7" cnt="1" depid="14" deps="1" hasdep="1" mscclflowid="65" rate="12.5"/>
+    </tb>
+    <tb id="9" send="3" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="s" dstoff="3" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="51" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="o" dstoff="7" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="51" rate="12.5"/>
+    </tb>
+    <tb id="10" send="5" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="23" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="23" rate="12.5"/>
+    </tb>
+    <tb id="11" send="6" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="1" cnt="1" depid="0" deps="0" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="11" cnt="1" depid="5" deps="0" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="3" cnt="1" depid="1" deps="0" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="5" cnt="1" depid="2" deps="0" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="9" cnt="1" depid="4" deps="0" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="15" cnt="1" depid="7" deps="0" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="13" cnt="1" depid="6" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="12" send="9" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="31" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="31" rate="12.5"/>
+    </tb>
+    <tb id="13" send="11" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="s" dstoff="6" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="101" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="o" dstoff="7" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="101" rate="12.5"/>
+    </tb>
+    <tb id="14" send="13" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="s" dstoff="3" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="43" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="o" dstoff="7" cnt="1" depid="10" deps="1" hasdep="1" mscclflowid="43" rate="12.5"/>
+    </tb>
+    <tb id="15" send="15" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="s" dstoff="5" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="89" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="o" dstoff="7" cnt="1" depid="8" deps="1" hasdep="1" mscclflowid="89" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="8" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="8" o_off="8"/>
+    <tb id="0" send="-1" recv="0" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="104" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="104" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="2" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="62" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="62" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="4" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="106" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="106" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="6" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="30" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="30" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="9" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="5" send="-1" recv="10" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="60" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="60" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="12" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="82" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="82" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="14" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="28" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="28" rate="12.5"/>
+    </tb>
+    <tb id="8" send="0" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="o" dstoff="8" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="98" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="s" dstoff="6" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="98" rate="12.5"/>
+    </tb>
+    <tb id="9" send="2" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="o" dstoff="8" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="90" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="s" dstoff="6" cnt="1" depid="11" deps="1" hasdep="1" mscclflowid="90" rate="12.5"/>
+    </tb>
+    <tb id="10" send="4" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="o" dstoff="8" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="54" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="s" dstoff="3" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="54" rate="12.5"/>
+    </tb>
+    <tb id="11" send="6" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="o" dstoff="8" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="80" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="s" dstoff="4" cnt="1" depid="13" deps="1" hasdep="1" mscclflowid="80" rate="12.5"/>
+    </tb>
+    <tb id="12" send="9" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="9" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="6" cnt="1" depid="3" deps="1" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="14" cnt="1" depid="7" deps="1" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="2" cnt="1" depid="1" deps="1" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="10" cnt="1" depid="5" deps="1" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="12" cnt="1" depid="6" deps="1" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="1" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="4" cnt="1" depid="2" deps="1" hasdep="0"/>
+    </tb>
+    <tb id="13" send="10" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="o" dstoff="8" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="38" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="s" dstoff="3" cnt="1" depid="14" deps="1" hasdep="1" mscclflowid="38" rate="12.5"/>
+    </tb>
+    <tb id="14" send="12" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="10" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="10" rate="12.5"/>
+    </tb>
+    <tb id="15" send="14" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="14" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="14" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="9" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="9" o_off="9"/>
+    <tb id="0" send="-1" recv="1" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="105" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="105" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="3" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="63" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="63" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="5" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="107" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="107" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="7" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="31" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="31" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="8" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="9" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="5" send="-1" recv="11" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="61" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="61" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="13" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="83" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="83" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="15" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="8" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="29" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="9" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="29" rate="12.5"/>
+    </tb>
+    <tb id="8" send="1" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="s" dstoff="6" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="99" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="o" dstoff="9" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="99" rate="12.5"/>
+    </tb>
+    <tb id="9" send="3" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="s" dstoff="6" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="91" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="o" dstoff="9" cnt="1" depid="11" deps="1" hasdep="1" mscclflowid="91" rate="12.5"/>
+    </tb>
+    <tb id="10" send="5" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="s" dstoff="3" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="55" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="o" dstoff="9" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="55" rate="12.5"/>
+    </tb>
+    <tb id="11" send="7" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="s" dstoff="4" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="81" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="o" dstoff="9" cnt="1" depid="13" deps="1" hasdep="1" mscclflowid="81" rate="12.5"/>
+    </tb>
+    <tb id="12" send="8" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="7" cnt="1" depid="3" deps="0" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="15" cnt="1" depid="7" deps="0" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="3" cnt="1" depid="1" deps="0" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="11" cnt="1" depid="5" deps="0" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="13" cnt="1" depid="6" deps="0" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="1" cnt="1" depid="0" deps="0" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="5" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="13" send="11" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="s" dstoff="3" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="39" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="o" dstoff="9" cnt="1" depid="14" deps="1" hasdep="1" mscclflowid="39" rate="12.5"/>
+    </tb>
+    <tb id="14" send="13" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="11" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="11" rate="12.5"/>
+    </tb>
+    <tb id="15" send="15" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="15" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="15" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="10" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="10" o_off="10"/>
+    <tb id="0" send="-1" recv="0" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="36" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="36" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="2" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="68" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="68" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="4" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="6" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="6" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="6" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="100" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="100" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="8" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="38" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="38" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="11" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="6" send="-1" recv="12" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="4" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="4" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="14" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="66" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="66" rate="12.5"/>
+    </tb>
+    <tb id="8" send="0" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="o" dstoff="10" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="96" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="s" dstoff="5" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="96" rate="12.5"/>
+    </tb>
+    <tb id="9" send="2" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="o" dstoff="10" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="74" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="s" dstoff="4" cnt="1" depid="15" deps="1" hasdep="1" mscclflowid="74" rate="12.5"/>
+    </tb>
+    <tb id="10" send="4" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="o" dstoff="10" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="92" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="s" dstoff="5" cnt="1" depid="9" deps="1" hasdep="1" mscclflowid="92" rate="12.5"/>
+    </tb>
+    <tb id="11" send="6" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="26" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="26" rate="12.5"/>
+    </tb>
+    <tb id="12" send="8" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="o" dstoff="10" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="60" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="s" dstoff="2" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="60" rate="12.5"/>
+    </tb>
+    <tb id="13" send="11" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="11" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="4" cnt="1" depid="2" deps="1" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="12" cnt="1" depid="6" deps="1" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="1" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="8" cnt="1" depid="4" deps="1" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="2" cnt="1" depid="1" deps="1" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="14" cnt="1" depid="7" deps="1" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="6" cnt="1" depid="3" deps="1" hasdep="0"/>
+    </tb>
+    <tb id="14" send="12" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="8" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="8" rate="12.5"/>
+    </tb>
+    <tb id="15" send="14" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="o" dstoff="10" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="44" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="s" dstoff="2" cnt="1" depid="14" deps="1" hasdep="1" mscclflowid="44" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="11" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="11" o_off="11"/>
+    <tb id="0" send="-1" recv="1" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="37" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="37" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="3" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="69" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="69" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="5" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="7" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="7" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="7" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="101" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="101" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="9" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="39" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="39" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="10" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="11" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="6" send="-1" recv="13" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="5" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="5" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="15" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="10" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="67" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="11" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="67" rate="12.5"/>
+    </tb>
+    <tb id="8" send="1" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="s" dstoff="5" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="97" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="o" dstoff="11" cnt="1" depid="10" deps="1" hasdep="0" mscclflowid="97" rate="12.5"/>
+    </tb>
+    <tb id="9" send="3" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="s" dstoff="4" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="75" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="o" dstoff="11" cnt="1" depid="15" deps="1" hasdep="1" mscclflowid="75" rate="12.5"/>
+    </tb>
+    <tb id="10" send="5" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="s" dstoff="5" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="93" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="o" dstoff="11" cnt="1" depid="9" deps="1" hasdep="1" mscclflowid="93" rate="12.5"/>
+    </tb>
+    <tb id="11" send="7" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="27" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="27" rate="12.5"/>
+    </tb>
+    <tb id="12" send="9" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="s" dstoff="2" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="61" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="o" dstoff="11" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="61" rate="12.5"/>
+    </tb>
+    <tb id="13" send="10" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="5" cnt="1" depid="2" deps="0" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="13" cnt="1" depid="6" deps="0" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="1" cnt="1" depid="0" deps="0" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="9" cnt="1" depid="4" deps="0" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="3" cnt="1" depid="1" deps="0" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="15" cnt="1" depid="7" deps="0" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="7" cnt="1" depid="3" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="14" send="13" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="9" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="9" rate="12.5"/>
+    </tb>
+    <tb id="15" send="15" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="s" dstoff="2" cnt="1" depid="14" deps="1" hasdep="0" mscclflowid="45" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="o" dstoff="11" cnt="1" depid="14" deps="1" hasdep="1" mscclflowid="45" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="12" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="12" o_off="12"/>
+    <tb id="0" send="-1" recv="0" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="84" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="84" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="2" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="86" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="86" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="4" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="70" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="70" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="6" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="42" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="42" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="8" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="10" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="10" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="10" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="8" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="8" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="13" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="7" send="-1" recv="14" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="40" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="40" rate="12.5"/>
+    </tb>
+    <tb id="8" send="0" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="0" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="0" rate="12.5"/>
+    </tb>
+    <tb id="9" send="2" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="o" dstoff="12" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="76" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="s" dstoff="5" cnt="1" depid="15" deps="1" hasdep="1" mscclflowid="76" rate="12.5"/>
+    </tb>
+    <tb id="10" send="4" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="o" dstoff="12" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="52" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="s" dstoff="2" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="52" rate="12.5"/>
+    </tb>
+    <tb id="11" send="6" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="o" dstoff="12" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="110" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="s" dstoff="6" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="110" rate="12.5"/>
+    </tb>
+    <tb id="12" send="8" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="o" dstoff="12" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="82" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="s" dstoff="4" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="82" rate="12.5"/>
+    </tb>
+    <tb id="13" send="10" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="4" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="4" rate="12.5"/>
+    </tb>
+    <tb id="14" send="13" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="13" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="8" cnt="1" depid="4" deps="1" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="10" cnt="1" depid="5" deps="1" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="6" cnt="1" depid="3" deps="1" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="14" cnt="1" depid="7" deps="1" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="4" cnt="1" depid="2" deps="1" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="1" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="2" cnt="1" depid="1" deps="1" hasdep="0"/>
+    </tb>
+    <tb id="15" send="14" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="o" dstoff="12" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="46" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="s" dstoff="3" cnt="1" depid="8" deps="1" hasdep="1" mscclflowid="46" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="13" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="13" o_off="13"/>
+    <tb id="0" send="-1" recv="1" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="85" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="85" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="3" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="87" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="87" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="5" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="71" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="71" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="7" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="43" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="43" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="9" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="11" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="11" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="11" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="9" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="9" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="12" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="13" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="7" send="-1" recv="15" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="12" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="41" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="13" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="41" rate="12.5"/>
+    </tb>
+    <tb id="8" send="1" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="1" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="1" rate="12.5"/>
+    </tb>
+    <tb id="9" send="3" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="s" dstoff="5" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="77" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="o" dstoff="13" cnt="1" depid="15" deps="1" hasdep="1" mscclflowid="77" rate="12.5"/>
+    </tb>
+    <tb id="10" send="5" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="s" dstoff="2" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="53" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="o" dstoff="13" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="53" rate="12.5"/>
+    </tb>
+    <tb id="11" send="7" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="s" dstoff="6" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="111" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="o" dstoff="13" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="111" rate="12.5"/>
+    </tb>
+    <tb id="12" send="9" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="s" dstoff="4" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="83" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="o" dstoff="13" cnt="1" depid="15" deps="1" hasdep="0" mscclflowid="83" rate="12.5"/>
+    </tb>
+    <tb id="13" send="11" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="5" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="5" rate="12.5"/>
+    </tb>
+    <tb id="14" send="12" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="9" cnt="1" depid="4" deps="0" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="11" cnt="1" depid="5" deps="0" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="7" cnt="1" depid="3" deps="0" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="15" cnt="1" depid="7" deps="0" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="5" cnt="1" depid="2" deps="0" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="1" cnt="1" depid="0" deps="0" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="3" cnt="1" depid="1" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="15" send="15" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="s" dstoff="3" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="47" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="15" dstbuf="o" dstoff="13" cnt="1" depid="8" deps="1" hasdep="1" mscclflowid="47" rate="12.5"/>
+    </tb>
+  </gpu>
+  <gpu id="14" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="14" o_off="14"/>
+    <tb id="0" send="-1" recv="0" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="72" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="72" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="2" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="12" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="12" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="4" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="108" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="108" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="6" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="88" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="88" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="8" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="14" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="14" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="10" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="44" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="44" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="12" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="46" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="46" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="15" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="8" send="0" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="o" dstoff="14" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="32" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="s" dstoff="2" cnt="1" depid="9" deps="1" hasdep="1" mscclflowid="32" rate="12.5"/>
+    </tb>
+    <tb id="9" send="2" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="16" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="16" rate="12.5"/>
+    </tb>
+    <tb id="10" send="4" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="o" dstoff="14" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="102" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="s" dstoff="6" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="102" rate="12.5"/>
+    </tb>
+    <tb id="11" send="6" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="o" dstoff="14" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="94" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="s" dstoff="5" cnt="1" depid="13" deps="1" hasdep="1" mscclflowid="94" rate="12.5"/>
+    </tb>
+    <tb id="12" send="8" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="28" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="28" rate="12.5"/>
+    </tb>
+    <tb id="13" send="10" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="o" dstoff="14" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="66" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="s" dstoff="4" cnt="1" depid="8" deps="1" hasdep="1" mscclflowid="66" rate="12.5"/>
+    </tb>
+    <tb id="14" send="12" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="o" dstoff="14" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="40" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="s" dstoff="2" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="40" rate="12.5"/>
+    </tb>
+    <tb id="15" send="15" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="15" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="2" cnt="1" depid="1" deps="1" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="8" cnt="1" depid="4" deps="1" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="10" cnt="1" depid="5" deps="1" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="12" cnt="1" depid="6" deps="1" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="1" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="6" cnt="1" depid="3" deps="1" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="4" cnt="1" depid="2" deps="1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="15" i_chunks="16" o_chunks="16" s_chunks="7">
+    <copy i_off="15" o_off="15"/>
+    <tb id="0" send="-1" recv="1" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="s" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="73" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="73" rate="12.5"/>
+    </tb>
+    <tb id="1" send="-1" recv="3" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="13" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="o" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="13" rate="12.5"/>
+    </tb>
+    <tb id="2" send="-1" recv="5" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="s" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="109" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="o" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="109" rate="12.5"/>
+    </tb>
+    <tb id="3" send="-1" recv="7" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="s" dstoff="5" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="89" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="o" dstoff="7" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="89" rate="12.5"/>
+    </tb>
+    <tb id="4" send="-1" recv="9" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="s" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="15" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="o" dstoff="9" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="15" rate="12.5"/>
+    </tb>
+    <tb id="5" send="-1" recv="11" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="s" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="45" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="o" dstoff="11" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="45" rate="12.5"/>
+    </tb>
+    <tb id="6" send="-1" recv="13" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="14" dstbuf="s" dstoff="3" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="47" rate="12.5"/>
+      <step s="1" type="r" srcbuf="i" srcoff="15" dstbuf="o" dstoff="13" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="47" rate="12.5"/>
+    </tb>
+    <tb id="7" send="-1" recv="14" chan="0">
+      <step s="0" type="r" srcbuf="i" srcoff="15" dstbuf="o" dstoff="14" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="r" srcbuf="s" srcoff="0" dstbuf="o" dstoff="2" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="2" type="r" srcbuf="s" srcoff="1" dstbuf="o" dstoff="8" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="3" type="r" srcbuf="s" srcoff="2" dstbuf="o" dstoff="10" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="4" type="r" srcbuf="s" srcoff="3" dstbuf="o" dstoff="12" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="5" type="r" srcbuf="s" srcoff="4" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="6" type="r" srcbuf="s" srcoff="5" dstbuf="o" dstoff="6" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="7" type="r" srcbuf="s" srcoff="6" dstbuf="o" dstoff="4" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="8" send="1" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="0" dstbuf="s" dstoff="2" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="33" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="1" dstbuf="o" dstoff="15" cnt="1" depid="9" deps="1" hasdep="1" mscclflowid="33" rate="12.5"/>
+    </tb>
+    <tb id="9" send="3" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="2" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="17" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="3" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="1" mscclflowid="17" rate="12.5"/>
+    </tb>
+    <tb id="10" send="5" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="4" dstbuf="s" dstoff="6" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="103" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="5" dstbuf="o" dstoff="15" cnt="1" depid="11" deps="1" hasdep="0" mscclflowid="103" rate="12.5"/>
+    </tb>
+    <tb id="11" send="7" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="6" dstbuf="s" dstoff="5" cnt="1" depid="13" deps="1" hasdep="0" mscclflowid="95" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="7" dstbuf="o" dstoff="15" cnt="1" depid="13" deps="1" hasdep="1" mscclflowid="95" rate="12.5"/>
+    </tb>
+    <tb id="12" send="9" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="8" dstbuf="s" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="29" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="9" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0" mscclflowid="29" rate="12.5"/>
+    </tb>
+    <tb id="13" send="11" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="10" dstbuf="s" dstoff="4" cnt="1" depid="8" deps="1" hasdep="0" mscclflowid="67" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="11" dstbuf="o" dstoff="15" cnt="1" depid="8" deps="1" hasdep="1" mscclflowid="67" rate="12.5"/>
+    </tb>
+    <tb id="14" send="13" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="12" dstbuf="s" dstoff="2" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="41" rate="12.5"/>
+      <step s="1" type="s" srcbuf="i" srcoff="13" dstbuf="o" dstoff="15" cnt="1" depid="9" deps="1" hasdep="0" mscclflowid="41" rate="12.5"/>
+    </tb>
+    <tb id="15" send="14" recv="-1" chan="0">
+      <step s="0" type="s" srcbuf="i" srcoff="14" dstbuf="o" dstoff="15" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+      <step s="1" type="s" srcbuf="s" srcoff="0" dstbuf="o" dstoff="3" cnt="1" depid="1" deps="0" hasdep="0"/>
+      <step s="2" type="s" srcbuf="s" srcoff="1" dstbuf="o" dstoff="9" cnt="1" depid="4" deps="0" hasdep="0"/>
+      <step s="3" type="s" srcbuf="s" srcoff="2" dstbuf="o" dstoff="11" cnt="1" depid="5" deps="0" hasdep="0"/>
+      <step s="4" type="s" srcbuf="s" srcoff="3" dstbuf="o" dstoff="13" cnt="1" depid="6" deps="0" hasdep="0"/>
+      <step s="5" type="s" srcbuf="s" srcoff="4" dstbuf="o" dstoff="1" cnt="1" depid="0" deps="0" hasdep="0"/>
+      <step s="6" type="s" srcbuf="s" srcoff="5" dstbuf="o" dstoff="7" cnt="1" depid="3" deps="0" hasdep="0"/>
+      <step s="7" type="s" srcbuf="s" srcoff="6" dstbuf="o" dstoff="5" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+  </gpu>
+</algo>

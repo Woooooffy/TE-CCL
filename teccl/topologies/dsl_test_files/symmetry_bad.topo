@@ -1,0 +1,10 @@
+// Fixture: a `symmetric` group whose members are NOT interchangeable -- gpu0 sits on a 50 GBps
+// link and gpu1 on a 25 GBps one. Must be refused, naming both neighborhoods.
+module main() {
+    node gpu0 type=gpu;
+    node gpu1 type=gpu;
+    node sw type=switch;
+    link gpu0 sw bandwidth=50[GBps] latency=700[ns];
+    link gpu1 sw bandwidth=25[GBps] latency=700[ns];
+    symmetric gpu0 gpu1;
+}

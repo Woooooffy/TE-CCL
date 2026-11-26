@@ -31,8 +31,7 @@
         "objective_type": 2,
         "solution_method": 1,
         "symmetry": true,
-        "switch_to_gpu_link_on": true,
-        "switch_to_switch_link_on": true,
+        "switch_pipeline": false,
         "schedule_output_file": "teccl/examples/schedules/fat_tree_pod_schedule_symmetric_regression_check.json"
     }
 }

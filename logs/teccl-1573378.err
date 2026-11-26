@@ -1,0 +1,55 @@
+cpu-bind=MASK - lanka30, task  0  0 [609399]: mask 0xffffffffffff set
+cpu-bind=MASK - lanka30, task  0  0 [609898]: mask 0xff0000ff set
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/bin/teccl", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/__main__.py", line 21, in main
+    if handler(args, args.command):
+       ~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/cli/solve.py", line 41, in handler
+    solver.solve()
+    ~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 376, in solve
+    self.solve_hierarchy(start)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 344, in solve_hierarchy
+    info, solution = solve_hierarchical(
+                     ~~~~~~~~~~~~~~~~~~^
+        topology, level_input, instance.collective, num_chunks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        prefix=prefix, debug=instance.debug, level_chunk=instance.level_chunk)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 634, in solve_hierarchical
+    solution = solve_level(root, ctx)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 314, in solve_level
+    return _solve_recursive(problem, ctx)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 393, in _solve_recursive
+    res = _lower(solution, problem, coarse, mapping, fine_tensor, g, level_demand)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 468, in _lower
+    assignments, targets, epoch = assign_identities_free(
+                                  ~~~~~~~~~~~~~~~~~~~~~~^
+        solution, mapping, fine_tensor, problem.topology, level_chunk=g,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        relabel=relabel, holder_of=holder)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/reconstruct.py", line 1538, in assign_identities_free
+    for leg_gpus, v in _place_downstream_legs(
+                       ~~~~~~~~~~~~~~~~~~~~~~^
+            slot.route, d, slot.egress_gpu, vol, set(tgt.get(d, ())),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            mapping, fine_topology, epoch_duration, ingress_ledger, egress_ledger,
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            tol=ingress_tol, max_denom=ingress_max_denom):
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/reconstruct.py", line 849, in _place_downstream_legs
+    _commit_egress(outbound, landed, part, identity, mapping, fine_topology,
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                   epoch_duration, egress_ledger, tol)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/reconstruct.py", line 873, in _commit_egress
+    raise RuntimeError(
+    ...<6 lines>...
+        f"carry.")
+RuntimeError: forwarding egress capacity exhausted at cell 3 epoch 5: gpu 52 already forwards 1 toward coarse neighbor 12 and identity (35, 0) needs 0.166667 more, but the link absorbs 1 per epoch. All of this cell's transit volume is forced onto the GPUs that bridge the two islands (co-location is required, see _bridging_gpus/_place_downstream_legs), and there is more of it than they can carry.
+srun: error: lanka30: task 0: Exited with exit code 1

@@ -60,8 +60,23 @@ class AStarFormulation(AllGatherFormulation):
 
         varType = GRB.INTEGER
 
-        self.flow = np.zeros((self.num_nodes, self.num_nodes,
-                            self.num_nodes, self.num_chunks, self.num_epochs)).tolist()
+        # Opt out of the demand-source restriction that AllGatherFormulation applies:
+        # the A* formulation's own constraints (source_constraints, the buffer
+        # look-ahead, astar_objective_clique) and its multi-round demand bookkeeping
+        # assume flow/buffer exist for every node, and it creates them for all nodes
+        # below. Setting self.sources = self.nodes makes the shared inherited
+        # constraints (node/capacity/destination_constraints, which iterate
+        # self.sources) behave exactly as before for A*, so this formulation is
+        # unchanged. (AllGatherFormulation restricts self.sources to demand GPUs.)
+        self.sources = self.nodes
+
+        # Sparse container (see AllGatherFormulation.initialize_variables): the dense
+        # num_nodes^3 x num_chunks x num_epochs list is almost all zeros -- only real
+        # links carry a variable. A 5-level nested defaultdict makes a missing
+        # (s, i, j, c, k) read as 0.0 (the old np.zeros default), so every LinExpr.add()
+        # downstream is unchanged, while only the created real-link entries are stored.
+        self.flow = defaultdict(lambda: defaultdict(lambda: defaultdict(
+            lambda: defaultdict(lambda: defaultdict(float)))))
 
         for i, j, in product(self.nodes, self.nodes):
             if self.topology.capacity[i][j] <= 0:
@@ -109,7 +124,7 @@ class AStarFormulation(AllGatherFormulation):
             if self.topology.capacity[j][i] > 0:
                 link_type = self.get_link_type(j, i)
                 cutthrough = (link_type == self.LinkType.SWITCH_SWITCH
-                              and not self.user_input.instance.switch_to_switch_link_on)
+                              and self.user_input.instance.switch_pipeline)
                 link_alpha = self.topology.alpha[j][i]
                 epoch_capacity = self.topology.capacity[j][i] * self.epoch_duration
                 # NOTE: this int() truncation (vs. base_formulation.py's canonical
@@ -224,7 +239,13 @@ class AStarFormulation(AllGatherFormulation):
         flows_str_info["2-Expected_Epoch_Duration"] = self.expected_epoch_duration
         flows_str_info["3-Epochs_Required"] = self.total_epochs
         flows_str_info["4-Collective_Finish_Time"] = flows_str_info["1-Epoch_Duration"] * flows_str_info["3-Epochs_Required"]
-        flows_str_info["5-Algo_Bandwidth"] = self.topology.node_per_chassis * self.topology.chunk_size * self.topology.chassis / flows_str_info["4-Collective_Finish_Time"]
+        # node_per_chassis * chassis assumes uniform GPUs-per-chassis, which is wrong on
+        # heterogeneous topologies (e.g. HeteroTaperedCluster). Count actual demand-bearing
+        # sources from self.demand instead -- self.sources is overridden to self.nodes for
+        # AStar (see initialize_variables), so it can't be used here without pulling in
+        # switches/passive nodes.
+        num_data_sources = sum(1 for s in self.nodes if self.demand[s].any())
+        flows_str_info["5-Algo_Bandwidth"] = num_data_sources * self.topology.chunk_size * self.num_chunks / flows_str_info["4-Collective_Finish_Time"]
         flows_str_info['7-Flows'] = [
             f"Chunk {c} from {s} traveled over {i}->{j} in epoch {k}" for s, i, j, c, k in flows]
         return flows, flows_str_info

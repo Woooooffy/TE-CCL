@@ -1,0 +1,8626 @@
+[
+  {
+    "cell": 0,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 3,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": -1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 0,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 2,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": -1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 0,
+    "identity": [
+      2,
+      1
+    ],
+    "sender": 2,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": -1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 0,
+    "identity": [
+      3,
+      1
+    ],
+    "sender": 3,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": -1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 0,
+    "identity": [
+      3,
+      1
+    ],
+    "sender": 3,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 0,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 2,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 0,
+    "identity": [
+      0,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      2,
+      1
+    ],
+    "sender": 2,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 3,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 2,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 0,
+    "identity": [
+      1,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 3,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      1,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 0,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      2,
+      1
+    ],
+    "sender": 2,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      0,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      0,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      3,
+      1
+    ],
+    "sender": 3,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      1,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      4,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      11,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      8,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      13,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      4,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      4,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      8,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      8,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 8,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 9,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      11,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 9,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      11,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 10,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 10,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 11,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      13,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 11,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      13,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 12,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      9,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      12,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      10,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      12,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      12,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 8,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 9,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      9,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 9,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      9,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 10,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 10,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 11,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      10,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        0,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 11,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      10,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 12,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      6,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      7,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      6,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      6,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      7,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      7,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      5,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        1,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      5,
+      1
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      5,
+      1
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 1,
+    "fanout": [
+      [
+        3,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 0,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 0,
+    "fanout": [
+      [
+        2,
+        [
+          14
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 7,
+    "fanout": [
+      [
+        4,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 1,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 6,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        4,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 1,
+    "identity": [
+      4,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      6,
+      1
+    ],
+    "sender": 6,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 7,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      7,
+      1
+    ],
+    "sender": 7,
+    "fanout": [
+      [
+        4,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 1,
+    "identity": [
+      5,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 6,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      6,
+      1
+    ],
+    "sender": 6,
+    "fanout": [
+      [
+        4,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 1,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 7,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 6,
+    "fanout": [
+      [
+        4,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 1,
+    "identity": [
+      4,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      5,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      7,
+      1
+    ],
+    "sender": 7,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      5,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        4,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 1,
+    "identity": [
+      6,
+      1
+    ],
+    "sender": 6,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      7,
+      1
+    ],
+    "sender": 7,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      4,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      8,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      8,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      8,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      12,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      12,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      12,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      10,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      10,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      10,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      13,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      13,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      13,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 5,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      9,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 5,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 5,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 5,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      9,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 5,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      9,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 5,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 6,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      0,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 6,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 6,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 6,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      0,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 6,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      0,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 6,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 7,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      3,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 7,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 7,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 7,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      3,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 7,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      3,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 7,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      1,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 8,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 8,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      1,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 8,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      1,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 8,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 8,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 8,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      11,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 9,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 9,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      11,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 9,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      11,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 9,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 9,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 9,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      2,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 10,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        5,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 10,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      2,
+      1
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 10,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      2,
+      1
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 10,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 5,
+    "fanout": [
+      [
+        7,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 10,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 1,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 4,
+    "fanout": [
+      [
+        6,
+        [
+          15
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 10,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 10,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 12,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      1
+    ],
+    "sender": 10,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      1
+    ],
+    "sender": 12,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 10,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 12,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      1
+    ],
+    "sender": 10,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      1
+    ],
+    "sender": 12,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      1
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      1
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 10,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      1
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 12,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      1
+    ],
+    "sender": 10,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      1
+    ],
+    "sender": 12,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      1
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 10,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 12,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      1
+    ],
+    "sender": 10,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      1
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      1
+    ],
+    "sender": 12,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      1
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      0
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 8,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        0
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 8,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      0
+    ],
+    "sender": 10,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 8,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 8,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      1
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 9,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        1
+      ]
+    ],
+    "kind": "egress_stage",
+    "hard": true
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 9,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      10,
+      1
+    ],
+    "sender": 10,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 9,
+    "span": 1,
+    "identities": [
+      [
+        10,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      0
+    ],
+    "sender": 12,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 9,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 10,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      1
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 10,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      12,
+      1
+    ],
+    "sender": 12,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 10,
+    "span": 1,
+    "identities": [
+      [
+        12,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 11,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      11,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 12,
+    "span": 1,
+    "identities": [
+      [
+        11,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      9,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 13,
+    "span": 1,
+    "identities": [
+      [
+        9,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      13,
+      1
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 13,
+    "span": 1,
+    "identities": [
+      [
+        13,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 14,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        0
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      8,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 0,
+    "local_round": 15,
+    "span": 1,
+    "identities": [
+      [
+        8,
+        1
+      ]
+    ],
+    "kind": "self_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      0,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      1,
+      1
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      1
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      0,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      3,
+      1
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      1
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      0,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      1
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      1,
+      1
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      0,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 6,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      1,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      3,
+      1
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        8,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      1
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 7,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 8,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 8,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 8,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      0
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 8,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 9,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      1,
+      1
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 9,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      4,
+      1
+    ],
+    "sender": 13,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 9,
+    "span": 1,
+    "identities": [
+      [
+        4,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 10,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 10,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      3,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 11,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      3,
+      1
+    ],
+    "sender": 11,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 11,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      0,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 12,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      0,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 13,
+    "span": 1,
+    "identities": [
+      [
+        0,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 14,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      3,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 15,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      1,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 16,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      1,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 17,
+    "span": 1,
+    "identities": [
+      [
+        1,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      2,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 18,
+    "span": 1,
+    "identities": [
+      [
+        2,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      3,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 1,
+    "local_round": 19,
+    "span": 1,
+    "identities": [
+      [
+        3,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      5,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      7,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 2,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      6,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      7,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      6,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      6,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      7,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      7,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      6,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      6,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      7,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      7,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 3,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        7,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      5,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 0,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        9,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      5,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 1,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      5,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        11,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 2,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        10,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      5,
+      1
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 3,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      5,
+      1
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        5,
+        1
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 9,
+    "fanout": [
+      [
+        13,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 4,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  },
+  {
+    "cell": 2,
+    "identity": [
+      6,
+      0
+    ],
+    "sender": 8,
+    "fanout": [
+      [
+        12,
+        [
+          16
+        ]
+      ]
+    ],
+    "volume": 1.0,
+    "band": 4,
+    "local_round": 5,
+    "span": 1,
+    "identities": [
+      [
+        6,
+        0
+      ]
+    ],
+    "kind": "ingress_distribution",
+    "hard": false
+  }
+]

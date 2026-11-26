@@ -1,5 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import List, Optional, Tuple, Union
 
 
 @dataclass
@@ -10,10 +11,10 @@ class TopologyParams:
     alpha: tuple = (0 ,0) # (link alpha, switch alpha)
     side_length: int = 4 # Only for Mesh and Torus topology
     passive_node_indices: tuple = ()  # GPU indices present (can forward) but excluded from this collective's demand
-    # Path to a `.topo` file in the topology DSL (teccl/topologies/topology-dsl-frontend), read by
-    # DslTopology (teccl/topologies/dsl_topology.py). On this branch only ncclize's
-    # load_topology builds one; the solver's get_topology still picks a class by `name`, which
-    # stays a free-form label (it is what output filenames are built from).
+    # Path to a `.topo` file in the topology DSL (teccl/topologies/topology-dsl-frontend). When
+    # set it SELECTS the topology -- TECCLSolver.get_topology builds a DslTopology from the file
+    # instead of looking `name` up among the hand-written classes, and `name` stays a free-form
+    # label (it is what output filenames are built from). Empty => the named built-in.
     topo_file: str = ""
     # Switch indices whose forwarding is externally programmable, i.e. the switches ncclize is
     # allowed to emit a routing table for. None => use the topology class's default (see
@@ -47,15 +48,65 @@ class ObjectiveType(Enum):
         2 - TOTAL_DEMAND - Gives a reward starting from the epoch all the demands are met.
         3 - PAPER - For each demand met, gives a reward starting from the epoch the demand is met.
         4 - ASTAR - Motivate the solver to make as much progress towards the goal of satisfying all demands as possible in each epoch.
+        5 - TOTAL_DEMAND_MIN_SWITCH_HOPS - Identical reward to TOTAL_DEMAND, plus a tiny per-hop
+            penalty on flow crossing switch->switch links (e.g. leaf<->spine). Among solutions
+            that finish in the same epoch (the TOTAL_DEMAND term dominates), this makes the
+            solver prefer routes with fewer switch relays -- e.g. a direct leaf hop over a spine
+            detour. The penalty is scaled far below the completion reward so it acts purely as a
+            tie-breaker and never trades completion time for fewer hops.
+        6 - LEXICOGRAPHIC - A hierarchical (lexicographic) objective solved with Gurobi's
+            multi-objective support, in strictly decreasing priority:
+              tier 0 (makespan)     MILP only: minimize the epoch by which EVERY demand is met
+                                    (the collective's finish time), so the tiers below can only
+                                    choose among the fastest schedules. The LP has no tier 0
+                                    (see LPFormulation.hierarchical_objective_tiers),
+              tier 1 (latency)      among those, minimize the demand-weighted completion time,
+              tier 2 (host relay)   among the tier-1 optima, minimize the volume that a GPU
+                                    forwards on behalf of another GPU (relay through a host
+                                    burns that host's link bandwidth and its copy engines),
+              tier 3 (switch chain) among those, minimize the number of switch hops the volume
+                                    takes (flow entering a switch), i.e. prefer the shortest
+                                    switch chain: a direct link over a one-switch path, and a
+                                    one-switch path over a leaf->spine->leaf detour.
+            Unlike option 5 -- which folds the switch-hop term into ONE objective with a hand
+            tuned GAMMA and so depends on that constant being small enough -- the tiers here
+            are enforced by the solver: a lower tier can never degrade a higher one by more
+            than the tolerance you allow it (InstanceParams.objective_latency_rel_tol /
+            objective_relay_rel_tol, both 0 by default = pure lexicographic).
     """
-    BINARY_USED_EPOCHS = 1 
+    BINARY_USED_EPOCHS = 1
     TOTAL_DEMAND = 2
     PAPER = 3
     ASTAR = 4
+    TOTAL_DEMAND_MIN_SWITCH_HOPS = 5
+    LEXICOGRAPHIC = 6
 
 class Collective(Enum):
     ALLGATHER = 1
     ALLTOALL = 2
+    GATHER = 3    # every (non-root) GPU sends its distinct data to a single root GPU
+    BROADCAST = 4 # a single root GPU sends its data to every other GPU
+
+class Formulation(Enum):
+    """
+        Which solver formulation to use for the collective.
+            1 - MILP - The chunk-level integer program (AllGatherFormulation, despite the name --
+                       it is demand-tensor driven and never branches on the collective). Supports
+                       switch/GPU copy. Implemented for ALLGATHER and ALLTOALL. A chunk here is
+                       INDIVISIBLE and so takes ONE path end to end, which is what makes
+                       num_chunks=1 the single-path (no per-pair multipath, ring-like) baseline
+                       the LP optimum is measured against.
+            2 - LP   - The continuous per-source flow LP (LPFormulation). Demand-matrix driven and
+                       collective-agnostic; the default for AllToAll, and usable for AllGather only
+                       when switch_copy is disabled (the LP cannot represent copy/replication). It
+                       may SPLIT one demand across several paths.
+        Leave unset (None) on InstanceParams to use the per-collective default:
+            ALLGATHER -> MILP, ALLTOALL -> LP. The defaults are historical, not a restriction:
+            AllToAll runs on either formulation, and which one you pick is the multipath question
+            above, not a capability question.
+    """
+    MILP = 1
+    LP = 2
 
 class EpochType(Enum):
     """ 
@@ -68,6 +119,89 @@ class EpochType(Enum):
     SLOWEST_LINK = 2    
     USER_INPUT = 3
 
+
+def resolve_epoch_policy(instance: "InstanceParams", depth: int = 0) -> Tuple["EpochType", float]:
+    """
+        The (epoch_type, epoch_duration) pair that applies at hierarchy level `depth`.
+
+        Both fields accept either a SCALAR -- the same policy at every level, which is what every
+        flat solve and every pre-existing input file uses -- or a LIST indexed by level depth, so a
+        hierarchical solve can size each level's epoch differently. Depths past the end of a list
+        take its LAST entry, so `[a, b]` means "a at the root, b everywhere below", and a 1-element
+        list is identical to the scalar.
+
+        WHY A LEVEL WANTS ITS OWN EPOCH. The epoch is the model's time quantum, and the makespan is
+        always a whole number of them, so the epoch decides how much is lost to the final ceiling.
+        FASTEST_LINK/SLOWEST_LINK size it from a LINK, which on a tapered topology is unrelated to
+        the CUT that actually binds: on TwoPodRail the fastest coarse link is a 50 GB/s spine
+        uplink while the binding constraint is the 4-leaf spine cut, and the mismatch costs a
+        whole ceiling epoch (5.33 -> 6, 11%). Pinning the root's epoch so the cut bound lands on
+        an integer recovers that -- but the same value would be badly wrong one level down, where
+        the fabric is a 900 GB/s NVSwitch. Hence per-level, not global.
+
+        The two fields are resolved TOGETHER at one depth: mixing a scalar epoch_type with a list
+        epoch_duration is allowed (the scalar simply applies at every depth), but the pair handed
+        back always comes from the same level.
+    """
+    def at(value, name):
+        if not isinstance(value, (list, tuple)):
+            return value
+        if not value:
+            raise ValueError(f"InstanceParams.{name} is an empty list; give a scalar or at least "
+                             f"one entry")
+        return value[min(depth, len(value) - 1)]
+    epoch_type = at(instance.epoch_type, "epoch_type")
+    epoch_duration = at(instance.epoch_duration, "epoch_duration")
+    if not isinstance(epoch_type, EpochType):
+        epoch_type = EpochType(epoch_type)
+    return epoch_type, float(epoch_duration)
+
+def _at_depth(value, depth: int, name: str):
+    """A scalar, or the entry of a per-level list for hierarchy `depth` (the last entry for every
+    deeper level). The list convention resolve_epoch_policy documents, shared by every per-level
+    InstanceParams field."""
+    if not isinstance(value, (list, tuple)):
+        return value
+    if not value:
+        raise ValueError(f"InstanceParams.{name} is an empty list; give a scalar or at least "
+                         f"one entry")
+    return value[min(depth, len(value) - 1)]
+
+
+def resolve_formulation(instance: "InstanceParams", depth: int = 0) -> Optional["Formulation"]:
+    """The formulation at hierarchy level `depth` (scalar or per-level list), or None when unset.
+
+    None is NOT resolved to a default here, because the default depends on the mode: a flat solve
+    uses the per-collective default (TECCLSolver._resolve_formulation: ALLGATHER -> MILP), while a
+    hierarchical level uses LP (hierarchy.solve.level_formulation). Keeping that choice with the
+    caller is what stops a hierarchical allgather that never named a formulation from silently
+    landing on the MILP.
+    """
+    f = _at_depth(instance.formulation, depth, "formulation")
+    if f is None or isinstance(f, Formulation):
+        return f
+    return Formulation(f)
+
+
+def resolve_switch_copy(instance: "InstanceParams", depth: int = 0) -> bool:
+    """Whether switches copy at hierarchy level `depth` (scalar or per-level list). A flat solve is
+    depth 0. See InstanceParams.switch_copy."""
+    return bool(_at_depth(instance.switch_copy, depth, "switch_copy"))
+
+
+MILP_CHUNKING_POLICIES = ("fine", "holder", "cell")
+
+
+def resolve_milp_chunking(instance: "InstanceParams", depth: int = 0) -> Union[str, int]:
+    """The MILP chunking policy at hierarchy level `depth` (scalar or per-level list): one of
+    MILP_CHUNKING_POLICIES, or a positive int bundle size. See InstanceParams.milp_chunking."""
+    v = _at_depth(instance.milp_chunking, depth, "milp_chunking")
+    if isinstance(v, bool) or not (v in MILP_CHUNKING_POLICIES or (isinstance(v, int) and v > 0)):
+        raise ValueError(f"InstanceParams.milp_chunking must be one of {MILP_CHUNKING_POLICIES} or "
+                         f"a positive int bundle size, got {v!r}")
+    return v
+
+
 class SolutionMethod(Enum):
     """
         1 - One shot - The optimization is run till the time limit is reached or it finds a solution within the specified mip gap
@@ -79,28 +213,147 @@ class SolutionMethod(Enum):
 @dataclass
 class InstanceParams:
     collective: Collective = Collective.ALLGATHER
+    # Solver formulation. None = the default: per collective for a flat solve (ALLGATHER->MILP,
+    # everything else->LP), LP at every level of a hierarchical one. Scalar or a per-level LIST in a
+    # hierarchical solve, like epoch_type (see resolve_formulation).
+    formulation: Union[Formulation, List[Formulation]] = None
+    root: int = 0 # Root GPU index for rooted collectives (GATHER destination / BROADCAST source); ignored otherwise
     num_chunks: int = 1 # Number of chunks to be transferred from each node to each other node
-    epoch_type: EpochType = EpochType.FASTEST_LINK 
-    epoch_duration: float = -1
+    # Scalar (one policy for the whole solve) or a LIST indexed by hierarchy level depth, so each
+    # level can size its own epoch; depths past the end take the last entry. See
+    # resolve_epoch_policy, which is the ONLY place either field should be read. Note epoch_duration
+    # still WINS over epoch_type at a given level: a level whose resolved duration is not -1 uses it
+    # and its epoch_type is ignored, so the list form of both is normally written in step, e.g.
+    # epoch_type [USER_INPUT, FASTEST_LINK] with epoch_duration [0.0133, -1].
+    epoch_type: Union[EpochType, List[EpochType]] = EpochType.FASTEST_LINK
+    epoch_duration: Union[float, List[float]] = -1
     epoch_multiplier: int = 1   # Multiplier for epoch duration (helpful for epoch_type != -1)
     num_epochs:int = -1         # Number of epochs to be run (-1 to automatically figure out the number of epochs)
     epsilon: float = pow(10, -1)
     alpha_threshold: float = 0.1 # Link alpha to epoch duration ratio threshold below which alpha is taken as 0
     alpha_epoch_duration_ratio_max: int = 200 # Maximum ratio of alpha to epoch duration (if exceeded, epoch duration is increased)
-    switch_copy: bool = True # If True, switch can copy the chunks
-    switch_to_gpu_link_on: bool = False # If False, the link from switch to node is taken as instantaneous
-    switch_to_switch_link_on: bool = False # If False, switch-to-switch links are taken as instantaneous (cut-through fabric): the full store-and-forward cost is only charged once, at the first GPU->switch hop.
+    # Whether a switch can copy a chunk to several out-links (scalar or a per-level LIST, see
+    # resolve_switch_copy). Read at EVERY level that solves a switch fabric: a MILP level's network
+    # switches, and a bottom cell's NVSwitch (the crossbar row turns a fan-out into one multicast).
+    # The default copies at the root and nowhere below it: copying inside a cell needs NVSwitch
+    # multicast (NVLS-class hardware), so it is opt-in -- give a list, or a scalar for every level.
+    # Even where it is on, only PROGRAMMABLE switches copy (Topology.programmable_switch_indices,
+    # the set ncclize writes a forwarding program for): a copy is a forwarding decision, so a
+    # self-routing switch -- a PCIe root complex, or an NVSwitch a topology declares self-routing --
+    # forwards one copy per copy received (AllGatherFormulation.copy_switches,
+    # hierarchy.solve.cell_switch_copy).
+    switch_copy: Union[bool, List[bool]] = (True, False)
+    # Opt-in post-solve pass (LP only): average the finished solution over the topology's
+    # symmetry group, projecting it onto the symmetric optimum. Default OFF because it changes
+    # nothing about the makespan and is not always wanted -- it DENSIFIES the flow, which is how
+    # it removes idle epochs but also means more emitted ops and more work for the decomposition.
+    # Turn it on when a degenerate face is actually hurting you, i.e. when ncclize reports sends
+    # it cannot realize, or when the chunk-path fractions come out with ugly denominators.
+    # No effect unless the topology has a symmetry that also preserves the demand matrix; see
+    # teccl/solvers/symmetrize.py for the correctness argument and the limits.
+    symmetry_average: bool = False
+    switch_pipeline: bool = True # If True, switches are a cut-through (pipelined) fabric: a chunk relayed through switches only pays propagation delay per hop, not a full store-and-forward serialization epoch. If False, every switch hop is store-and-forward. Which hops are made cut-through depends on the formulation: allgather pipelines the switch->switch and switch->gpu (egress) hops; alltoall pipelines the gpu->switch (ingress) and switch->switch hops. (The complementary leg is already handled by each formulation's structure: the first gpu->switch hop for allgather, the final switch->gpu hop for alltoall.)
     debug: bool = False # If True, prints debug information
     debug_output_file: str = "" # If debug is True, prints debug information to this file
     objective_type: ObjectiveType = ObjectiveType.PAPER # The objective function to be used (3 - The objective function used in the paper)
+    # Only used by ObjectiveType.LEXICOGRAPHIC: how much a LOWER priority tier is allowed to
+    # degrade a HIGHER one, as a fraction of that tier's optimal value (Gurobi ObjNRelTol).
+    # 0.0 == pure lexicographic (a tier is fixed at its exact optimum before the next is
+    # optimized). Give latency a small slack (e.g. 0.01) when you would accept 1% more
+    # completion time to buy a materially less relay-heavy / shorter-chained routing.
+    objective_makespan_rel_tol: float = 0.0  # slack on tier 0 (makespan, MILP only) for tiers 1-3
+    objective_latency_rel_tol: float = 0.0   # slack on tier 1 (latency) for tiers 2-3
+    objective_relay_rel_tol: float = 0.0     # slack on tier 2 (host relay) for tier 3
+    # Only used by ObjectiveType.LEXICOGRAPHIC: a time limit in HOURS (like GurobiParams.time_limit)
+    # per tier, highest priority first; None (or a None entry) leaves that tier to the global
+    # limit. A tier that hits its limit keeps its incumbent's value and the next tier starts. For a
+    # tier whose relaxation is too weak to ever close -- the MILP makespan on a large coarse level,
+    # where the incumbent is already provably optimal (e.g. at an ingress bound) -- this is what
+    # lets the lower tiers get any time at all.
+    objective_tier_time_limit: List[Optional[float]] = None
     solution_method: SolutionMethod = SolutionMethod.ONE_SHOT
     schedule_output_file: str = "" # If not empty, the schedule is written to this file. Default is "Topology-Chunks-chunksize-timestamp.json"
     lower: bool = False # If true will use the lowering code from Meghan to lower the input.
     lower_xml: str = "" # If not empty, the XML is written to this file. Default is "Topology-Chunks-chunksize-timestamp.xml"
     warmstart: str = "" # If not empty, the warmstart file is used to warmstart the optimization.
-    symmetry: bool = False # If true, nodes that are given as symmetric are constrainted to have same number of total flows. 
+    symmetry: bool = False # If true, nodes that are given as symmetric are constrainted to have same number of total flows.
+    # MILP only: order a source's interchangeable chunks (identical demand columns) by delivery,
+    # so the solver does not search every relabeling of one schedule. Exact -- any solution can be
+    # relabeled to satisfy it -- but it may return a different one of several tied optima, and a
+    # user MIP start (warmstart) must follow the same order or Gurobi rejects it.
+    chunk_symmetry_breaking: bool = True
+    # MILP only: a switch must forward everything that reaches it ("==" in place of ">=" in the
+    # switch rule), so the model itself holds no dead flow -- a send into a switch that the switch
+    # drops. Off (the default), a switch may drop: that was found faster to solve, and the dead
+    # flows are pruned after the solve (dfs_remove_unnecessary_flows). But no objective tier above
+    # switch_chain charges for them, so that tier inherits an incumbent full of them. Exact for
+    # every objective that does not reward dead flow: deleting a dead flow from a solution leaves
+    # a solution with the same deliveries. See AllGatherFormulation._switch_egress_constr.
+    # Complete (no dead flow left) for cut-through switches that copy, where the acyclicity rows
+    # exist. NOT covered: a same-epoch circulation among cut-through switches that cannot copy
+    # (it conserves flow, and those switches get no acyclicity rows), and store-and-forward
+    # sends too late to be forwarded or to land inside the horizon.
+    switch_no_drop: bool = False
+    # --- Hierarchical solve (teccl.hierarchy.solve.solve_hierarchical) -------------------------
+    # If True, the topology is solved LEVEL BY LEVEL (abstract -> solve -> lower -> recurse) instead
+    # of as one flat problem. Requires a topology that declares cells (Topology.build_hierarchy).
+    # The output is still an ordinary flat schedule on the fine topology, written to
+    # schedule_output_file exactly as in the flat mode, so everything downstream (ncclize) is
+    # unchanged. Every other InstanceParams field keeps its meaning and is applied at each level:
+    # formulation/objective_type/symmetry/switch_copy configure the per-level solve, and num_chunks
+    # is still per source per destination on the FINE topology.
+    hierarchical: bool = False
+    # Base-case algorithm for a crossbar cell: "crossbar" (default) or "ring". None leaves
+    # teccl.hierarchy.ring_solve.INTRA_ALGO alone, i.e. honors $TECCL_INTRA_ALGO.
+    intra_algo: str = None
+    # Force the root level's chunk unit g instead of taking the GCD of its coarse demands. Set it
+    # to 1 to reproduce the pre-coarsening behaviour (the drivers' `nocoarsen` A/B); None = derive.
+    level_chunk: int = None
+    # Base name for the hierarchy's side artifacts under Schedules/ (_coarse, _identities, _intra).
+    # Empty => "{topology name}_{collective}", plus an "_{algo}" tag when the intra-cell algorithm
+    # is not the default, so a ring run never overwrites its crossbar baseline.
+    hierarchy_prefix: str = ""
+    # If True, also write Schedules/{prefix}_{identities,intra}.json: the resolved inter-cell
+    # traffic and the assembled sub-level schedule. Nothing consumes them; they are how a bad run
+    # is diagnosed without re-running the (expensive) coarse solve.
+    hierarchy_side_outputs: bool = False
+    # Which hierarchy level this instance is being solved at, 0 = root. Set by the hierarchy
+    # (hierarchy.solve.gurobi_level_solver) from Subproblem.depth, NOT by users -- it is how the
+    # per-level list forms of epoch_type / epoch_duration select their entry. A flat solve leaves
+    # it at 0, where a list of length 1 and a scalar behave identically.
+    level_depth: int = 0
+    # Override for teccl.hierarchy.reconstruct.MAX_DENOM (default 64), the largest denominator the
+    # identity-resolution grid represents. None => the module default. COUPLED to GurobiParams.
+    # feasibility_tol, not independent: grid_resolution = 1/(2*max_denom^2), so raising this makes
+    # the grid finer and SHRINKS how coarse feasibility_tol may be before snap_tolerance refuses
+    # (see reconstruct.snap_tolerance) -- the default feasibility_tol=1e-4 is only legal up to
+    # max_denom~70. Raise this ONLY on an instance whose feasibility_tol is tight enough to still
+    # clear that check (reconstruct.snap_tolerance raises at construction time if not), e.g. a
+    # topology with an uneven fine-to-coarse grouping (a scattered host's 6/5/5 GPUs-per-leaf
+    # split) whose proportional egress split (reconstruct._build_slots) drives a denominator, like
+    # 5^3=125, past the default 64. Per-instance rather than global because most inputs run at the
+    # default feasibility_tol=1e-4, which a global raise would break outright (not just make thin).
+    max_denom: int = None
+    # How a hierarchy level solved by the MILP groups fine identities into its chunks (scalar or a
+    # per-level list). One MILP chunk is a BUNDLE of b identities that rides one path:
+    #   "fine"    b = 1, one chunk per identity. No rescale; the largest model.
+    #   "holder"  one holder GPU's identities for one destination-cell set (b = that size; their
+    #             gcd when sizes differ). Keeps multipath across a cell's uplinks.
+    #   "cell"    one cell's identities for one destination-cell set. Smallest model, but voids
+    #             multipath on any cell with more than one uplink -- rarely the right choice.
+    #   int       b identities of one holder GPU; must divide every holder's class size. A b past
+    #             the holder class (between "holder" and "cell") must divide every cell's class
+    #             instead, and its bundles span the cell's holders as under "cell".
+    # See teccl/hierarchy/milp_design.md §2.1 and hierarchy.milp_routing.
+    milp_chunking: Union[str, int, List] = "holder"
     
+@dataclass
 class UserInputParams:
-    topology: TopologyParams = TopologyParams()
-    gurobi: GurobiParams = GurobiParams()
-    instance: InstanceParams = InstanceParams()
+    # Use default_factory so each UserInputParams gets its own params objects.
+    # Bare mutable defaults would be shared across all instances (and not copied
+    # by copy.deepcopy, since they'd live on the class), which silently couples
+    # unrelated solves and compounds in-place mutations like the alltoall
+    # num_chunks scaling in the scheduler.
+    topology: TopologyParams = field(default_factory=TopologyParams)
+    gurobi: GurobiParams = field(default_factory=GurobiParams)
+    instance: InstanceParams = field(default_factory=InstanceParams)

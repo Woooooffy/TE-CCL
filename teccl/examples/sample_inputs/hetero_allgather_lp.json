@@ -1,0 +1,36 @@
+{
+    "_comment": "Ground-truth FLAT solve of the 19-node fine HeteroTaperedCluster (no abstraction). Copy-free LP AllGather, one chunk per GPU. Compare its epochs / finish-time / bandwidth against the hierarchical coarse solve (hierarchy_coarse_solve_hetero allgather lp) + phase-3 reconstruction. Settings mirror the coarse driver: SLOWEST_LINK epoch, PAPER objective, ONE_SHOT.",
+    "TopologyParams": {
+        "name": "HeteroTaperedCluster",
+        "chassis": 1,
+        "chunk_size": 1
+    },
+    "GurobiParams": {
+        "time_limit": 2,
+        "feasibility_tol": 1e-4,
+        "intfeas_tol": 1e-4,
+        "optimality_tol": 1e-4,
+        "output_flag": 1,
+        "log_to_console": 1,
+        "mip_gap": 1e-4,
+        "mip_focus": 1,
+        "crossover": -1,
+        "method": -1,
+        "heuristics": 0.05
+    },
+    "InstanceParams": {
+        "collective": 1,
+        "formulation": 2,
+        "num_chunks": 1,
+        "epoch_type": 2,
+        "epoch_multiplier": 1,
+        "epoch_duration": -1,
+        "num_epochs": -1,
+        "alpha_threshold": 0.1,
+        "switch_copy": false,
+        "symmetry": true,
+        "objective_type": 2,
+        "solution_method": 1,
+        "schedule_output_file": "Schedules/flat_hetero_allgather_lp.json"
+    }
+}

@@ -1,0 +1,41 @@
+cpu-bind=MASK - groenig-3, task  0  0 [1578867]: mask 0xff set
+cpu-bind=MASK - groenig-3, task  0  0 [1579504]: mask 0xff set
+milp_chunking=2 exceeds a holder's class (sizes [1]), so bundles span holders within a cell, as under 'cell'
+WARNING:root:Not_Optimal_Allgather_MILP_Status-9_RailOptimizedDualPlane_44-nodes_4-chunks_16-epochs_0.02-epochduration
+ERROR:root:No schedule found with the given parameters
+Traceback (most recent call last):
+  File "/data/commit/graphit/wangyj05/miniconda3/envs/teccl/bin/teccl", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/__main__.py", line 21, in main
+    if handler(args, args.command):
+       ~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/cli/solve.py", line 43, in handler
+    solver.solve()
+    ~~~~~~~~~~~~^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 405, in solve
+    self.solve_hierarchy(start)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/scheduler.py", line 373, in solve_hierarchy
+    info, solution = solve_hierarchical(
+                     ~~~~~~~~~~~~~~~~~~^
+        topology, level_input, instance.collective, num_chunks,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        prefix=prefix, debug=instance.debug, level_chunk=instance.level_chunk)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 732, in solve_hierarchical
+    solution = solve_level(root, ctx)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 391, in solve_level
+    return _solve_recursive(problem, ctx)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 476, in _solve_recursive
+    solution = solve_flat(Subproblem(topology=coarse, demands=problem.demands,
+                                     scale=problem.scale.coarsen(g), depth=problem.depth,
+                                     band=problem.band, cell_id=problem.cell_id),
+                          ctx, mapping=mapping, demand_tensor=coarse_demand)
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 254, in solve_flat
+    return ctx.solve_flat_hook(problem, ctx, mapping, demand_tensor)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/commit/graphit/wangyj05/workspace/TE-CCL/teccl/hierarchy/solve.py", line 354, in gurobi_level_solver
+    raise RuntimeError(f"level depth={problem.depth} produced no solved formulation")
+RuntimeError: level depth=0 produced no solved formulation
+srun: error: groenig-3: task 0: Exited with exit code 1

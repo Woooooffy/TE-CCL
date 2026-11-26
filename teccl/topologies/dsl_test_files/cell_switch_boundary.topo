@@ -1,0 +1,14 @@
+// Fixture: a cell whose SWITCH reaches outside it. A cell's external links must be owned by its
+// GPUs (abstract() reads boundary only for cell.gpus), so this must be refused.
+module rack() {
+    node sw type=switch;
+    for g in (0, 1) {
+        node gpu{g} type=gpu;
+        link gpu{g} sw bandwidth=100[GBps] latency=0[ns];
+    }
+}
+module main() {
+    use rack() as r0 cell;
+    use rack() as r1 cell;
+    link r0.sw r1.sw bandwidth=25[GBps] latency=0[ns];
+}

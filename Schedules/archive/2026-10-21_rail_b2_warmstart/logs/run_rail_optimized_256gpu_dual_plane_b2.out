@@ -1,0 +1,11 @@
+milp_chunking=2 exceeds a holder's class (sizes [1]), so bundles span holders within a cell, as under 'cell'
+Set parameter WLSAccessID
+Set parameter WLSSecret
+Set parameter LicenseID to value 2766017
+Academic license 2766017 - for non-commercial use only - registered to wa___@mit.edu
+Set parameter LogFile to value "Logs/Allgather_MILP_RailOptimizedDualPlane_44-nodes_4-chunks_16-epochs_0.02-epochduration_ObjectiveType.LEXICOGRAPHIC_rail_optimized_256gpu_dual_plane_hierarchical_allgather_milp_b2.log"
+Set parameter LogToConsole to value 0
+WARNING:root:Not_Optimal_Allgather_MILP_Status-13_RailOptimizedDualPlane_44-nodes_4-chunks_16-epochs_0.02-epochduration
+Schedule written to Schedules/rail_optimized_256gpu_dual_plane_hierarchical_allgather_milp_b2_coarse.json
+[flat] network pacing: every emitted paced send is pinned to its coarse epoch, by one of the GPU's own sends completing (P2) or by a delivery arriving at it (P3)
+Schedule written to Schedules/rail_optimized_256gpu_dual_plane_hierarchical_allgather_milp_b2_flat.json
