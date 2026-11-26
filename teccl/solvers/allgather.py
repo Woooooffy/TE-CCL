@@ -938,21 +938,23 @@ class AllGatherFormulation(BaseFormulation):
                                                   traverses: 0 for a direct link, 1 for
                                                   gpu->switch->gpu, 3 for leaf->spine->leaf.
 
-        Latency and switch chain share one tier, after host relay (EXPERIMENT, branch
-        milp-merged-latency-chain). As separate tiers, latency pinned at its exact optimum decides
-        the routing alone: on rail_optimized_256gpu_dual_plane b4 that is every cell's ingress
-        saturated in every epoch, which costs switch_chain 119+ against the 64 of a leaf
+        Latency and switch chain share one tier, after host relay. As separate tiers (latency
+        above relay above chain, as the LP still has them), latency pinned at its exact optimum
+        decides the routing alone: on rail_optimized_256gpu_dual_plane b4 that is every cell's
+        ingress saturated in every epoch, which costs switch_chain 119+ against the 64 of a leaf
         broadcast, for 2.45% of summed completion epochs. One tier lets a switch hop be traded
         against landing time. The weight is 1 because both terms count the same kind of event --
         one chunk at one place for one epoch: a delivery that waits an epoch, or a copy that
         enters a switch -- so a hop is worth taking exactly when it lands a chunk an epoch
-        earlier. On b4 the known schedules score: constructed chain design (-9152, 124) = -9028,
-        the 2026-11-23 runs (-9152, 133) = -9019 and (-8923, 66) = -8857, leaf broadcast
-        (-8928, 64) = -8864. So at weight 1 the latency-saturating side still wins (break-even
-        about 3.7 per hop) unless a schedule in between beats both.
+        earlier. On b4 the latency-saturating side still wins at weight 1 (break-even about 3.7
+        per hop: constructed chain design (-9152, 124) = -9028 against leaf broadcast
+        (-8928, 64) = -8864), and the merged tier reached the same flat finish as the four
+        separate tiers (611 flat epochs) in ~1050 s instead of 4588 s.
 
-        Being negative in places, this tier is not a cost tier: it gets no automatic floor stop
-        or pre-root NoRel budget (BaseFormulation._set_cost_tier_stops).
+        Relay therefore outranks latency on the MILP: only makespan can force a host relay. The
+        tier has negative coefficients, so it is not a cost tier (no floor stop), but like every
+        tier after the first it gets the pre-root NoRel search, and as the last tier it stops at
+        BaseFormulation.LAST_TIER_MIP_GAP (see _set_cost_tier_stops and _set_last_tier_gap).
 
         Only variables that were actually created are read; the sparse flow container returns
         0.0 for the (s, i, j, c, k) combinations initialize_variables skipped, which add into

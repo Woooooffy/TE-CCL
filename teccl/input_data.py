@@ -55,24 +55,27 @@ class ObjectiveType(Enum):
             detour. The penalty is scaled far below the completion reward so it acts purely as a
             tie-breaker and never trades completion time for fewer hops.
         6 - LEXICOGRAPHIC - A hierarchical (lexicographic) objective solved with Gurobi's
-            multi-objective support, in strictly decreasing priority:
-              tier 0 (makespan)     MILP only: minimize the epoch by which EVERY demand is met
-                                    (the collective's finish time), so the tiers below can only
-                                    choose among the fastest schedules. The LP has no tier 0
-                                    (see LPFormulation.hierarchical_objective_tiers),
-              tier 1 (latency)      among those, minimize the demand-weighted completion time,
-              tier 2 (host relay)   among the tier-1 optima, minimize the volume that a GPU
-                                    forwards on behalf of another GPU (relay through a host
-                                    burns that host's link bandwidth and its copy engines),
-              tier 3 (switch chain) among those, minimize the number of switch hops the volume
-                                    takes (flow entering a switch), i.e. prefer the shortest
-                                    switch chain: a direct link over a one-switch path, and a
-                                    one-switch path over a leaf->spine->leaf detour.
+            multi-objective support, in strictly decreasing priority. The tiers differ by
+            formulation (LPFormulation / AllGatherFormulation.hierarchical_objective_tiers):
+              LP    latency > host relay > switch chain
+              MILP  makespan > host relay > latency + switch chain (weight 1)
+            where
+              makespan       MILP only: the epoch by which EVERY demand is met (the collective's
+                             finish time), so the tiers below only choose among the fastest
+                             schedules,
+              latency        the demand-weighted completion time,
+              host relay     the volume a GPU forwards on behalf of another GPU (relay through a
+                             host burns that host's link bandwidth and its copy engines),
+              switch chain   the number of switch hops the volume takes (flow entering a switch):
+                             a direct link over a one-switch path, and a one-switch path over a
+                             leaf->spine->leaf detour.
+            On the MILP, latency and switch hops share the last tier so a hop can be traded
+            against landing time; see AllGatherFormulation.hierarchical_objective_tiers.
             Unlike option 5 -- which folds the switch-hop term into ONE objective with a hand
             tuned GAMMA and so depends on that constant being small enough -- the tiers here
             are enforced by the solver: a lower tier can never degrade a higher one by more
-            than the tolerance you allow it (InstanceParams.objective_latency_rel_tol /
-            objective_relay_rel_tol, both 0 by default = pure lexicographic).
+            than the tolerance you allow it (InstanceParams.objective_*_rel_tol, all 0 by
+            default = pure lexicographic).
     """
     BINARY_USED_EPOCHS = 1
     TOTAL_DEMAND = 2
@@ -259,11 +262,11 @@ class InstanceParams:
     # Only used by ObjectiveType.LEXICOGRAPHIC: how much a LOWER priority tier is allowed to
     # degrade a HIGHER one, as a fraction of that tier's optimal value (Gurobi ObjNRelTol).
     # 0.0 == pure lexicographic (a tier is fixed at its exact optimum before the next is
-    # optimized). Give latency a small slack (e.g. 0.01) when you would accept 1% more
+    # optimized). On the LP, give latency a small slack (e.g. 0.01) when you would accept 1% more
     # completion time to buy a materially less relay-heavy / shorter-chained routing.
-    objective_makespan_rel_tol: float = 0.0  # slack on tier 0 (makespan, MILP only) for tiers 1-3
-    objective_latency_rel_tol: float = 0.0   # slack on tier 1 (latency) for tiers 2-3
-    objective_relay_rel_tol: float = 0.0     # slack on tier 2 (host relay) for tier 3
+    objective_makespan_rel_tol: float = 0.0  # slack on makespan (MILP only) for the tiers below it
+    objective_latency_rel_tol: float = 0.0   # slack on latency (LP only) for relay and switch chain
+    objective_relay_rel_tol: float = 0.0     # slack on host relay for the tier below it
     # Only used by ObjectiveType.LEXICOGRAPHIC: a time limit in HOURS (like GurobiParams.time_limit)
     # per tier, highest priority first; None (or a None entry) leaves that tier to the global
     # limit. A tier that hits its limit keeps its incumbent's value and the next tier starts. For a

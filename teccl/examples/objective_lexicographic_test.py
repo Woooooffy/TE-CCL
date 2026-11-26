@@ -1,24 +1,31 @@
 """
-Behavioral tests for ObjectiveType.LEXICOGRAPHIC (the latency > host-relay > switch-chain
-hierarchy in teccl/solvers/base_formulation.py), run against BOTH formulations. The MILP puts
-a makespan tier above those three (the LP does not; see LPFormulation.hierarchical_objective_
-tiers). The probes finish in the same epoch on every route, so it ties throughout; it is
-checked against the solved epoch count.
+Behavioral tests for ObjectiveType.LEXICOGRAPHIC, run against BOTH formulations. The tiers
+differ by formulation:
+
+  LP    latency > host_relay > switch_chain    (LPFormulation.hierarchical_objective_tiers)
+  MILP  makespan > host_relay > latency_chain  (AllGatherFormulation.hierarchical_objective_tiers),
+        where latency_chain = latency + switch_chain at weight 1.
+
+On the MILP only makespan outranks the relay penalty; latency and switch hops are traded in
+the last tier. The probes below decide every case either by makespan or by a tie on it, so the
+same routing assertions hold on both.
 
 Each test runs an AllGather between two GPUs on a tiny topology (teccl.topologies.
 objective_probes) that offers two routes, and asserts WHICH route the objective picks:
 
   [1] direct_vs_switch   equal-bandwidth direct link vs one-switch path.
-      Latency and host relay tie, so tier 3 decides: take the direct link, 0 switch hops.
+      Latency and host relay tie, so the switch-chain term decides: take the direct link,
+      0 switch hops.
 
   [2] one_vs_two_switch  equal-bandwidth one-switch path vs two-switch path.
-      Latency and host relay tie again, so tier 3 decides: take the shorter chain.
+      Latency and host relay tie again, so the switch-chain term decides: take the shorter
+      chain.
 
   [3] slow_switch_vs_relay  a slow one-switch path vs a fast path relaying through a passive
-      GPU. Tier 2 wants to avoid the relay, but tier 1 outranks it: when the relay is strictly
-      faster it MUST be used, and when the two paths are equally fast the relay must be
-      dropped. Both directions are checked -- that is what makes it a test of the hierarchy
-      rather than of any single term.
+      GPU. The relay tier wants to avoid the relay, but the finish time outranks it (latency on
+      the LP, makespan on the MILP): when the relay is strictly faster it MUST be used, and when
+      the two paths are equally fast the relay must be dropped. Both directions are checked --
+      that is what makes it a test of the hierarchy rather than of any single term.
 
 Every test runs on the MILP (AllGatherFormulation) and on the LP (LPFormulation, which is what
 the hierarchical solver uses). The LP is the harder case: its flow is continuous and
@@ -121,10 +128,10 @@ def objective_report(solver):
     (ObjNVal), not recomputed from the flows.
 
     This is the check that the formulation really installed the hierarchy: a single-objective
-    run reports NumObj == 1, a LEXICOGRAPHIC run reports 4 named tiers on the MILP, 3 on the LP. Cross-read the tier
-    values against the metrics below -- makespan is minus the epochs from the finish on,
-    host_relay and switch_chain must match exactly, and latency is the negated sum of
-    total_demand_sat.
+    run reports NumObj == 1, a LEXICOGRAPHIC run reports 3 named tiers on either formulation.
+    Cross-read the tier values against the metrics below -- makespan is minus the epochs from
+    the finish on, host_relay and switch_chain must match exactly, latency is the negated sum
+    of total_demand_sat, and the MILP's latency_chain is latency + switch_chain.
     """
     model = solver.model
     num_obj = model.NumObj
@@ -137,7 +144,7 @@ def objective_report(solver):
 
 
 def metrics(solver):
-    """The three tier quantities plus the epoch count, read back off the solved model."""
+    """The tier quantities plus the epoch count, read back off the solved model."""
     volume = link_volume(solver)
     switches = set(solver.topology.switch_indices)
     switch_hops = sum(v for (i, j), v in volume.items() if j in switches)
@@ -152,12 +159,24 @@ def metrics(solver):
                     continue
                 relay += _link_flow(solver, s, n, j)
 
+    # latency = -sum of total_demand_sat over demanded (s, d[, c], k), as both formulations define it
+    if isinstance(solver, LPFormulation):
+        latency = -sum(_value(solver.total_demand_sat[s][d][k])
+                       for s, d, k in product(solver.sources, solver.nodes, solver.epochs)
+                       if solver.demand[s][d])
+    else:
+        latency = -sum(_value(solver.total_demand_sat[s][d][c][k])
+                       for s, d, c, k in product(solver.sources, solver.nodes, solver.chunks,
+                                                 solver.epochs)
+                       if solver.demand[s][d][c])
+
     report = objective_report(solver)
     return {
         "formulation": Formulation.MILP if isinstance(solver, AllGatherFormulation) else Formulation.LP,
         "epochs": solver.find_demand_satisfied_k() + 1,
         "switch_hops": switch_hops,
         "host_relay": relay if relay > TOL else 0.0,
+        "latency": latency,
         "volume": volume,
         "num_obj": report["num_obj"],
         "tiers": report["tiers"],
@@ -165,7 +184,7 @@ def metrics(solver):
 
 
 def _tier_str(m):
-    """Gurobi's per-tier optimal values, e.g. "latency=-2 host_relay=0 switch_chain=0"."""
+    """Gurobi's per-tier optimal values, e.g. "makespan=-7 host_relay=0 latency_chain=-14"."""
     return " ".join(f"{name}={value:g}" for name, value in m["tiers"]) or f"NumObj={m['num_obj']}"
 
 
@@ -176,8 +195,8 @@ def assert_hierarchy_installed(m):
     solved model carried the named objectives (makespan first on the MILP), and Gurobi's own
     optimal value for the makespan/relay/chain tiers equals what we measured off the solution.
     """
-    expected = (["makespan"] if m["formulation"] == Formulation.MILP else []) + \
-        ["latency", "host_relay", "switch_chain"]
+    expected = (["makespan", "host_relay", "latency_chain"] if m["formulation"] == Formulation.MILP
+                else ["latency", "host_relay", "switch_chain"])
     assert m["num_obj"] == len(expected), \
         f"expected {len(expected)} lexicographic objectives on the solved model, found " \
         f"{m['num_obj']}: the formulation did not install the hierarchy"
@@ -186,15 +205,25 @@ def assert_hierarchy_installed(m):
     by_name = dict(m["tiers"])
     if "makespan" in by_name:
         # the tier counts the epochs with everything met: finish epoch (epochs - 1) through the end
-        assert abs(by_name["makespan"] + (NUM_EPOCHS - m["epochs"] + 1)) <= TOL, \
+        # The tier is a sum of CONTINUOUS all_met indicators, and later passes may relax a pinned
+        # tier by about its pass's relative MIPGap (1e-4 x 8 here), which they absorb (-7.9992 on
+        # probe [1] since the merged latency_chain tier). The finish itself cannot move: each
+        # all_met <= a binary met, so any slack below one epoch leaves the finish epoch intact.
+        assert abs(by_name["makespan"] + (NUM_EPOCHS - m["epochs"] + 1)) < 0.5, \
             f"Gurobi's makespan tier ({by_name['makespan']:g}) disagrees with the finish " \
             f"epoch ({m['epochs']} of {NUM_EPOCHS})"
     assert abs(by_name["host_relay"] - m["host_relay"]) <= TOL, \
         f"Gurobi's host_relay tier ({by_name['host_relay']:g}) disagrees with the flows " \
         f"({m['host_relay']:g}) -- the tier is not measuring what the test measures"
-    assert abs(by_name["switch_chain"] - m["switch_hops"]) <= TOL, \
-        f"Gurobi's switch_chain tier ({by_name['switch_chain']:g}) disagrees with the flows " \
-        f"({m['switch_hops']:g})"
+    if "switch_chain" in by_name:
+        assert abs(by_name["switch_chain"] - m["switch_hops"]) <= TOL, \
+            f"Gurobi's switch_chain tier ({by_name['switch_chain']:g}) disagrees with the flows " \
+            f"({m['switch_hops']:g})"
+    if "latency_chain" in by_name:
+        measured = m["latency"] + m["switch_hops"]
+        assert abs(by_name["latency_chain"] - measured) <= TOL, \
+            f"Gurobi's latency_chain tier ({by_name['latency_chain']:g}) disagrees with latency " \
+            f"{m['latency']:g} + switch hops {m['switch_hops']:g} measured off the solution"
 
 
 def _used(metrics_dict, links):
@@ -207,7 +236,7 @@ def _used(metrics_dict, links):
 # ---------------------------------------------------------------------------------------
 
 def test_direct_vs_switch(formulation=Formulation.MILP):
-    """[1] Direct link beats an equal-bandwidth one-switch path (tier 3, chain length 0 vs 1)."""
+    """[1] Direct link beats an equal-bandwidth one-switch path (chain length 0 vs 1)."""
     topo = build_topology(DirectVsSwitch)
     m = metrics(solve(topo, ObjectiveType.LEXICOGRAPHIC, formulation))
 
@@ -241,12 +270,13 @@ def test_one_vs_two_switch(formulation=Formulation.MILP):
 
 def test_slow_switch_vs_relay(formulation=Formulation.MILP):
     """
-    [3] Latency outranks the relay penalty, and only outranks it when it actually pays.
+    [3] Finish time outranks the relay penalty, and only outranks it when it actually pays.
 
     (a) switch path 4x slower than the relay path -> the relay through the passive GPU is used,
-        even though tier 2 charges for it, because tier 1 is strictly better with it.
-    (b) same shape with the switch path made just as fast -> latency ties, so tier 2 takes over
-        and the relay is dropped.
+        even though the relay tier charges for it, because the finish is strictly earlier with
+        it (latency on the LP; makespan on the MILP, where it is the only tier above relay).
+    (b) same shape with the switch path made just as fast -> the finish ties, so the relay tier
+        takes over and the relay is dropped.
     """
     passive = SlowSwitchVsRelay.PASSIVE
     slow = metrics(solve(build_topology(SlowSwitchVsRelay, passive=passive),
@@ -257,12 +287,12 @@ def test_slow_switch_vs_relay(formulation=Formulation.MILP):
     assert_hierarchy_installed(slow)
     assert_hierarchy_installed(fast)
     assert slow["host_relay"] > TOL, \
-        f"the relay path is strictly faster here, so tier 1 must overrule tier 2: {slow['volume']}"
+        f"the relay path is strictly faster here, so the finish time must overrule the relay tier: {slow['volume']}"
     assert slow["epochs"] <= 3, \
         f"the relay path takes 2 epochs (2 hops); the slow switch path takes at least 4, so a " \
-        f"latency-first objective must land at or under 3, got {slow['epochs']}: {slow['volume']}"
+        f"finish-first objective must land at or under 3, got {slow['epochs']}: {slow['volume']}"
     assert fast["host_relay"] <= TOL, \
-        f"with both paths equally fast the relay is pure tier-2 cost and should be dropped: {fast['volume']}"
+        f"with both paths equally fast the relay is pure relay-tier cost and should be dropped: {fast['volume']}"
     assert fast["switch_hops"] > TOL, \
         f"dropping the relay means going through the switch: {fast['volume']}"
     print(f"    [3] slow_switch_vs_relay  OK  slow: epochs={slow['epochs']} relay={slow['host_relay']:g} "

@@ -404,26 +404,30 @@ class BaseFormulation(ABC):
     COST_TIER_NOREL_SHARE_OF_LIMIT = 0.9
 
     def _set_cost_tier_stops(self, limits) -> None:
-        """Let a MIP cost tier stop the moment it reaches its floor, without a root LP.
+        """Pre-root NoRel search for every MIP tier after the first, and let a COST tier stop the
+        moment it reaches its floor, without a root LP.
 
         A COST tier is one whose objective has no negative coefficient on a variable with a
         finite lower bound: every term only charges activity, so its floor -- the value with every
         variable at its lower bound -- is a true lower bound, and any schedule that reaches it is
-        optimal. host_relay and switch_chain are cost tiers (floor 0: no relay, no switch hop);
-        makespan and latency are not -- they reward progress, and their floor (everything met at
-        epoch 0) is never feasible.
+        optimal. host_relay and the LP's switch_chain are cost tiers (floor 0: no relay, no switch
+        hop); makespan, latency and the MILP's latency_chain are not -- they reward progress, and
+        their floor (everything met at epoch 0) is never feasible.
 
         A cost tier often reaches its floor: on rail_optimized_256gpu_dual_plane b4 host_relay
         is 0. Gurobi still spent 2 h on that tier's root LP (7000 s of crossover) only to bound it
-        at 0, and its heuristics found the 0-relay schedule 5 s after the root. So every cost tier
-        after the first gets
+        at 0, and its heuristics found the 0-relay schedule 5 s after the root. So every tier after
+        the first gets
+          NoRelHeurTime = budget     Gurobi's no-relaxation heuristic, the one heuristic that runs
+                                     BEFORE the root LP, searches from the previous tier's solution;
+        and a cost tier also gets
           BestObjStop = floor        stop as soon as an incumbent reaches it -- exact, since
                                      nothing can be below it, and the next tier is then held to
-                                     the same value a fully solved pass would hand it;
-          NoRelHeurTime = budget     Gurobi's no-relaxation heuristic, the one heuristic that runs
-                                     BEFORE the root LP, searches from the previous tier's solution.
+                                     the same value a fully solved pass would hand it.
         If the search misses the floor the pass falls back to the root LP as before, and the budget
-        is the only cost. The first tier is left alone: it has no previous solution to start from.
+        is the only cost. A tier that is not a cost tier (the MILP's latency_chain) simply starts
+        its root from the searched schedule. The first tier is left alone: it has no previous
+        solution to start from.
         The budget is COST_TIER_NOREL_SHARE_OF_LIMIT of the tier's time limit (`limits`, hours per
         tier, objective_tier_time_limit) when it has one, else scaled to the model size.
         """
@@ -438,10 +442,9 @@ class BaseFormulation(ABC):
             budget = (size_budget if hours is None
                       else self.COST_TIER_NOREL_SHARE_OF_LIMIT * hours * 60 * 60)
             env = self.model.getMultiobjEnv(index)
-            # EXPERIMENT (branch milp-merged-latency-chain): every tier after the first gets the
-            # pre-root search, not only cost tiers, so the merged latency+chain tier starts from a
-            # searched schedule rather than the host_relay tier's arbitrary 0-relay one. Only a
-            # cost tier has a floor to stop at.
+            # Every tier after the first gets the pre-root search, not only cost tiers: the MILP's
+            # latency_chain tier would otherwise start from the host_relay tier's arbitrary 0-relay
+            # schedule. Only a cost tier has a floor to stop at.
             env.setParam("NoRelHeurTime", budget)
             if floor is None:
                 self.model.message(f"objective {index + 1} ({names[index]}) is not a cost tier: "

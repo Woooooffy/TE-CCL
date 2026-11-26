@@ -171,5 +171,3 @@ cython_debug/
 Schedules/dual_plane_clustered_allgather_flat.json
 logs/hetero_allgather_epochs.txt
 
-# MIP starts (teccl/examples/hierarchy_leaf_broadcast_warmstart.py), ~35 MB each; regenerate per run
-warmstarts/
