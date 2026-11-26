@@ -361,15 +361,14 @@ class BaseFormulation(ABC):
     LAST_TIER_MIP_GAP = 0.01
 
     # Root-LP algorithm of the LAST tier, used only while GurobiParams.method is automatic (-1):
-    # non-deterministic concurrent, which stops the other algorithms as soon as one finishes. The
-    # automatic choice is DETERMINISTIC concurrent, which waits for the others to reach a stopping
-    # point. On rail_optimized_256gpu_dual_plane b4 the latency+chain tier's barrier proved the 1%
-    # gap at 1035 s ("Objective cutoff exceeded"), and the pass then sat in "Waiting for other
-    # threads to finish" until the 2 h cap: the simplex threads were solving the full degenerate LP,
-    # whose post-cut re-solves never finish there either. The last tier's incumbent comes from the
-    # (deterministic) NoRel search, so the root LP only supplies the bound; run-to-run differences
-    # can only appear when that bound does not meet the gap and the search continues.
-    LAST_TIER_METHOD = 3
+    # barrier alone. On rail_optimized_256gpu_dual_plane b4 the automatic choice, concurrent LP,
+    # hung: its barrier proved the 1% gap at ~1040 s ("Objective cutoff exceeded"), and the pass
+    # then sat in "Waiting for other threads to finish" until the 2 h cap -- 6.3 work units in
+    # 6160 s, so the simplex threads were blocked, not computing. It hung the same way in both
+    # deterministic (Method 4, the automatic pick) and non-deterministic (Method 3) concurrent, so
+    # the cure is not to run concurrent at all, and barrier is the algorithm that finished. If the
+    # bound misses the gap, barrier is followed by crossover before the search goes on.
+    LAST_TIER_METHOD = 2
 
     def _set_last_tier_gap(self) -> None:
         """Let the last tier of a MIP stop at LAST_TIER_MIP_GAP instead of the global MIPGap (kept
